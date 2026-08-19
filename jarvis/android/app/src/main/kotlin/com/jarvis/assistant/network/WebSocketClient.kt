@@ -1,21 +1,69 @@
 package com.jarvis.assistant.network
 
 import android.util.Log
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 class WebSocketClient(
-    val wsUrl: String = "ws://10.0.2.2:8000/ws",
+    val wsUrl: String = "ws://172.16.2.11:8000/ws",
     private val connectionManager: ConnectionManager = ConnectionManager()
 ) {
+    private var client: OkHttpClient = OkHttpClient.Builder()
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS)
+        .build()
+
+    private var webSocket: WebSocket? = null
+    var onMessageReceived: ((String) -> Unit)? = null
+
     fun connect() {
         Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $wsUrl...")
-        connectionManager.onConnected()
+        connectionManager.setConnectionState(ConnectionState.CONNECTING)
+        val request = Request.Builder().url(wsUrl).build()
+
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.i("WebSocketClient", "WebSocket Connection Established")
+                connectionManager.onConnected()
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                Log.d("WebSocketClient", "Received payload: $text")
+                onMessageReceived?.invoke(text)
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e("WebSocketClient", "WebSocket failure: ${t.message}", t)
+                connectionManager.onDisconnected()
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.i("WebSocketClient", "WebSocket closed: $reason ($code)")
+                connectionManager.onDisconnected()
+            }
+        })
     }
 
     fun sendCommand(text: String, requestId: String) {
+        val payload = JSONObject().apply {
+            put("type", "command")
+            put("request_id", requestId)
+            put("text", text)
+        }.toString()
         Log.i("WebSocketClient", "Sending command over WebSocket: '$text' (req: $requestId)")
+        webSocket?.send(payload)
     }
 
     fun disconnect() {
+        webSocket?.close(1000, "Client disconnect requested")
+        webSocket = null
         connectionManager.onDisconnected()
     }
 }
+

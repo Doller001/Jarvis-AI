@@ -35,7 +35,7 @@
  ┌─────────────────────────────────────────────────────────────┐
  │  LLM Gateway (Groq, OpenRouter, Gemini, Ollama)              │
  │  Single-Use Security Token Manager                          │
- │  Supabase PostgreSQL / SQLite Persistent Memory             │
+ │  MongoDB Atlas / Supabase PostgreSQL / SQLite Memory        │
  └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -49,7 +49,7 @@
 - **Accessibility Automation**: `JarvisAccessibilityService` providing safe high-level UI interaction APIs (`tap`, `scroll`, `back`, `home`, `openRecents`, `typeText`, `readScreen`) with automatic password field masking.
 - **Multi-Provider LLM Gateway**: Dynamic model discovery for **Groq**, **OpenRouter**, **Google Gemini**, and **Ollama**. Exposes *only authenticated and operational providers* in the UI, supporting live runtime model switching.
 - **Single-Use Token Security**: Risky actions (phone calls, SMS, WhatsApp) generate 256-bit entropy random tokens (`secrets.token_urlsafe(32)`) with TTL expiration and replay protection.
-- **Supabase Cloud Memory**: Enterprise-grade PostgreSQL database integration (`supabase.md`) persisting conversation logs and user facts across backend restarts.
+- **Cloud Database Memory**: Multi-tier persistent memory supporting **MongoDB Atlas NoSQL** (`mongodb.md`), **Supabase PostgreSQL** (`supabase.md`), and local SQLite fallback.
 
 ---
 
@@ -85,12 +85,13 @@ Output APK location: `jarvis/android/app/build/outputs/apk/debug/app-debug.apk`
 
 ---
 
-### ☁️ 2. Deploying Backend to Render & Supabase
+### ☁️ 2. Deploying Backend to Render, MongoDB Atlas & Supabase
 
 1. Connect your repository `https://github.com/Minaty001/and9` to Render.
-2. Configure **Supabase PostgreSQL `DATABASE_URL`** in Render environment variables.
+2. Configure **MongoDB Atlas `MONGODB_URI`** or **Supabase PostgreSQL `DATABASE_URL`** in Render environment variables.
 3. Render URL: `https://your-service.onrender.com` | WebSocket URL: `wss://your-service.onrender.com/ws`
 
+📖 **See [jarvis/docs/mongodb.md](jarvis/docs/mongodb.md) for MongoDB Atlas database creation and connection setup.**
 📖 **See [jarvis/docs/supabase.md](jarvis/docs/supabase.md) for Supabase database creation, DATABASE_URL generation, and API key setup.**
 📖 **See [jarvis/docs/deployment.md](jarvis/docs/deployment.md) for full Linux systemd, Windows PowerShell, and Docker deployment guides.**
 

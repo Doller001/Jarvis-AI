@@ -37,3 +37,6 @@ Thumbs.db
 
 # Archives (keep in releases, not in repo)
 *.tar.gz
+
+# Local databases
+*.db

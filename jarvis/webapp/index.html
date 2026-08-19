@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS AI — Android-First Local & Web AI Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="jarvis-desktop-app">
+        <!-- Top Navigation Bar -->
+        <header class="top-bar">
+            <div class="brand">
+                <span class="brand-icon">⚡</span>
+                <span class="brand-title">JARVIS AI</span>
+                <span class="brand-subtitle">Desktop & Mobile Web Runtime</span>
+            </div>
+
+            <div class="top-bar-center">
+                <div class="provider-selector">
+                    <label for="provider-select">Provider:</label>
+                    <select id="provider-select">
+                        <option value="NVIDIA">NVIDIA (nvidia/nemotron-3.5-lightning-30b-a3b)</option>
+                        <option value="Groq">Groq (groq/compound)</option>
+                        <option value="GroqCompoundMini">Groq (groq/compound-mini)</option>
+                        <option value="GroqLlama31">Groq (llama-3.1-8b-instant)</option>
+                        <option value="OpenRouter">OpenRouter (claude-3.5-sonnet)</option>
+                        <option value="Gemini">Google Gemini (gemini-2.0-flash)</option>
+                        <option value="Ollama">Ollama Local (llama3.2:3b)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="top-bar-right">
+                <div id="connection-pill" class="status-pill disconnected">
+                    <span class="pill-dot"></span>
+                    <span id="connection-text" class="pill-text">DISCONNECTED</span>
+                </div>
+                <button id="permissions-btn" class="icon-btn" title="Web Permissions Manager">
+                    ⚙️ Permissions
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Desktop Workspace Grid -->
+        <main class="workspace-grid">
+            <!-- Left Panel: Interactive Hero Orb & Controls -->
+            <section class="panel left-panel">
+                <div class="panel-header">
+                    <h2>Voice & Runtime State</h2>
+                    <span id="runtime-state-badge" class="state-badge">IDLE</span>
+                </div>
+
+                <!-- Glowing Jarvis Orb Container -->
+                <div class="orb-container">
+                    <div id="jarvis-orb" class="orb idle">
+                        <div class="orb-core"></div>
+                        <div class="orb-ring ring-1"></div>
+                        <div class="orb-ring ring-2"></div>
+                        <div class="orb-ring ring-3"></div>
+                    </div>
+                    <div id="orb-status-text" class="orb-status">Listening for "Jarvis"...</div>
+                </div>
+
+                <!-- Control Actions -->
+                <div class="voice-controls">
+                    <button id="mic-toggle-btn" class="btn primary-btn mic-btn">
+                        <span class="btn-icon">🎤</span>
+                        <span id="mic-btn-text">Start Listening</span>
+                    </button>
+                    <button id="camera-toggle-btn" class="btn secondary-btn">
+                        <span class="btn-icon">📷</span> Toggle Camera View
+                    </button>
+                    <button id="tts-stop-btn" class="btn secondary-btn">
+                        <span class="btn-icon">⏹</span> Stop Speech
+                    </button>
+                </div>
+
+                <!-- Live Camera Vision Feed Box -->
+                <div id="camera-vision-card" class="camera-vision-card hidden">
+                    <div class="camera-card-header">
+                        <span class="live-dot"></span>
+                        <span class="camera-title">Jarvis Live Vision Feed</span>
+                    </div>
+                    <div class="video-wrapper">
+                        <video id="camera-feed" autoplay playsinline muted></video>
+                        <div id="camera-overlay-text" class="camera-overlay">Camera Standby</div>
+                    </div>
+                    <canvas id="camera-canvas" class="hidden-canvas"></canvas>
+                    <button id="analyze-frame-btn" class="btn primary-btn analyze-btn">
+                        🔍 Analyze Frame (What is Jarvis seeing?)
+                    </button>
+                </div>
+
+                <!-- Quick Hardware & Sensor Status -->
+                <div class="device-status-card">
+                    <h3>Device Sensors & Status</h3>
+                    <div class="sensor-grid">
+                        <div class="sensor-item">
+                            <span class="sensor-label">🔋 Battery</span>
+                            <span id="sensor-battery" class="sensor-value">--%</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-label">⏰ Local Time</span>
+                            <span id="sensor-time" class="sensor-value">--:--</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-label">📍 Geolocation</span>
+                            <span id="sensor-geo" class="sensor-value">Ready</span>
+                        </div>
+                        <div class="sensor-item">
+                            <span class="sensor-label">🔔 Notifications</span>
+                            <span id="sensor-notifications" class="sensor-value">Active</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Real-time Conversation Chat & Streaming -->
+            <section class="panel right-panel">
+                <div class="panel-header">
+                    <h2>Conversation History</h2>
+                    <button id="clear-chat-btn" class="text-btn">Clear History</button>
+                </div>
+
+                <!-- Chat Messages Scroll Container -->
+                <div id="chat-container" class="chat-container">
+                    <div class="message assistant-message">
+                        <div class="message-sender">JARVIS</div>
+                        <div class="message-content">Hello! I am Jarvis, your AI assistant. How can I help you today? You can speak, type a command, or toggle the Live Camera View to analyze your surroundings.</div>
+                        <div class="message-time">Just now</div>
+                    </div>
+                </div>
+
+                <!-- Live Token Stream Display -->
+                <div id="streaming-indicator" class="streaming-indicator hidden">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span id="streaming-text">Jarvis is reasoning...</span>
+                </div>
+
+                <!-- Input Action Bar -->
+                <form id="chat-form" class="input-form">
+                    <input type="text" id="chat-input" placeholder="Ask Jarvis anything or type a command..." autocomplete="off" />
+                    <button type="submit" class="btn primary-btn send-btn">Send</button>
+                </form>
+            </section>
+        </main>
+
+        <!-- Permissions Modal -->
+        <div id="permissions-modal" class="modal-overlay hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Web Permission Catalog (Android Equivalence)</h3>
+                    <button id="close-modal-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">Jarvis uses modern Web APIs to replicate native Android permissions directly in your browser.</p>
+                    
+                    <div class="permission-list">
+                        <div class="perm-card">
+                            <div class="perm-info">
+                                <span class="perm-icon">🎤</span>
+                                <div>
+                                    <div class="perm-title">Microphone / STT</div>
+                                    <div class="perm-sub">RECORD_AUDIO equivalent for speech recognition</div>
+                                </div>
+                            </div>
+                            <button id="grant-mic-btn" class="btn perm-grant-btn">Grant</button>
+                        </div>
+
+                        <div class="perm-card">
+                            <div class="perm-info">
+                                <span class="perm-icon">📷</span>
+                                <div>
+                                    <div class="perm-title">Camera & Torch</div>
+                                    <div class="perm-sub">CAMERA equivalent for vision analysis & torch</div>
+                                </div>
+                            </div>
+                            <button id="grant-camera-btn" class="btn perm-grant-btn">Grant</button>
+                        </div>
+
+                        <div class="perm-card">
+                            <div class="perm-info">
+                                <span class="perm-icon">🔔</span>
+                                <div>
+                                    <div class="perm-title">Desktop Notifications</div>
+                                    <div class="perm-sub">POST_NOTIFICATIONS equivalent</div>
+                                </div>
+                            </div>
+                            <button id="grant-notif-btn" class="btn perm-grant-btn">Grant</button>
+                        </div>
+
+                        <div class="perm-card">
+                            <div class="perm-info">
+                                <span class="perm-icon">📍</span>
+                                <div>
+                                    <div class="perm-title">Geolocation</div>
+                                    <div class="perm-sub">ACCESS_FINE_LOCATION equivalent</div>
+                                </div>
+                            </div>
+                            <button id="grant-geo-btn" class="btn perm-grant-btn">Grant</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

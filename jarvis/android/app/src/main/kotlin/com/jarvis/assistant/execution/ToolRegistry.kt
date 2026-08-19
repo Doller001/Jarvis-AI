@@ -1,7 +1,7 @@
 package com.jarvis.assistant.execution
 
 data class JarvisTool(
-    val name: str = "",
+    val name: String = "",
     val description: String,
     val requiresConfirmation: Boolean = false,
     val riskLevel: String = "safe"

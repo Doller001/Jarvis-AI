@@ -12,6 +12,7 @@ class WireEventType:
     CONFIRMATION = "confirmation"
     CONFIRMATION_REQUEST = "confirmation_request"
     ACTION_RESULT = "action_result"
+    TOKEN_STREAM = "token_stream"
     ERROR = "error"
     PING = "ping"
     PONG = "pong"

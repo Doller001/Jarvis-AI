@@ -2,6 +2,7 @@
 set -e
 
 echo "=== Running Jarvis Backend Pytest Suite ==="
-PYTHONPATH=backend pytest backend/tests/ -v
+PYTHONPATH=jarvis/backend /home/saif/Downloads/raphael-ai-assistant-main/.venv/bin/pytest jarvis/backend/tests/ -v
 
 echo "=== All Jarvis backend tests passed! ==="
+

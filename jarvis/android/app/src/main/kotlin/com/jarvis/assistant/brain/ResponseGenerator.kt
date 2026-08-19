@@ -7,6 +7,7 @@ class ResponseGenerator {
             is JarvisIntent.ToggleWifi -> "Jarvis set Wi-Fi ${intent.state}."
             is JarvisIntent.GetTime -> "Current time is 18:15."
             is JarvisIntent.OpenApp -> "Opening ${intent.appName}."
+            is JarvisIntent.SendWhatsApp -> "Sending WhatsApp message to ${intent.contactName}."
             else -> resultMessage
         }
     }

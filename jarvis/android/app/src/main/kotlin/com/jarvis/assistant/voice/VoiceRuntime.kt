@@ -1,40 +1,32 @@
 package com.jarvis.assistant.voice
 
+import android.content.Context
 import android.util.Log
 
 enum class VoiceState { IDLE, WAKE_DETECTED, LISTENING, PROCESSING, SPEAKING, ERROR }
 
 class VoiceRuntime(
-    private val wakeWordEngine: WakeWordEngine = WakeWordEngine(),
-    private val vadEngine: VadEngine = VadEngine(),
-    private val speechRecognizer: SpeechRecognizer = SpeechRecognizer(),
-    private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(),
-    private val audioManager: AudioManager = AudioManager()
+    private val context: Context? = null,
+    private val wakeWordEngine: WakeWordEngine = WakeWordEngine(context = context),
+    private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine()
 ) {
     var state: VoiceState = VoiceState.IDLE
         private set
 
     fun startRuntime(onCommandRecognized: (String) -> Unit = {}) {
-        Log.i("VoiceRuntime", "Starting Jarvis always-ready voice runtime...")
+        Log.i("VoiceRuntime", "Starting Jarvis voice runtime...")
         state = VoiceState.IDLE
-        wakeWordEngine.startMonitoring { detectedPhrase ->
-            onWakeDetected(detectedPhrase, onCommandRecognized)
+        wakeWordEngine.startMonitoring { fullText ->
+            onWakeDetected(fullText, onCommandRecognized)
         }
     }
 
-    private fun onWakeDetected(phrase: String, onCommandRecognized: (String) -> Unit) {
-        Log.i("VoiceRuntime", "Wake phrase detected: '$phrase'! Activating VAD + STT...")
+    private fun onWakeDetected(fullText: String, onCommandRecognized: (String) -> Unit) {
+        Log.i("VoiceRuntime", "Wake phrase detected: '$fullText'")
         state = VoiceState.WAKE_DETECTED
-        vadEngine.activate()
-        state = VoiceState.LISTENING
-
-        speechRecognizer.startListening { text ->
-            Log.i("VoiceRuntime", "Speech recognized: '$text'")
-            state = VoiceState.PROCESSING
-            vadEngine.deactivate()
-            speechRecognizer.stopListening()
-            onCommandRecognized(text)
-        }
+        val command = wakeWordEngine.extractCommand(fullText)
+        state = VoiceState.PROCESSING
+        onCommandRecognized(command)
     }
 
     fun speakResponse(text: String, onComplete: () -> Unit = {}) {
@@ -47,8 +39,6 @@ class VoiceRuntime(
 
     fun stopRuntime() {
         wakeWordEngine.stopMonitoring()
-        speechRecognizer.stopListening()
-        vadEngine.deactivate()
         state = VoiceState.IDLE
     }
 }

@@ -16,8 +16,15 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 class GeminiProvider(LLMProvider):
     def __init__(self, api_key: Optional[str] = None):
-        key = api_key or os.getenv("GEMINI_API_KEY")
-        super().__init__("gemini", api_key=key)
+        super().__init__("gemini", api_key=api_key)
+
+    @property
+    def api_key(self) -> Optional[str]:
+        return self._api_key or os.getenv("GEMINI_API_KEY")
+
+    @api_key.setter
+    def api_key(self, value: Optional[str]):
+        self._api_key = value
 
     async def validate_key(self) -> bool:
         if not self.api_key:

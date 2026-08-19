@@ -7,6 +7,7 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel
 
 from app.llm.base import LLMProvider, ModelInfo
+from app.llm.providers.nvidia import NVIDIAProvider
 from app.llm.providers.groq import GroqProvider
 from app.llm.providers.openrouter import OpenRouterProvider
 from app.llm.providers.gemini import GeminiProvider
@@ -25,12 +26,13 @@ class ProviderStatus(BaseModel):
 class LLMRegistry:
     def __init__(self) -> None:
         self._providers: Dict[str, LLMProvider] = {}
-        self._active_provider_name: Optional[str] = None
-        self._active_model_id: Optional[str] = None
+        self._active_provider_name: Optional[str] = "nvidia"
+        self._active_model_id: Optional[str] = "nvidia/nemotron-3.5-lightning-30b-a3b"
         self.reload_providers()
 
     def reload_providers(self) -> None:
         self._providers = {
+            "nvidia": NVIDIAProvider(),
             "groq": GroqProvider(),
             "openrouter": OpenRouterProvider(),
             "gemini": GeminiProvider(),

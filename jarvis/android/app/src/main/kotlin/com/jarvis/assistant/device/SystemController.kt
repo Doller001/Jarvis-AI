@@ -1,21 +1,90 @@
 package com.jarvis.assistant.device
 
+import android.content.Context
+import android.content.Intent
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.os.BatteryManager
+import android.provider.Settings
 import android.util.Log
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-class SystemController {
-    fun toggleWifi(enable: Boolean) {
-        Log.i("SystemController", "Toggling Wi-Fi -> $enable")
-    }
+class SystemController(private val context: Context? = null) {
 
-    fun toggleBluetooth(enable: Boolean) {
-        Log.i("SystemController", "Toggling Bluetooth -> $enable")
-    }
-
-    fun toggleTorch(enable: Boolean) {
+    fun toggleTorch(enable: Boolean): Boolean {
         Log.i("SystemController", "Toggling Torch -> $enable")
+        return try {
+            val ctx = context ?: return false
+            val cameraManager = ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+            val cameraId = cameraManager?.cameraIdList?.firstOrNull() ?: return false
+            cameraManager.setTorchMode(cameraId, enable)
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to toggle torch", e)
+            false
+        }
     }
 
-    fun setVolume(levelPercentage: Int) {
+    fun setVolume(levelPercentage: Int): Boolean {
         Log.i("SystemController", "Setting volume to $levelPercentage%")
+        return try {
+            val ctx = context ?: return false
+            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+            val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            val targetVolume = (maxVolume * (levelPercentage.coerceIn(0, 100) / 100.0)).toInt()
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, AudioManager.FLAG_SHOW_UI)
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to set volume", e)
+            false
+        }
+    }
+
+    fun toggleWifi(enable: Boolean): Boolean {
+        Log.i("SystemController", "Toggling Wi-Fi -> $enable")
+        return try {
+            val ctx = context ?: return false
+            val intent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to open Wi-Fi settings", e)
+            false
+        }
+    }
+
+    fun toggleBluetooth(enable: Boolean): Boolean {
+        Log.i("SystemController", "Toggling Bluetooth -> $enable")
+        return try {
+            val ctx = context ?: return false
+            val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to open Bluetooth settings", e)
+            false
+        }
+    }
+
+    fun getTime(): String {
+        val sdf = SimpleDateFormat("HH:mm, EEEE, MMM d, yyyy", Locale.getDefault())
+        return sdf.format(Date())
+    }
+
+    fun getBatteryLevel(): String {
+        return try {
+            val ctx = context ?: return "85% (Simulated)"
+            val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            val level = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
+            "$level%"
+        } catch (e: Exception) {
+            "85%"
+        }
     }
 }

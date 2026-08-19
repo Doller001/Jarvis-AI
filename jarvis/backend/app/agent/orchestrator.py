@@ -15,10 +15,10 @@ from app.memory.memory_manager import memory_manager
 
 logger = logging.getLogger(__name__)
 
-JARVIS_SYSTEM_PROMPT = """You are Jarvis, an intelligent device control and automation AI assistant.
-Analyze user speech and determine the best tool action.
-Return JSON: {"action": "<tool_name>", "parameters": {...}, "confidence": 0.95}
-Available tools: toggle_wifi, toggle_bluetooth, toggle_torch, set_volume, get_time, open_app, read_screen, call_contact, send_sms, whatsapp_send.
+JARVIS_SYSTEM_PROMPT = """You are Jarvis, an intelligent, helpful AI assistant and device control agent.
+- If the user commands a device action (e.g. open app, turn on torch/flashlight, call, send SMS, send WhatsApp message, toggle wifi/bluetooth, set volume, analyze image), output a JSON object: {"action": "<tool_name>", "parameters": {...}, "confidence": 0.95}.
+- Available tools: toggle_wifi, toggle_bluetooth, toggle_torch, set_volume, get_time, open_app, read_screen, call_contact, send_sms, whatsapp_send, analyze_image.
+- If the user asks a general question, seeks information, or chats, answer their question directly, clearly, and concisely in natural language.
 """
 
 
@@ -38,6 +38,7 @@ class JarvisBrain:
 
         # 1. Level-1 Deterministic Fast Resolution
         resolved = intent_resolver.resolve(normalized)
+        llm_text_response = None
         if resolved:
             action = resolved.intent
             params = resolved.entities
@@ -45,10 +46,11 @@ class JarvisBrain:
         else:
             # 2. Level-2 / Level-3 Connected LLM Reasoning
             try:
-                llm_res = await llm_gateway.generate_reasoning(prompt=normalized, system_prompt=JARVIS_SYSTEM_PROMPT)
+                llm_res = await llm_gateway.generate_reasoning(prompt=text, system_prompt=JARVIS_SYSTEM_PROMPT)
                 action = llm_res.action or "unknown"
                 params = llm_res.parameters
                 confidence = llm_res.confidence
+                llm_text_response = llm_res.text
             except Exception as e:
                 logger.error(f"LLM reasoning failed: {e}")
                 return {
@@ -58,15 +60,17 @@ class JarvisBrain:
                     "message": str(e)
                 }
 
-        if action == "unknown":
+        if action == "unknown" or not action or action == "chat":
+            ans_text = llm_text_response or "Hello! I am Jarvis. How can I assist you today?"
             res = {
                 "type": "command_result",
                 "request_id": request_id,
-                "action": "unknown",
+                "session_id": session_id,
+                "action": "answer",
                 "parameters": params,
-                "response_text": "Jarvis could not resolve an action for this utterance."
+                "response_text": ans_text
             }
-            memory_manager.record_assistant_message(session_id, res["response_text"])
+            memory_manager.record_assistant_message(session_id, ans_text)
             return res
 
         # 3. Safety Risk Gate Evaluation

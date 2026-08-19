@@ -19,6 +19,7 @@ local.properties
 *.iml
 
 # OS / Environment
+.build-env/
 .DS_Store
 .env
 *.log

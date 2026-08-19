@@ -28,16 +28,4 @@ class ProviderRegistry {
     }
 }
 
-class ProviderManager(
-    private val registry: ProviderRegistry = ProviderRegistry()
-) {
-    var activeProvider: String = "Groq"
-        private set
-    var activeModel: String = "llama-3.3-70b-versatile"
-        private set
 
-    fun selectProviderAndModel(provider: String, model: String) {
-        activeProvider = provider
-        activeModel = model
-    }
-}

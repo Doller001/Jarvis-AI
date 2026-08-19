@@ -96,6 +96,14 @@ class ToolRegistry:
         self.register(ToolDefinition(
             name="read_screen", description="Read active screen nodes via Accessibility.", risk_level="safe"
         ))
+        self.register(ToolDefinition(
+            name="web_search", description="Perform live web search to answer queries with up-to-date grounded information.", risk_level="safe",
+            platform="backend", parameters={"query": ToolParameter(type="string", description="Search query string")}
+        ))
+        self.register(ToolDefinition(
+            name="analyze_image", description="Analyze image or screenshot contents using multimodal vision model.", risk_level="safe",
+            platform="backend", parameters={"image_url_or_base64": ToolParameter(type="string", description="Base64 image data or URL"), "prompt": ToolParameter(type="string", description="Question about the image", required=False)}
+        ))
 
         # Risky confirmation tools
         self.register(ToolDefinition(

@@ -5,6 +5,11 @@ Main FastAPI Entrypoint for Jarvis AI Assistant Backend.
 import uuid
 import time
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -53,6 +58,21 @@ async def add_correlation_id_and_timing(request: Request, call_next):
 app.include_router(ws_router)
 app.include_router(providers_router)
 app.include_router(api_router)
+
+# Mount Desktop WebApp Static Directory
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+
+webapp_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "webapp"))
+if os.path.exists(webapp_dir):
+    app.mount("/webapp", StaticFiles(directory=webapp_dir, html=True), name="webapp")
+
+@app.get("/", tags=["System"])
+async def root_redirect():
+    if os.path.exists(webapp_dir):
+        return RedirectResponse(url="/webapp/")
+    return {"status": "healthy", "service": "jarvis-backend", "version": "1.0.0"}
 
 
 @app.get("/health", tags=["System"])

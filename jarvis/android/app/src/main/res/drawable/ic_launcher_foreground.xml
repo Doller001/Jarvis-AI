@@ -1,0 +1,12 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylized "J" mark for Jarvis -->
+    <group android:translateX="54" android:translateY="54">
+        <path
+            android:fillColor="#00D2FF"
+            android:pathData="M -20 -28 L 20 -28 L 20 -16 L -8 -16 L -8 18 C -8 30 -16 34 -24 30 C -30 27 -30 20 -26 16 L -34 10 C -42 18 -40 34 -26 40 C -10 46 6 38 6 18 L 6 -16 L 28 -16 L 28 -28 Z" />
+    </group>
+</vector>

@@ -17,3 +17,7 @@ async def test_jarvis_health_endpoints():
         resp_v1 = await client.get("/api/v1/health")
         assert resp_v1.status_code == 200
         assert resp_v1.json()["service"] == "jarvis-backend"
+
+        resp_webapp = await client.get("/webapp/")
+        assert resp_webapp.status_code == 200
+        assert "JARVIS AI" in resp_webapp.text

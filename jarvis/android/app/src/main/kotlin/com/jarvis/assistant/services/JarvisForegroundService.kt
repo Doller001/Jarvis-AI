@@ -10,10 +10,11 @@ import android.util.Log
 import com.jarvis.assistant.voice.VoiceRuntime
 
 class JarvisForegroundService : Service() {
-    private val voiceRuntime = VoiceRuntime()
+    private var voiceRuntime = VoiceRuntime(context = null)
 
     override fun onCreate() {
         super.onCreate()
+        voiceRuntime = VoiceRuntime(applicationContext)
         Log.i("JarvisService", "Starting JarvisForegroundService runtime...")
         createNotificationChannel()
     }
@@ -24,9 +25,14 @@ class JarvisForegroundService : Service() {
         
         voiceRuntime.startRuntime { userUtterance ->
             Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
+            onUtterance?.invoke(userUtterance)
         }
         
         return START_STICKY
+    }
+
+    companion object {
+        var onUtterance: ((String) -> Unit)? = null
     }
 
     private fun createNotificationChannel() {

@@ -1,0 +1,588 @@
+/* Jarvis Desktop & Web Runtime Theme (Matching Android APK Theme.kt) */
+
+:root {
+    --bg-dark: #0D1117;
+    --panel-bg: #161B22;
+    --panel-border: #30363D;
+    --accent-blue: #58A6FF;
+    --accent-blue-glow: rgba(88, 166, 255, 0.4);
+    --accent-green: #238636;
+    --accent-green-glow: rgba(35, 134, 54, 0.4);
+    --text-primary: #C9D1D9;
+    --text-heading: #F0F6FC;
+    --text-muted: #8B949E;
+    --danger-red: #F85149;
+    --warning-amber: #D29922;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 6px;
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-primary);
+    font-family: var(--font-main);
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.jarvis-desktop-app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* Top Bar */
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background-color: var(--panel-bg);
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.brand-icon {
+    font-size: 20px;
+    color: var(--accent-blue);
+}
+
+.brand-title {
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--text-heading);
+    letter-spacing: 1px;
+}
+
+.brand-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+}
+
+.provider-selector select {
+    background-color: var(--bg-dark);
+    color: var(--text-heading);
+    border: 1px solid var(--panel-border);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-main);
+    font-size: 14px;
+}
+
+.top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+/* Connection Pill */
+.status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.status-pill.disconnected {
+    background: rgba(248, 81, 73, 0.15);
+    border: 1px solid var(--danger-red);
+    color: var(--danger-red);
+}
+
+.status-pill.connecting {
+    background: rgba(210, 153, 34, 0.15);
+    border: 1px solid var(--warning-amber);
+    color: var(--warning-amber);
+}
+
+.status-pill.connected {
+    background: rgba(35, 134, 54, 0.15);
+    border: 1px solid var(--accent-green);
+    color: #3FB950;
+}
+
+.pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor;
+}
+
+.icon-btn {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.icon-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-heading);
+}
+
+/* Workspace Desktop Grid */
+.workspace-grid {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 16px;
+    padding: 16px;
+    flex: 1;
+    overflow: hidden;
+}
+
+.panel {
+    background-color: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.panel-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.state-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--accent-blue);
+    border: 1px solid var(--accent-blue);
+}
+
+/* Left Panel & Hero Orb */
+.left-panel {
+    padding-bottom: 20px;
+}
+
+.orb-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px;
+}
+
+/* Glowing Orb Animation */
+.orb {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.5s ease;
+}
+
+.orb-core {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-blue) 0%, rgba(13, 17, 23, 1) 100%);
+    box-shadow: 0 0 30px var(--accent-blue-glow);
+}
+
+.orb-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid var(--accent-blue);
+    opacity: 0.3;
+}
+
+.ring-1 { width: 80px; height: 80px; animation: pulse 3s infinite ease-in-out; }
+.ring-2 { width: 100px; height: 100px; animation: pulse 3s infinite 1s ease-in-out; }
+.ring-3 { width: 120px; height: 120px; animation: pulse 3s infinite 2s ease-in-out; }
+
+/* Orb States */
+.orb.listening .orb-core {
+    background: radial-gradient(circle, #3FB950 0%, rgba(13, 17, 23, 1) 100%);
+    box-shadow: 0 0 40px var(--accent-green-glow);
+}
+.orb.listening .orb-ring { border-color: #3FB950; opacity: 0.6; }
+
+.orb.processing .orb-core {
+    background: radial-gradient(circle, #A371F7 0%, rgba(13, 17, 23, 1) 100%);
+    box-shadow: 0 0 40px rgba(163, 113, 247, 0.5);
+}
+
+@keyframes pulse {
+    0% { transform: scale(0.9); opacity: 0.2; }
+    50% { transform: scale(1.1); opacity: 0.5; }
+    100% { transform: scale(0.9); opacity: 0.2; }
+}
+
+.orb-status {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.voice-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 20px;
+}
+
+.btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+
+.primary-btn {
+    background-color: var(--accent-blue);
+    color: #0D1117;
+}
+
+.primary-btn:hover {
+    background-color: #79B8FF;
+}
+
+.secondary-btn {
+    background: transparent;
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+}
+
+.secondary-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Camera Vision Box Styling */
+.camera-vision-card {
+    margin: 16px 20px 0 20px;
+    padding: 12px;
+    background: var(--bg-dark);
+    border: 1px solid var(--accent-blue);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-shadow: 0 0 15px rgba(88, 166, 255, 0.15);
+}
+
+.camera-vision-card.hidden {
+    display: none;
+}
+
+.camera-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #F85149;
+    animation: livePulse 1.5s infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.camera-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-heading);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.video-wrapper {
+    position: relative;
+    width: 100%;
+    height: 180px;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: #000000;
+    border: 1px solid var(--panel-border);
+}
+
+#camera-feed {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.camera-overlay {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--accent-blue);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+}
+
+.hidden-canvas {
+    display: none;
+}
+
+.analyze-btn {
+    width: 100%;
+    font-size: 12px;
+    padding: 8px;
+}
+
+/* Device Sensors Card */
+.device-status-card {
+    margin: 16px 20px 0 20px;
+    padding: 14px;
+    background: var(--bg-dark);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+}
+
+.device-status-card h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.sensor-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.sensor-item {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+}
+
+.sensor-label { color: var(--text-muted); }
+.sensor-value { font-weight: 600; color: var(--text-heading); font-family: var(--font-mono); }
+
+/* Chat Workspace (Right Panel) */
+.right-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-container {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.message {
+    max-width: 80%;
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.assistant-message {
+    align-self: flex-start;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--panel-border);
+    color: var(--text-primary);
+}
+
+.user-message {
+    align-self: flex-end;
+    background-color: #1F6FEB;
+    color: #FFFFFF;
+}
+
+.message-sender {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    opacity: 0.7;
+}
+
+.message-time {
+    font-size: 10px;
+    margin-top: 6px;
+    opacity: 0.5;
+    text-align: right;
+}
+
+/* Typing & Streaming Indicator */
+.streaming-indicator {
+    padding: 8px 20px;
+    font-size: 12px;
+    color: var(--accent-blue);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.streaming-indicator.hidden { display: none; }
+
+.typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--accent-blue);
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+@keyframes typing {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+}
+
+/* Input Bar */
+.input-form {
+    display: flex;
+    gap: 10px;
+    padding: 16px;
+    background: var(--bg-dark);
+    border-top: 1px solid var(--panel-border);
+}
+
+.input-form input {
+    flex: 1;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    color: var(--text-heading);
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    outline: none;
+}
+
+.input-form input:focus {
+    border-color: var(--accent-blue);
+}
+
+/* Permissions Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-overlay.hidden { display: none; }
+
+.modal-content {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    width: 500px;
+    max-width: 90vw;
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--panel-border);
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+}
+
+.permission-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.perm-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: var(--bg-dark);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-md);
+}
+
+.perm-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.perm-icon { font-size: 20px; }
+.perm-title { font-size: 14px; font-weight: 600; color: var(--text-heading); }
+.perm-sub { font-size: 11px; color: var(--text-muted); }
+.perm-grant-btn { font-size: 12px; padding: 4px 12px; }
