@@ -28,6 +28,14 @@
  │  (System, Media, Camera)   Service                          │
  │                      ↓                                      │
  │                 TTS Output                                  │
+ └────────────────(WebSocket/HTTP)─────────────────────────────┘
+                               │
+                               ▼
+               CONNECTED CLOUD BACKEND (FastAPI)
+ ┌─────────────────────────────────────────────────────────────┐
+ │  LLM Gateway (Groq, OpenRouter, Gemini, Ollama)              │
+ │  Single-Use Security Token Manager                          │
+ │  SQLite / PostgreSQL Persistent Store                        │
  └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -41,7 +49,7 @@
 - **Accessibility Automation**: `JarvisAccessibilityService` providing safe high-level UI interaction APIs (`tap`, `scroll`, `back`, `home`, `openRecents`, `typeText`, `readScreen`) with automatic password field masking.
 - **Multi-Provider LLM Gateway**: Dynamic model discovery for **Groq**, **OpenRouter**, **Google Gemini**, and **Ollama**. Exposes *only authenticated and operational providers* in the UI, supporting live runtime model switching.
 - **Single-Use Token Security**: Risky actions (phone calls, SMS, WhatsApp) generate 256-bit entropy random tokens (`secrets.token_urlsafe(32)`) with TTL expiration and replay protection.
-- **Persistent Memory**: SQLite database (`persistent_store.py`) persisting conversation logs, vector embeddings, and user preferences across restarts.
+- **Persistent Memory**: SQLite database (`persistent_store.py`) or PostgreSQL (`DATABASE_URL`) persisting conversation logs and user facts across restarts.
 
 ---
 
@@ -83,7 +91,8 @@ jarvis/
 │   ├── tests/                     # Comprehensive pytest test suite (100% pass)
 │   ├── requirements.txt
 │   ├── pyproject.toml
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── render.yaml
 │
 ├── docs/               # Technical Documentation
 │   ├── architecture.md
@@ -92,9 +101,11 @@ jarvis/
 │   ├── accessibility.md
 │   ├── providers.md
 │   ├── security.md
-│   └── deployment.md
+│   ├── deployment.md           # Docker, Render, Linux systemd, Windows guides
+│   └── apk_connection.md       # Connecting APK to Backend (Emulator, LAN, Render)
 │
 ├── scripts/            # Service runner and test scripts (run_backend.sh, test_all.sh)
+├── render.yaml         # Root Render Blueprint specification
 ├── .gitignore
 ├── README.md
 └── LICENSE
@@ -102,9 +113,9 @@ jarvis/
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Deployment Guides
 
-### 📱 Android Application (Primary Product)
+### 📱 1. Android Application (Primary Product)
 
 ```bash
 cd jarvis/android
@@ -117,28 +128,33 @@ cd jarvis/android
 ```
 Output APK location: `jarvis/android/app/build/outputs/apk/debug/app-debug.apk`
 
-### ⚡ Backend & Pytest Suite
-
-```bash
-cd jarvis/backend
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Run backend test suite (8/8 PASSED)
-PYTHONPATH=app pytest tests/ -v
-
-# Start development server
-uvicorn app.main:app --reload --port 8000
-```
+📖 **See [apk_connection.md](jarvis/docs/apk_connection.md) for instructions on connecting your APK to your local PC or Render cloud URL.**
 
 ---
 
-## 🛡️ Security Model
+### ☁️ 2. Deploying Backend to Render (Cloud Docker)
 
-- **Confirmation Tokens**: 256-bit entropy random tokens generated via `secrets.token_urlsafe(32)`.
-- **Log Redaction**: Automatic filtering of API keys (`gsk_`, `sk-or-`, `AIzaSy`).
-- **CORS Protection**: Environment-driven CORS configuration (`ALLOWED_ORIGINS`).
+1. Connect your repository `https://github.com/Minaty001/and9` to Render.
+2. Render reads `render.yaml` automatically. Set your API Keys in Render Dashboard (`GROQ_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`).
+3. Render URL: `https://your-service.onrender.com` | WebSocket URL: `wss://your-service.onrender.com/ws`
+
+📖 **See [deployment.md](jarvis/docs/deployment.md) for full Linux systemd, Windows PowerShell, and Docker deployment guides.**
+
+---
+
+## 🔑 Environment Variables & API Key Setup
+
+Set provider keys to activate LLM reasoning capabilities:
+
+```ini
+GROQ_API_KEY=gsk_your_groq_key
+OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key
+GEMINI_API_KEY=AIzaSy_your_gemini_key
+OLLAMA_BASE_URL=http://localhost:11434
+DATABASE_URL=sqlite:///jarvis_memory.db
+```
+
+📖 **See [providers.md](jarvis/docs/providers.md) for API provider setup and dynamic model switching.**
 
 ---
 
