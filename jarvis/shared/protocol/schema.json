@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JarvisRealtimeProtocol",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "connect",
+        "command",
+        "confirmation",
+        "confirmation_request",
+        "action_result",
+        "error",
+        "ping",
+        "pong"
+      ]
+    },
+    "request_id": { "type": "string" },
+    "session_id": { "type": "string" },
+    "confirmation_token": { "type": "string" }
+  },
+  "required": ["type"]
+}

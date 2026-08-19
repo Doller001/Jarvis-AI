@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+
+# Gradle Wrapper script for Jarvis Android Project
+exec gradle "$@"

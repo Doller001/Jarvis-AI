@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Jarvis</string>
+    <string name="accessibility_service_label">Jarvis AI Accessibility Automation</string>
+    <string name="accessibility_service_description">Enables Jarvis to assist with screen automation and task navigation.</string>
+</resources>
