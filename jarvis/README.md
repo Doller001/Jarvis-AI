@@ -53,63 +53,16 @@
 
 ---
 
-## 📁 Repository Structure
+## 📋 Environment Prerequisites
 
-```text
-jarvis/
-├── android/            # Primary Product: Gradle Android App (Compose UI, Voice Runtime, Accessibility)
-│   ├── app/
-│   │   ├── src/main/
-│   │   │   ├── kotlin/com/jarvis/assistant/
-│   │   │   │   ├── app/           # JarvisApplication & AppState
-│   │   │   │   ├── voice/         # VoiceRuntime, WakeWordEngine, VadEngine, STT, TTS
-│   │   │   │   ├── brain/         # JarvisBrain, IntentResolver, CommandParser, Planner
-│   │   │   │   ├── execution/     # CommandExecutor, ToolRegistry, TaskManager
-│   │   │   │   ├── accessibility/ # JarvisAccessibilityService, AccessibilityController
-│   │   │   │   ├── device/        # SystemController, AppController, MediaController
-│   │   │   │   ├── network/       # ApiClient, WebSocketClient, ProtocolModels
-│   │   │   │   ├── llm/           # ProviderRegistry, ProviderManager, ModelInfo
-│   │   │   │   ├── memory/        # MemoryStore, ConversationMemory, PreferenceMemory
-│   │   │   │   ├── permissions/   # PermissionManager & Setup Flow
-│   │   │   │   ├── services/      # JarvisForegroundService & BootRecoveryReceiver
-│   │   │   │   └── ui/            # MainActivity & Compose UI Screens
-│   │   │   └── res/               # Manifest, Strings, Colors, Themes, Config
-│   │   └── build.gradle.kts
-│   ├── build.gradle.kts
-│   ├── settings.gradle.kts
-│   └── gradlew
-│
-├── backend/            # Connected Cloud Backend (FastAPI, LLM Gateway, Realtime WS)
-│   ├── app/
-│   │   ├── main.py                # FastAPI entrypoint, /ws, /health, CORS, correlation IDs
-│   │   ├── agent/                 # JarvisBrain, intent_resolver, normalizer, planner
-│   │   ├── llm/                   # Base, Groq, OpenRouter, Gemini, Ollama adapters
-│   │   ├── realtime/              # Protocol, connection_manager, message_router, ws
-│   │   ├── memory/                # Persistent SQLite memory & memory_manager
-│   │   ├── tools/                 # Tool registry & tool executor
-│   │   └── security/              # Exceptions, auth, token_manager, redaction
-│   ├── tests/                     # Comprehensive pytest test suite (100% pass)
-│   ├── requirements.txt
-│   ├── pyproject.toml
-│   ├── Dockerfile
-│   └── render.yaml
-│
-├── docs/               # Technical Documentation
-│   ├── architecture.md
-│   ├── setup.md
-│   ├── voice.md
-│   ├── accessibility.md
-│   ├── providers.md
-│   ├── security.md
-│   ├── deployment.md           # Docker, Render, Linux systemd, Windows guides
-│   └── apk_connection.md       # Connecting APK to Backend (Emulator, LAN, Render)
-│
-├── scripts/            # Service runner and test scripts (run_backend.sh, test_all.sh)
-├── render.yaml         # Root Render Blueprint specification
-├── .gitignore
-├── README.md
-└── LICENSE
-```
+Before building the Android app or running backend services, ensure your system has the following tools installed:
+
+1. **Java JDK 17**: `sudo apt-get install openjdk-17-jdk -y`
+2. **Gradle**: `sudo apt-get install gradle -y`
+3. **Android SDK (API 34)**: Set `ANDROID_HOME=$HOME/Android/Sdk`
+4. **Python 3.10+**: For the FastAPI backend server
+
+📖 **See [docs/setup.md](docs/setup.md) for full step-by-step setup instructions for Linux, macOS, and Windows.**
 
 ---
 
@@ -139,22 +92,6 @@ Output APK location: `android/app/build/outputs/apk/debug/app-debug.apk`
 3. Render URL: `https://your-service.onrender.com` | WebSocket URL: `wss://your-service.onrender.com/ws`
 
 📖 **See [docs/deployment.md](docs/deployment.md) for full Linux systemd, Windows PowerShell, and Docker deployment guides.**
-
----
-
-## 🔑 Environment Variables & API Key Setup
-
-Set provider keys to activate LLM reasoning capabilities:
-
-```ini
-GROQ_API_KEY=gsk_your_groq_key
-OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key
-GEMINI_API_KEY=AIzaSy_your_gemini_key
-OLLAMA_BASE_URL=http://localhost:11434
-DATABASE_URL=sqlite:///jarvis_memory.db
-```
-
-📖 **See [docs/providers.md](docs/providers.md) for API provider setup and dynamic model switching.**
 
 ---
 
