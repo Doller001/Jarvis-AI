@@ -18,6 +18,11 @@ class JarvisForegroundService : Service() {
         speak = { text ->
             voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
         }
+        toggleWakeListening = {
+            val active = voiceRuntime.toggleMonitoring()
+            onWakeToggled?.invoke(active)
+            active
+        }
         Log.i("JarvisService", "Starting JarvisForegroundService runtime...")
         createNotificationChannel()
     }
@@ -44,7 +49,9 @@ class JarvisForegroundService : Service() {
     companion object {
         var onUtterance: ((String) -> Unit)? = null
         var onResponseDone: (() -> Unit)? = null
+        var onWakeToggled: ((Boolean) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
+        var toggleWakeListening: (() -> Boolean)? = null
     }
 
     private fun createNotificationChannel() {

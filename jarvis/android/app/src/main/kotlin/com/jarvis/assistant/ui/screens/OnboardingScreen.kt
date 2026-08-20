@@ -16,7 +16,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import com.jarvis.assistant.ui.components.CosmicScreen
 import com.jarvis.assistant.ui.components.PermissionCard
 import com.jarvis.assistant.ui.components.PrimaryButton
 import com.jarvis.assistant.ui.components.ScreenTopBar
@@ -90,14 +89,13 @@ fun OnboardingScreen(
         }
     }
 
-    CosmicScreen {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(20.dp)
-        ) {
-            ScreenTopBar(
-                title = "Welcome to JARVIS",
-                subtitle = "Grant the permissions below to activate your always-ready assistant."
-            )
+    Column(
+        modifier = Modifier.fillMaxSize().padding(20.dp)
+    ) {
+        ScreenTopBar(
+            title = "Welcome to JARVIS",
+            subtitle = "Grant the permissions below to activate your always-ready assistant."
+        )
 
         val granted = permissionState.grantedCount
         val total = AllPermissions.list.size
@@ -140,7 +138,6 @@ fun OnboardingScreen(
         // Auto-advance once every required permission is actually granted.
         LaunchedEffect(permissionState.allRequiredGranted) {
             if (permissionState.allRequiredGranted) onContinue()
-        }
         }
     }
 }

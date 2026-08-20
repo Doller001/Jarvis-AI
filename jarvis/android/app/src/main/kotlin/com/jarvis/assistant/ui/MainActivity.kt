@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.jarvis.assistant.ui.components.CosmicScreen
 import com.jarvis.assistant.ui.screens.ConversationScreen
 import com.jarvis.assistant.ui.screens.HomeScreen
 import com.jarvis.assistant.ui.screens.OnboardingScreen
@@ -36,7 +37,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
     val navController = rememberNavController()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    NavHost(navController = navController, startDestination = "onboarding") {
+    CosmicScreen {
+        NavHost(navController = navController, startDestination = "onboarding") {
         composable("onboarding") {
             OnboardingScreen(
                 permissionState = uiState.permissionState,
@@ -56,7 +58,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
             ConversationScreen(
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
-                onSend = viewModel::sendUtterance
+                onSend = viewModel::sendUtterance,
+                onToggleWakeListening = viewModel::toggleWakeListening
             )
         }
         composable("providers") {
@@ -67,4 +70,5 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
             )
         }
     }
+        }
 }

@@ -113,6 +113,8 @@ class WakeWordEngine(
         return command.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
     }
 
+    fun isMonitoring(): Boolean = isMonitoring
+
     fun stopMonitoring() {
         isMonitoring = false
         try {

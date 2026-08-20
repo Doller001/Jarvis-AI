@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.ui.components.ChatBubble
 import com.jarvis.assistant.ui.components.ConnectionPill
-import com.jarvis.assistant.ui.components.CosmicScreen
 import com.jarvis.assistant.ui.theme.*
 import com.jarvis.assistant.ui.JarvisUiState
 
@@ -27,7 +26,8 @@ import com.jarvis.assistant.ui.JarvisUiState
 fun ConversationScreen(
     uiState: JarvisUiState,
     onBack: () -> Unit,
-    onSend: (String) -> Unit
+    onSend: (String) -> Unit,
+    onToggleWakeListening: () -> Unit
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -38,13 +38,12 @@ fun ConversationScreen(
         }
     }
 
-    CosmicScreen {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = JarvisCyan)
-                }
-                Text("Conversation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = JarvisCyan)
+            }
+            Text("Conversation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(Modifier.weight(1f))
             ConnectionPill(uiState.connectionState)
         }
@@ -86,34 +85,34 @@ fun ConversationScreen(
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(8.dp))
-            IconButton(
+            Surface(
                 onClick = { if (text.isNotBlank()) { onSend(text); text = "" } },
-                modifier = Modifier
-                    .size(48.dp)
-                    .padding(0.dp)
+                shape = RoundedCornerShape(12.dp),
+                color = JarvisBlue,
+                modifier = Modifier.size(48.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = JarvisBlue,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Filled.Send, contentDescription = "Send", tint = JarvisDark)
-                    }
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Send, contentDescription = "Send", tint = JarvisDark)
                 }
             }
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
-            onClick = { /* voice stub: in a full build this triggers WakeWordEngine */ },
+            onClick = onToggleWakeListening,
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = JarvisBlue),
             modifier = Modifier.fillMaxWidth().height(48.dp)
         ) {
-            Icon(Icons.Filled.Mic, contentDescription = null, tint = JarvisBlue)
+            Icon(
+                Icons.Filled.Mic,
+                contentDescription = null,
+                tint = if (uiState.wakeListening) JarvisBlue else JarvisRed
+            )
             Spacer(Modifier.width(8.dp))
-            Text("Hold to talk", fontSize = 14.sp)
-        }
+            Text(
+                if (uiState.wakeListening) "Wake word on — say \"Jarvis\"" else "Wake word paused",
+                fontSize = 14.sp
+            )
         }
     }
 }

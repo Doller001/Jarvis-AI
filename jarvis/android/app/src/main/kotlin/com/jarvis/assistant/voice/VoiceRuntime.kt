@@ -13,9 +13,12 @@ class VoiceRuntime(
     var state: VoiceState = VoiceState.IDLE
         private set
 
+    private var commandCallback: ((String) -> Unit)? = null
+
     fun startRuntime(onCommandRecognized: (String) -> Unit = {}) {
         Log.i("VoiceRuntime", "Starting Jarvis voice runtime...")
         state = VoiceState.IDLE
+        commandCallback = onCommandRecognized
         wakeWordEngine.startMonitoring { fullText ->
             onWakeDetected(fullText, onCommandRecognized)
         }
@@ -35,6 +38,18 @@ class VoiceRuntime(
             state = VoiceState.IDLE
             onComplete()
         }
+    }
+
+    fun toggleMonitoring(): Boolean {
+        if (wakeWordEngine.isMonitoring()) {
+            stopRuntime()
+            return false
+        }
+        wakeWordEngine.startMonitoring { fullText ->
+            onWakeDetected(fullText, commandCallback ?: {})
+        }
+        state = VoiceState.IDLE
+        return true
     }
 
     fun stopRuntime() {

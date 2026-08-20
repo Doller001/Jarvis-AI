@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 
 data class JarvisUiState(
     val voiceState: VoiceState = VoiceState.IDLE,
+    val wakeListening: Boolean = true,
     val connectionState: com.jarvis.assistant.network.ConnectionState =
         com.jarvis.assistant.network.ConnectionState.DISCONNECTED,
     val runtimeState: RuntimeState = RuntimeState.OFFLINE,
@@ -33,8 +34,9 @@ data class JarvisUiState(
     val lastUtterance: String = "",
     val lastResponse: String = "Ready — listening for 'Jarvis'",
     val messages: List<MessageLog> = emptyList(),
-val backendUrl: String = "https://and9-1.onrender.com",
-    val providers: List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama")
+    val backendUrl: String = "https://and9-1.onrender.com",
+    val providers: List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama"),
+    val providersLoading: Boolean = false
 )
 
 class JarvisViewModel(application: Application) : AndroidViewModel(application) {
@@ -64,9 +66,15 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun refreshProviders() {
+        _uiState.update { it.copy(providersLoading = true) }
         apiClient.fetchAvailableProviders { providers ->
-            _uiState.update { it.copy(providers = providers) }
+            _uiState.update { it.copy(providers = providers, providersLoading = false) }
         }
+    }
+
+    fun toggleWakeListening() {
+        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: true
+        _uiState.update { it.copy(wakeListening = active) }
     }
 
     fun selectProvider(provider: String, model: String = "") {

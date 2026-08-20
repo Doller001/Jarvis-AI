@@ -17,7 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.ui.components.ConnectionPill
-import com.jarvis.assistant.ui.components.CosmicScreen
 import com.jarvis.assistant.ui.theme.*
 import com.jarvis.assistant.ui.JarvisUiState
 
@@ -27,26 +26,40 @@ fun ProvidersScreen(
     onBack: () -> Unit,
     onSelectProvider: (String) -> Unit
 ) {
-    CosmicScreen {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = JarvisCyan)
                 }
-            Text("LLM Providers", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Spacer(Modifier.weight(1f))
-            ConnectionPill(uiState.connectionState)
-        }
+                Text("LLM Providers", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(Modifier.weight(1f))
+                ConnectionPill(uiState.connectionState)
+            }
 
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Connected gateway: ${uiState.backendUrl}",
-            color = JarvisTextSecondary,
-            fontSize = 12.sp
-        )
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Connected gateway: ${uiState.backendUrl}",
+                color = JarvisTextSecondary,
+                fontSize = 12.sp
+            )
+            if (uiState.providersLoading) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = JarvisBlue,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Fetching providers…", color = JarvisTextSecondary, fontSize = 12.sp)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
             items(uiState.providers) { provider ->
                 val isActive = provider == uiState.activeProvider
                 Surface(
@@ -74,7 +87,6 @@ fun ProvidersScreen(
                     }
                 }
             }
-        }
         }
     }
 }
