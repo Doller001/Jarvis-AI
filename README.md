@@ -155,6 +155,57 @@ MONGODB_URI=mongodb+srv://jarvis_user:<password>@cluster0.xxxxx.mongodb.net/jarv
 
 ---
 
+## 🖥️ Optional: Desktop Version Deployment
+
+Jarvis ships with a built-in **desktop web app** (`jarvis/webapp`) — a full chat UI with provider/model switching, served directly by the FastAPI backend. No separate build step needed.
+
+### 1️⃣ Run locally (any OS)
+
+```bash
+cd jarvis/backend
+
+# Create virtualenv + install dependencies (first time only)
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# Copy your API keys into .env (see "Environment Variables" section above)
+cp .env.example .env
+
+# Start the desktop server
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Then open **http://localhost:8000** in your browser — the web UI auto-redirects from `/` to `/webapp/`.
+
+### 2️⃣ Keep it always-on (production)
+
+- **Linux (systemd)** — runs the backend as a boot-time service with 4 workers:
+
+  ```ini
+  [Unit]
+  Description=Jarvis AI Backend
+  After=network.target
+
+  [Service]
+  WorkingDirectory=/opt/jarvis/jarvis/backend
+  ExecStart=/opt/jarvis/jarvis/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+  Restart=always
+
+  [Install]
+  WantedBy=multi-user.target
+  ```
+
+- **Docker** — `jarvis/render.yaml` (or `jarvis/backend/Dockerfile`) builds the image; run it with:
+
+  ```bash
+  docker build -t jarvis-backend -f jarvis/backend/Dockerfile jarvis/backend
+  docker run -d -p 8000:8000 --env-file jarvis/backend/.env jarvis-backend
+  ```
+
+> 📖 **Full guides: [jarvis/docs/deployment.md](jarvis/docs/deployment.md)** (systemd, PowerShell, Docker) **and [jarvis/docs/setup.md](jarvis/docs/setup.md)** (per-OS prerequisites).
+
+---
+
 ## 📄 License
 
 MIT License — Copyright (c) 2026 Jarvis AI Project
