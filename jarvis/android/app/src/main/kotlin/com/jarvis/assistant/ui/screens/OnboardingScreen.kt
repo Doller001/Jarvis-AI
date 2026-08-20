@@ -42,7 +42,8 @@ fun OnboardingScreen(
         "camera" to permissionState.isCameraGranted,
         "call_phone" to permissionState.isCallPhoneGranted,
         "contacts" to permissionState.isContactsGranted,
-        "sms" to permissionState.isSmsGranted
+        "sms" to permissionState.isSmsGranted,
+        "digital_assistant" to permissionState.isDigitalAssistant
     )
 
     // Runtime permission launcher (batched request)
@@ -62,6 +63,14 @@ fun OnboardingScreen(
     }
 
     fun openSettings(action: String) {
+        if (action == "ROLE_ASSISTANT") {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val roleManager = context.getSystemService(android.app.role.RoleManager::class.java)
+                val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT)
+                context.startActivity(intent)
+            }
+            return
+        }
         runCatching {
             val intent = Intent(action).apply {
                 if (action == Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS) {

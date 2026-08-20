@@ -113,6 +113,48 @@ OLLAMA_BASE_URL=http://localhost:11434
 
 ---
 
+## 🗄️ Optional: Cloud Memory (Supabase & MongoDB)
+
+Jarvis works out of the box with a **local SQLite** database (`jarvis_memory.db`) — **no database setup is required**. For cloud persistence that survives restarts and multi-instance deployments, connect one (or both) of these **optional** databases. The backend auto-detects them in this order:
+
+```text
+Tier 1: MongoDB Atlas    (MONGODB_URI)      → NoSQL document store
+Tier 2: Supabase         (DATABASE_URL)     → PostgreSQL relational store
+Tier 3: Local SQLite     (built-in)         → always-on fallback
+```
+
+### 1️⃣ Supabase (PostgreSQL)
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In **Settings ⚙️ → Database → Connection string → URI**, copy the connection pooler string.
+3. Add it to your backend `.env` (or Render env vars):
+
+```ini
+DATABASE_URL=postgresql://postgres.[YOUR-PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres
+```
+
+4. Restart the backend. Tables are created automatically on first boot.
+
+📖 **Full guide: [jarvis/docs/supabase.md](jarvis/docs/supabase.md)** — project setup, pooler vs direct connection, and API key usage.
+
+### 2️⃣ MongoDB Atlas (NoSQL)
+
+1. Create a free **M0 cluster** at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas).
+2. Add a database user (**Security → Database Access**) and allow `0.0.0.0/0` (**Security → Network Access**).
+3. Copy the driver connection string (**Database → Connect → Drivers**) and add it to `.env`:
+
+```ini
+MONGODB_URI=mongodb+srv://jarvis_user:<password>@cluster0.xxxxx.mongodb.net/jarvis?retryWrites=true&w=majority
+```
+
+4. Restart the backend — Jarvis stores conversations, preferences, and action logs there automatically.
+
+📖 **Full guide: [jarvis/docs/mongodb.md](jarvis/docs/mongodb.md)** — cluster creation, user/network setup, and connection string details.
+
+> 💡 **Both can be configured at once** — MongoDB is preferred (Tier 1) and Supabase serves as Tier 2 fallback; SQLite always covers you locally.
+
+---
+
 ## 📄 License
 
 MIT License — Copyright (c) 2026 Jarvis AI Project

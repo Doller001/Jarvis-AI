@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class WebSocketClient(
-    val wsUrl: String = "ws://172.16.2.11:8000/ws",
+    val wsUrl: String = "wss://and9-1.onrender.com/ws",
     private val connectionManager: ConnectionManager = ConnectionManager()
 ) {
     private var client: OkHttpClient = OkHttpClient.Builder()

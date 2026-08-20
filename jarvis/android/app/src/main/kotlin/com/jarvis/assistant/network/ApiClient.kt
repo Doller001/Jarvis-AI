@@ -11,7 +11,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-class ApiClient(val baseUrl: String = "http://172.16.2.11:8000") {
+class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
 
     fun fetchAvailableProviders(onResult: (List<String>) -> Unit) {
         Log.i("ApiClient", "Fetching active providers from $baseUrl/api/v1/providers")

@@ -33,7 +33,7 @@ data class JarvisUiState(
     val lastUtterance: String = "",
     val lastResponse: String = "Ready — listening for 'Jarvis'",
     val messages: List<MessageLog> = emptyList(),
-val backendUrl: String = "http://172.16.2.11:8000",
+val backendUrl: String = "https://and9-1.onrender.com",
     val providers: List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama")
 )
 

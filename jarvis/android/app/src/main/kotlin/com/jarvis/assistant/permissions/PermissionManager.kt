@@ -20,7 +20,8 @@ data class PermissionState(
     val isCameraGranted: Boolean = false,
     val isCallPhoneGranted: Boolean = false,
     val isContactsGranted: Boolean = false,
-    val isSmsGranted: Boolean = false
+    val isSmsGranted: Boolean = false,
+    val isDigitalAssistant: Boolean = false
 ) {
     /** Required permissions must be granted before the assistant goes live. */
     val allRequiredGranted: Boolean
@@ -30,13 +31,14 @@ data class PermissionState(
                 isBatteryOptimizationIgnored &&
                 isCallPhoneGranted &&
                 isContactsGranted &&
-                isSmsGranted
+                isSmsGranted &&
+                isDigitalAssistant
 
     val grantedCount: Int
         get() = listOf(
             isMicrophoneGranted, isNotificationGranted, isAccessibilityGranted,
             isBatteryOptimizationIgnored, isCameraGranted, isCallPhoneGranted,
-            isContactsGranted, isSmsGranted
+            isContactsGranted, isSmsGranted, isDigitalAssistant
         ).count { it }
 }
 
@@ -61,6 +63,14 @@ class PermissionManager(private val context: Context? = null) {
         }.getOrDefault(false)
 
         val isAcc = isAccessibilityServiceEnabled(ctx)
+        val isAssistant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                val rm = ctx.getSystemService(android.app.role.RoleManager::class.java)
+                rm.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)
+            }.getOrDefault(false)
+        } else {
+            false
+        }
 
         return PermissionState(
             isMicrophoneGranted = ctx.has(android.Manifest.permission.RECORD_AUDIO),
@@ -70,7 +80,8 @@ class PermissionManager(private val context: Context? = null) {
             isCameraGranted = ctx.has(android.Manifest.permission.CAMERA),
             isCallPhoneGranted = ctx.has(android.Manifest.permission.CALL_PHONE),
             isContactsGranted = ctx.has(android.Manifest.permission.READ_CONTACTS),
-            isSmsGranted = ctx.has(android.Manifest.permission.SEND_SMS)
+            isSmsGranted = ctx.has(android.Manifest.permission.SEND_SMS),
+            isDigitalAssistant = isAssistant
         )
     }
 

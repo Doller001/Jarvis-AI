@@ -96,6 +96,16 @@ object AllPermissions {
             settingsAction = android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
         ),
         JarvisPermission(
+            id = "digital_assistant",
+            androidPermission = null,
+            title = "Digital Assistant",
+            description = "Make JARVIS your default digital assistant (\"Hey Google\"-style access).",
+            icon = Icons.Filled.Assistant,
+            required = true,
+            grant = GrantKind.SETTINGS,
+            settingsAction = "ROLE_ASSISTANT"
+        ),
+        JarvisPermission(
             id = "battery",
             androidPermission = null,
             title = "Ignore Battery Optimization",
