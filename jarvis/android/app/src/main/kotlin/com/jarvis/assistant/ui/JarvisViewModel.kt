@@ -116,7 +116,10 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             is JarvisIntent.GetTime -> "Checking the current time…"
             is JarvisIntent.GetBattery -> "Reading battery level…"
             is JarvisIntent.ReadScreen -> "Reading the screen…"
-            is JarvisIntent.Unknown -> "I heard: \"$text\". I'll route that to the cloud brain."
+            is JarvisIntent.Unknown -> {
+                routeToCloudBrain(text)
+                "Let me check the cloud brain…"
+            }
         }
         memoryStore.recordAssistantMessage(ack)
         _uiState.update {
@@ -128,5 +131,16 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         return ack
+    }
+
+    private fun routeToCloudBrain(text: String) {
+        apiClient.sendChat(text, "android-device") { answer ->
+            val response = answer ?: "The cloud brain is unreachable right now."
+            memoryStore.recordAssistantMessage(response)
+            _uiState.update {
+                it.copy(lastResponse = response, messages = memoryStore.getHistory())
+            }
+            JarvisForegroundService.speak?.invoke(response)
+        }
     }
 }

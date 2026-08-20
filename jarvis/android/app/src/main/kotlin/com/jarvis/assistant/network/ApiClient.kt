@@ -76,5 +76,37 @@ class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
         }
     }
 
+    fun sendChat(text: String, sessionId: String, onResult: (String?) -> Unit) {
+        GlobalScope.launch(Dispatchers.IO) {
+            val responseText = try {
+                val url = URL("$baseUrl/api/v1/chat")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 60000
+                conn.doOutput = true
+
+                val body = JSONObject().apply {
+                    put("text", text)
+                    put("session_id", sessionId)
+                    put("request_id", "android-${System.currentTimeMillis()}")
+                }
+                conn.outputStream.use { os -> os.write(body.toString().toByteArray()) }
+
+                if (conn.responseCode in 200..299) {
+                    val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                    val json = JSONObject(reader.readText())
+                    reader.close()
+                    json.optString("response_text").ifBlank { json.optString("prompt") }.ifBlank { json.optString("message") }
+                } else null
+            } catch (e: Exception) {
+                Log.w("ApiClient", "Chat request failed: ${e.message}")
+                null
+            }
+            launch(Dispatchers.Main) { onResult(responseText) }
+        }
+    }
+
     private fun defaultProviders(): List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama")
 }
