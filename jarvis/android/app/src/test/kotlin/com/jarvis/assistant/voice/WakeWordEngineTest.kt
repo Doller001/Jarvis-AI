@@ -87,4 +87,32 @@ class WakeWordEngineTest {
         assertTrue(engine.fallbackRestartDelayMs(busy) > engine.fallbackRestartDelayMs(noMatch))
         assertEquals(engine.fallbackRestartDelayMs(), engine.fallbackRestartDelayMs(noMatch))
     }
+
+    @Test
+    fun `silence errors reuse the recognizer, real failures recreate it`() {
+        val engine = WakeWordEngine(config = WakeWordConfig(cooldownMs = 0L))
+        assertFalse(engine.shouldRecreateOnError(android.speech.SpeechRecognizer.ERROR_NO_MATCH))
+        assertFalse(engine.shouldRecreateOnError(android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT))
+        assertTrue(engine.shouldRecreateOnError(android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY))
+        assertTrue(engine.shouldRecreateOnError(android.speech.SpeechRecognizer.ERROR_CLIENT))
+        assertTrue(engine.shouldRecreateOnError(android.speech.SpeechRecognizer.ERROR_SERVER))
+    }
+
+    @Test
+    fun `utterance accumulates across recognizer restarts`() {
+        val engine = WakeWordEngine(config = WakeWordConfig(cooldownMs = 0L))
+        val first = engine.accumulate("hey jarvis what")
+        assertEquals("hey jarvis what", first)
+        val second = engine.accumulate("hey jarvis what is 2 plus 2")
+        assertEquals("hey jarvis what is 2 plus 2", second)
+        val third = engine.accumulate("hey jarvis what is 2 plus 2?")
+        assertTrue(third.startsWith("hey jarvis what is 2 plus 2"))
+    }
+
+    @Test
+    fun `disjoint fragment appends to utterance`() {
+        val engine = WakeWordEngine(config = WakeWordConfig(cooldownMs = 0L))
+        engine.accumulate("hey jarvis")
+        assertEquals("hey jarvis open youtube", engine.accumulate("open youtube"))
+    }
 }

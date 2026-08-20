@@ -53,6 +53,15 @@ class VoiceStateMachineTest {
         sm.transition(VoiceState.PROCESSING)
         assertTrue(sm.transition(VoiceState.STOPPED))
     }
+
+    @Test
+    fun `late async response can speak from wake listening`() {
+        val sm = VoiceStateMachine()
+        sm.transition(VoiceState.STARTING)
+        sm.transition(VoiceState.WAKE_LISTENING)
+        assertTrue(sm.transition(VoiceState.SPEAKING))
+        assertTrue(sm.transition(VoiceState.WAKE_LISTENING))
+    }
 }
 
 class WakeCooldownTest {

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
@@ -33,6 +34,7 @@ class WakeWordEngine(
 
     companion object {
         private const val TAG = "WakeWordEngine"
+        private const val SILENCE_TIMEOUT_MS = 3000L
         private val phraseVariants = listOf(
             "hey jarvis", "hey, jarvis", "hay jarvis", "jarvis", "jarvis listen", "okay jarvis"
         )
@@ -47,6 +49,11 @@ class WakeWordEngine(
     private var fallbackRecognizer: AndroidSpeechRecognizer? = null
     private val restartHandler = Handler(Looper.getMainLooper())
     private var restartScheduled = false
+
+    private val accumulated = StringBuilder()
+    private var lastSpeechMs = 0L
+    private val finalizeHandler = Handler(Looper.getMainLooper())
+    private val finalizeRunnable = Runnable { maybeFinalize() }
 
     private val useFallback: Boolean = detector == null || !detector.isAvailable()
 
@@ -67,6 +74,7 @@ class WakeWordEngine(
         cooldown.reset()
         if (useFallback) {
             Log.i(TAG, "Fallback wake-word monitoring active (phrases: $phraseVariants)")
+            startFinalizeWatchdog()
             listenOnce()
         } else {
             detector?.setListener(object : WakeWordListener {
@@ -90,6 +98,8 @@ class WakeWordEngine(
 
     fun stopMonitoring() {
         isMonitoring = false
+        stopFinalizeWatchdog()
+        accumulated.setLength(0)
         detector?.stop()
         stopFallbackRecognizer()
         Log.i(TAG, "Stopped")
@@ -98,6 +108,8 @@ class WakeWordEngine(
     /** Hands the microphone to the command recognizer (or pauses the fallback loop). */
     fun pause() {
         if (!isMonitoring) return
+        stopFinalizeWatchdog()
+        accumulated.setLength(0)
         detector?.pause()
         stopFallbackRecognizer()
         Log.i(TAG, "Paused — command mode owns the microphone")
@@ -107,6 +119,7 @@ class WakeWordEngine(
     fun resume() {
         if (!isMonitoring) return
         if (useFallback) {
+            startFinalizeWatchdog()
             listenOnce()
         } else {
             detector?.resume()
@@ -117,6 +130,8 @@ class WakeWordEngine(
     fun release() {
         onWakeCallback = null
         isMonitoring = false
+        stopFinalizeWatchdog()
+        accumulated.setLength(0)
         detector?.release()
         stopFallbackRecognizer()
         Log.i(TAG, "Released")
@@ -143,6 +158,10 @@ class WakeWordEngine(
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                // Keep one session open as long as possible so continuous
+                // listening never visibly re-arms while idle.
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 15_000)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 15_000)
             }
             fallbackRecognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {}
@@ -160,22 +179,29 @@ class WakeWordEngine(
                         )
                         return
                     }
-                    scheduleRestart(fallbackRestartDelayMs(error))
+                    scheduleRestart(fallbackRestartDelayMs(error), recreate = shouldRecreateOnError(error))
                 }
 
                 override fun onResults(results: Bundle?) {
-                    val matches = results?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
-                    val text = matches?.firstOrNull() ?: ""
+                    val text = results?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull().orEmpty()
                     if (text.isNotBlank()) {
-                        Log.i(TAG, "Fallback heard: '$text'")
-                        if (isWakePhraseMatch(text)) {
-                            onWakeCallback?.invoke(text)
-                        }
+                        accumulate(text)
+                        lastSpeechMs = SystemClock.uptimeMillis()
                     }
-                    scheduleRestart()
+                    // Seamless restart: keep the same recognizer so a user
+                    // speaking through the gap never loses their words.
+                    scheduleRestart(250L, recreate = false)
                 }
 
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val text = partialResults?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull().orEmpty()
+                    if (text.isNotBlank()) {
+                        accumulate(text)
+                        lastSpeechMs = SystemClock.uptimeMillis()
+                    }
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
             fallbackRecognizer?.startListening(intent)
@@ -194,17 +220,27 @@ class WakeWordEngine(
         fallbackRecognizer = null
     }
 
+    private fun startFinalizeWatchdog() {
+        finalizeHandler.removeCallbacks(finalizeRunnable)
+        finalizeHandler.postDelayed(finalizeRunnable, 500L)
+    }
+
+    private fun stopFinalizeWatchdog() {
+        finalizeHandler.removeCallbacks(finalizeRunnable)
+    }
+
     /**
-     * Debounced restart: destroys the recognizer first so a busy/stuck
-     * instance can never hot-loop, then waits before listening again.
+     * Debounced restart: waits before listening again so a busy/stuck
+     * recognizer can never hot-loop. Errors recreate the recognizer to clear
+     * a stuck instance; results reuse it for a seamless mid-speech handover.
      */
-    private fun scheduleRestart(delayMs: Long = fallbackRestartDelayMs()) {
+    private fun scheduleRestart(delayMs: Long, recreate: Boolean) {
         if (!isMonitoring || restartScheduled) return
         restartScheduled = true
         restartHandler.postDelayed({
             restartScheduled = false
             if (isMonitoring) {
-                stopFallbackRecognizer()
+                if (recreate) stopFallbackRecognizer()
                 listenOnce()
             }
         }, delayMs)
@@ -213,6 +249,53 @@ class WakeWordEngine(
     /** Longer backoff for a busy recognizer so it can settle. */
     internal fun fallbackRestartDelayMs(error: Int = -1): Long =
         if (error == AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200L else 500L
+
+    /**
+     * Silence outcomes (no match / speech timeout) just mean nobody talked:
+     * reuse the recognizer so its VAD stays warm and the mic never visibly
+     * re-arms. Real failures recreate to clear a stuck instance.
+     */
+    internal fun shouldRecreateOnError(error: Int): Boolean =
+        error != AndroidSpeechRecognizer.ERROR_NO_MATCH &&
+            error != AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
+    /**
+     * Appends a new recognition fragment to the in-progress utterance.
+     * Handles the case where the recognizer restarts mid-speech: a fragment
+     * that starts with what we already have only extends the buffer.
+     */
+    internal fun accumulate(newText: String): String {
+        val existing = accumulated.toString()
+        val fresh = newText.trim()
+        if (fresh.isEmpty()) return existing
+        accumulated.setLength(0)
+        if (existing.isNotEmpty() && fresh.startsWith(existing)) {
+            accumulated.append(fresh)
+        } else if (existing.isEmpty() || existing.contains(fresh)) {
+            accumulated.append(fresh)
+        } else {
+            accumulated.append(existing).append(' ').append(fresh)
+        }
+        Log.i(TAG, "Accumulated so far: '$accumulated'")
+        return accumulated.toString()
+    }
+
+    /**
+     * Fires the wake callback only once the user has stopped speaking for
+     * [SILENCE_TIMEOUT_MS], so a long "Hey Jarvis, …" never gets cut short.
+     */
+    private fun maybeFinalize() {
+        if (!isMonitoring) return
+        if (accumulated.isNotBlank() && SystemClock.uptimeMillis() - lastSpeechMs >= SILENCE_TIMEOUT_MS) {
+            val text = accumulated.toString()
+            accumulated.setLength(0)
+            Log.i(TAG, "Finalized utterance: '$text'")
+            if (isWakePhraseMatch(text)) {
+                onWakeCallback?.invoke(text)
+            }
+        }
+        finalizeHandler.postDelayed(finalizeRunnable, 500L)
+    }
 
     /** Public for manual command mode and tests. */
     fun isWakePhraseMatch(text: String): Boolean {
