@@ -78,4 +78,13 @@ class WakeWordEngineTest {
         assertTrue(detector.released)
         assertFalse(engine.isMonitoring())
     }
+
+    @Test
+    fun `busy recognizer gets a longer restart backoff`() {
+        val engine = WakeWordEngine(config = WakeWordConfig(cooldownMs = 0L))
+        val busy = android.speech.SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+        val noMatch = android.speech.SpeechRecognizer.ERROR_NO_MATCH
+        assertTrue(engine.fallbackRestartDelayMs(busy) > engine.fallbackRestartDelayMs(noMatch))
+        assertEquals(engine.fallbackRestartDelayMs(), engine.fallbackRestartDelayMs(noMatch))
+    }
 }

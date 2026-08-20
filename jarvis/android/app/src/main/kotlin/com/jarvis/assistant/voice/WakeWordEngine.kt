@@ -3,6 +3,8 @@ package com.jarvis.assistant.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
@@ -43,6 +45,8 @@ class WakeWordEngine(
     private val cooldown = WakeCooldown(config.cooldownMs)
 
     private var fallbackRecognizer: AndroidSpeechRecognizer? = null
+    private val restartHandler = Handler(Looper.getMainLooper())
+    private var restartScheduled = false
 
     private val useFallback: Boolean = detector == null || !detector.isAvailable()
 
@@ -156,7 +160,7 @@ class WakeWordEngine(
                         )
                         return
                     }
-                    if (isMonitoring) listenOnce()
+                    scheduleRestart(fallbackRestartDelayMs(error))
                 }
 
                 override fun onResults(results: Bundle?) {
@@ -168,7 +172,7 @@ class WakeWordEngine(
                             onWakeCallback?.invoke(text)
                         }
                     }
-                    if (isMonitoring) listenOnce()
+                    scheduleRestart()
                 }
 
                 override fun onPartialResults(partialResults: Bundle?) {}
@@ -189,6 +193,26 @@ class WakeWordEngine(
         }
         fallbackRecognizer = null
     }
+
+    /**
+     * Debounced restart: destroys the recognizer first so a busy/stuck
+     * instance can never hot-loop, then waits before listening again.
+     */
+    private fun scheduleRestart(delayMs: Long = fallbackRestartDelayMs()) {
+        if (!isMonitoring || restartScheduled) return
+        restartScheduled = true
+        restartHandler.postDelayed({
+            restartScheduled = false
+            if (isMonitoring) {
+                stopFallbackRecognizer()
+                listenOnce()
+            }
+        }, delayMs)
+    }
+
+    /** Longer backoff for a busy recognizer so it can settle. */
+    internal fun fallbackRestartDelayMs(error: Int = -1): Long =
+        if (error == AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200L else 500L
 
     /** Public for manual command mode and tests. */
     fun isWakePhraseMatch(text: String): Boolean {
