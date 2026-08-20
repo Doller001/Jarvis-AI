@@ -15,6 +15,10 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Picovoice Console AccessKey for Porcupine wake-word detection.
+        // Leave empty to run in fallback text-matching mode.
+        buildConfigField("String", "JARVIS_PICOVOICE_ACCESS_KEY", "\"\"")
     }
 
     buildTypes {
@@ -25,6 +29,10 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 
     compileOptions {
@@ -38,6 +46,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -69,6 +78,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Offline wake-word detection (Picovoice Porcupine)
+    implementation("ai.picovoice:porcupine-android:3.0.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

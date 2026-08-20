@@ -3,21 +3,30 @@ package com.jarvis.assistant.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
 import android.util.Log
 import java.util.Locale
 
+/**
+ * Command-mode speech recognizer. Runs ONLY after the wake word has been
+ * detected — never continuously. Reports errors to the caller so the voice
+ * runtime can recover instead of silently dying.
+ */
 class SpeechRecognizer(private val context: Context? = null) {
     private var isListening = false
     private var speechRecognizer: AndroidSpeechRecognizer? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-    fun startListening(onResult: (String) -> Unit) {
+    fun startListening(onResult: (String) -> Unit, onError: (Int) -> Unit) {
         isListening = true
         Log.d("SpeechRecognizer", "STT engine listening...")
         val ctx = context ?: run {
             Log.w("SpeechRecognizer", "Context not available for native STT")
+            onError(AndroidSpeechRecognizer.ERROR_CLIENT)
             return
         }
 
@@ -37,13 +46,12 @@ class SpeechRecognizer(private val context: Context? = null) {
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() {
-                    isListening = false
-                }
+                override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
                     isListening = false
                     Log.e("SpeechRecognizer", "Speech recognition error code: $error")
+                    onError(error)
                 }
 
                 override fun onResults(results: Bundle?) {
@@ -51,8 +59,10 @@ class SpeechRecognizer(private val context: Context? = null) {
                     val matches = results?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull() ?: ""
                     if (text.isNotBlank()) {
-                        Log.i("SpeechRecognizer", "Recognized speech: '$text'")
+                        Log.i("SpeechRecognizer", "Command received")
                         onResult(text)
+                    } else {
+                        onError(AndroidSpeechRecognizer.ERROR_NO_MATCH)
                     }
                 }
 
@@ -64,6 +74,7 @@ class SpeechRecognizer(private val context: Context? = null) {
         } catch (e: Exception) {
             Log.e("SpeechRecognizer", "Failed to start speech recognizer", e)
             isListening = false
+            onError(AndroidSpeechRecognizer.ERROR_CLIENT)
         }
     }
 
@@ -76,12 +87,19 @@ class SpeechRecognizer(private val context: Context? = null) {
         }
     }
 
+    /**
+     * Destroy is deferred to the main thread: destroying a recognizer from
+     * inside its own callback is undefined behaviour on some OEM builds.
+     */
     fun destroy() {
-        try {
-            speechRecognizer?.destroy()
+        isListening = false
+        mainHandler.post {
+            try {
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {
+                Log.e("SpeechRecognizer", "Failed to destroy speech recognizer", e)
+            }
             speechRecognizer = null
-        } catch (e: Exception) {
-            Log.e("SpeechRecognizer", "Failed to destroy speech recognizer", e)
         }
     }
 }

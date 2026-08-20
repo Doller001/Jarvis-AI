@@ -65,12 +65,14 @@ fun HomeScreen(
                 Spacer(Modifier.height(16.dp))
                 Text(
                     text = when (uiState.voiceState) {
-                        com.jarvis.assistant.voice.VoiceState.WAKE_DETECTED -> "Wake word detected"
-                        com.jarvis.assistant.voice.VoiceState.LISTENING -> "Listening…"
+                        com.jarvis.assistant.voice.VoiceState.WAKE_DETECTED,
+                        com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING -> "Listening…"
                         com.jarvis.assistant.voice.VoiceState.PROCESSING -> "Thinking…"
                         com.jarvis.assistant.voice.VoiceState.SPEAKING -> "Speaking…"
-                        com.jarvis.assistant.voice.VoiceState.ERROR -> "Error"
-                        else -> "Listening for \"Jarvis\""
+                        com.jarvis.assistant.voice.VoiceState.ERROR -> "Recovering…"
+                        com.jarvis.assistant.voice.VoiceState.STOPPED,
+                        com.jarvis.assistant.voice.VoiceState.STARTING -> "Starting…"
+                        else -> "Listening for \"Hey Jarvis\""
                     },
                     fontSize = 16.sp,
                     color = Color.White

@@ -35,9 +35,8 @@ class IntentResolver {
         if (t.contains("volume down") || t.contains("volume kam")) return JarvisIntent.SetVolume(30)
 
         if (t.contains("whatsapp")) {
-            val parts = t.split("whatsapp")
-            val target = parts.getOrNull(1)?.trim() ?: ""
-            var words = target.split(" ").filter { it.isNotBlank() }
+            val targetRaw = rawText.substring(t.indexOf("whatsapp") + "whatsapp".length)
+            var words = targetRaw.trim().split(" ").filter { it.isNotBlank() }
             if (words.firstOrNull()?.equals("to", ignoreCase = true) == true) {
                 words = words.drop(1)
             }
@@ -59,7 +58,7 @@ class IntentResolver {
         if (t.contains("read screen") || t.contains("screen padho")) return JarvisIntent.ReadScreen()
 
         if (t.startsWith("call ")) {
-            val contact = t.substring(5).trim()
+            val contact = rawText.trim().substring("call ".length).trim()
             return JarvisIntent.CallContact(contact)
         }
 

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import com.jarvis.assistant.voice.VoiceRuntime
+import com.jarvis.assistant.voice.VoiceState
 
 class JarvisForegroundService : Service() {
     private var voiceRuntime = VoiceRuntime(context = null)
@@ -28,15 +29,32 @@ class JarvisForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = buildForegroundNotification()
+        val notification = buildForegroundNotification().build()
         startForeground(1001, notification)
-        
+
+        voiceRuntime.setStateListener { state ->
+            onStateChanged?.invoke(state)
+            updateNotification(state)
+        }
         voiceRuntime.startRuntime { userUtterance ->
             Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
             onUtterance?.invoke(userUtterance)
         }
-        
+
         return START_STICKY
+    }
+
+    private fun updateNotification(state: VoiceState) {
+        val text = when (state) {
+            VoiceState.STOPPED, VoiceState.STARTING -> "Starting…"
+            VoiceState.WAKE_LISTENING -> "Listening for 'Hey Jarvis'"
+            VoiceState.WAKE_DETECTED, VoiceState.COMMAND_LISTENING -> "Listening…"
+            VoiceState.PROCESSING -> "Processing…"
+            VoiceState.SPEAKING -> "Speaking…"
+            VoiceState.ERROR -> "Recovering…"
+        }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager?.notify(1001, buildForegroundNotification().setContentText(text).build())
     }
 
     fun speakResponse(text: String) {
@@ -50,6 +68,7 @@ class JarvisForegroundService : Service() {
         var onUtterance: ((String) -> Unit)? = null
         var onResponseDone: (() -> Unit)? = null
         var onWakeToggled: ((Boolean) -> Unit)? = null
+        var onStateChanged: ((VoiceState) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
         var toggleWakeListening: (() -> Boolean)? = null
     }
@@ -66,7 +85,7 @@ class JarvisForegroundService : Service() {
         }
     }
 
-    private fun buildForegroundNotification(): Notification {
+    private fun buildForegroundNotification(): Notification.Builder {
         val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             Notification.Builder(this, "jarvis_runtime")
         } else {
@@ -75,14 +94,19 @@ class JarvisForegroundService : Service() {
         }
         return builder
             .setContentTitle("JARVIS")
-            .setContentText("Ready — listening for wake word 'Jarvis'")
+            .setContentText("Listening for 'Hey Jarvis'")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
-            .build()
     }
 
     override fun onDestroy() {
-        voiceRuntime.stopRuntime()
+        voiceRuntime.release()
+        onUtterance = null
+        onResponseDone = null
+        onWakeToggled = null
+        onStateChanged = null
+        speak = null
+        toggleWakeListening = null
         super.onDestroy()
     }
 

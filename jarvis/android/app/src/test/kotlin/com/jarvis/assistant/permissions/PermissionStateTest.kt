@@ -36,7 +36,8 @@ class PermissionStateTest {
             isBatteryOptimizationIgnored = true,
             isCallPhoneGranted = true,
             isContactsGranted = true,
-            isSmsGranted = true
+            isSmsGranted = true,
+            isDigitalAssistant = true
         )
         assertTrue(base.allRequiredGranted)
 
@@ -44,6 +45,7 @@ class PermissionStateTest {
         assertFalse(base.copy(isMicrophoneGranted = false).allRequiredGranted)
         assertFalse(base.copy(isAccessibilityGranted = false).allRequiredGranted)
         assertFalse(base.copy(isSmsGranted = false).allRequiredGranted)
+        assertFalse(base.copy(isDigitalAssistant = false).allRequiredGranted)
 
         // Optional permission (camera) does NOT affect readiness.
         assertTrue(base.copy(isCameraGranted = false).allRequiredGranted)

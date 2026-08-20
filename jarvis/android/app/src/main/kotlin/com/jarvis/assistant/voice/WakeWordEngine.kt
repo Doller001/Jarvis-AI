@@ -9,50 +9,138 @@ import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
 import android.util.Log
 import java.util.Locale
 
+/**
+ * Application-level coordinator for wake-word detection.
+ *
+ * Primary path: an offline [WakeWordDetector] (Porcupine) owns the mic at low
+ * power and fires on "Hey Jarvis".
+ *
+ * Fallback path (used only when no offline detector is available, i.e. the
+ * custom .ppn model / access key are missing): a continuously-running
+ * Android SpeechRecognizer matches the phrase in recognized text. Kept so the
+ * assistant keeps working without the model; clearly labeled in logs.
+ *
+ * Cooldown/debounce is applied centrally to both paths so a wake event can
+ * never fire twice in quick succession.
+ */
 class WakeWordEngine(
-    val primaryPhrase: String = "Jarvis",
-    val phraseVariants: List<String> = listOf(
-        "Jarvis",
-        "Hey Jarvis",
-        "Hay Jarvis",
-        "Hey, Jarvis",
-        "Jarvis hello",
-        "Jarvis suno",
-        "Jarvis listen",
-        "Jarvis listen to me"
-    ),
-    var sensitivityThreshold: Float = 0.85f,
-    var cooldownMs: Long = 1500L,
-    private val context: Context? = null
+    private val context: Context? = null,
+    private val config: WakeWordConfig = WakeWordConfig(),
+    private val detector: WakeWordDetector? = null
 ) {
-    private var isMonitoring = false
-    private var lastWakeTimeMs = 0L
-    private var speechRecognizer: AndroidSpeechRecognizer? = null
-    private var onWakeCallback: ((String) -> Unit)? = null
 
-    fun startMonitoring(onWake: (String) -> Unit) {
-        onWakeCallback = onWake
-        isMonitoring = true
-        Log.i("WakeWordEngine", "Jarvis wake-word engine monitoring active (Phrases: $phraseVariants)")
-        listenOnce()
+    companion object {
+        private const val TAG = "WakeWordEngine"
+        private val phraseVariants = listOf(
+            "hey jarvis", "hey, jarvis", "hay jarvis", "jarvis", "jarvis listen", "okay jarvis"
+        )
     }
+
+    private var isMonitoring = false
+    private var onWakeCallback: ((String?) -> Unit)? = null
+    private var errorCallback: ((Throwable) -> Unit)? = null
+
+    private val cooldown = WakeCooldown(config.cooldownMs)
+
+    private var fallbackRecognizer: AndroidSpeechRecognizer? = null
+
+    private val useFallback: Boolean = detector == null || !detector.isAvailable()
+
+    init {
+        if (useFallback) {
+            Log.w(TAG, "No offline wake-word detector available — using fallback text matching")
+        }
+    }
+
+    fun isMonitoring(): Boolean = isMonitoring
+
+    fun usesFallback(): Boolean = useFallback
+
+    fun startMonitoring(onWake: (String?) -> Unit, onError: (Throwable) -> Unit = {}) {
+        onWakeCallback = onWake
+        errorCallback = onError
+        isMonitoring = true
+        cooldown.reset()
+        if (useFallback) {
+            Log.i(TAG, "Fallback wake-word monitoring active (phrases: $phraseVariants)")
+            listenOnce()
+        } else {
+            detector?.setListener(object : WakeWordListener {
+                override fun onWakeWordDetected() {
+                    if (!isMonitoring) return
+                    Log.i(TAG, "Wake word detected")
+                    if (allowWake()) {
+                        onWakeCallback?.invoke(null)
+                    }
+                }
+
+                override fun onWakeWordError(error: Throwable) {
+                    Log.e(TAG, "Wake-word detector error", error)
+                    errorCallback?.invoke(error)
+                }
+            })
+            detector?.start()
+            Log.i(TAG, "Listening for wake word")
+        }
+    }
+
+    fun stopMonitoring() {
+        isMonitoring = false
+        detector?.stop()
+        stopFallbackRecognizer()
+        Log.i(TAG, "Stopped")
+    }
+
+    /** Hands the microphone to the command recognizer (or pauses the fallback loop). */
+    fun pause() {
+        if (!isMonitoring) return
+        detector?.pause()
+        stopFallbackRecognizer()
+        Log.i(TAG, "Paused — command mode owns the microphone")
+    }
+
+    /** Returns the microphone to wake-word listening. */
+    fun resume() {
+        if (!isMonitoring) return
+        if (useFallback) {
+            listenOnce()
+        } else {
+            detector?.resume()
+        }
+        Log.i(TAG, "Resumed — wake-word listening")
+    }
+
+    fun release() {
+        onWakeCallback = null
+        isMonitoring = false
+        detector?.release()
+        stopFallbackRecognizer()
+        Log.i(TAG, "Released")
+    }
+
+    /** Cooldown gate shared by both detection paths. */
+    private fun allowWake(): Boolean = cooldown.allow()
+
+    // ------------------------------------------------------------------
+    // Fallback path: continuous STT + phrase matching
+    // ------------------------------------------------------------------
 
     private fun listenOnce() {
         val ctx = context ?: run {
-            Log.w("WakeWordEngine", "Context not available — cannot listen for wake word")
+            Log.w(TAG, "Context not available — cannot listen for wake word")
             return
         }
         if (!isMonitoring) return
         try {
-            if (speechRecognizer == null) {
-                speechRecognizer = AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
+            if (fallbackRecognizer == null) {
+                fallbackRecognizer = AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
             }
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             }
-            speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            fallbackRecognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {}
                 override fun onBeginningOfSpeech() {}
                 override fun onRmsChanged(rmsdB: Float) {}
@@ -60,9 +148,12 @@ class WakeWordEngine(
                 override fun onEndOfSpeech() {}
 
                 override fun onError(error: Int) {
-                    Log.e("WakeWordEngine", "Speech recognition error code: $error")
+                    Log.e(TAG, "Fallback recognition error code: $error")
                     if (error == AndroidSpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         isMonitoring = false
+                        errorCallback?.invoke(
+                            IllegalStateException("Microphone permission missing (fallback mode)")
+                        )
                         return
                     }
                     if (isMonitoring) listenOnce()
@@ -72,7 +163,7 @@ class WakeWordEngine(
                     val matches = results?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull() ?: ""
                     if (text.isNotBlank()) {
-                        Log.i("WakeWordEngine", "Heard: '$text'")
+                        Log.i(TAG, "Fallback heard: '$text'")
                         if (isWakePhraseMatch(text)) {
                             onWakeCallback?.invoke(text)
                         }
@@ -83,26 +174,27 @@ class WakeWordEngine(
                 override fun onPartialResults(partialResults: Bundle?) {}
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
-            speechRecognizer?.startListening(intent)
+            fallbackRecognizer?.startListening(intent)
         } catch (e: Exception) {
-            Log.e("WakeWordEngine", "Failed to start speech recognizer", e)
+            Log.e(TAG, "Failed to start fallback recognizer", e)
         }
     }
 
-    fun isWakePhraseMatch(text: String): Boolean {
-        val now = System.currentTimeMillis()
-        if (now - lastWakeTimeMs < cooldownMs) {
-            return false // False-positive cooldown suppression
+    private fun stopFallbackRecognizer() {
+        try {
+            fallbackRecognizer?.stopListening()
+            fallbackRecognizer?.destroy()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop fallback recognizer", e)
         }
+        fallbackRecognizer = null
+    }
 
+    /** Public for manual command mode and tests. */
+    fun isWakePhraseMatch(text: String): Boolean {
+        if (!allowWake()) return false
         val cleaned = text.lowercase().strip()
-        for (variant in phraseVariants) {
-            if (cleaned.contains(variant.lowercase())) {
-                lastWakeTimeMs = now
-                return true
-            }
-        }
-        return false
+        return phraseVariants.any { cleaned.contains(it) }
     }
 
     fun extractCommand(fullText: String): String {
@@ -110,20 +202,7 @@ class WakeWordEngine(
         for (variant in phraseVariants) {
             command = command.replace(variant.lowercase(), " ")
         }
-        return command.trim().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
-    }
-
-    fun isMonitoring(): Boolean = isMonitoring
-
-    fun stopMonitoring() {
-        isMonitoring = false
-        try {
-            speechRecognizer?.stopListening()
-            speechRecognizer?.destroy()
-        } catch (e: Exception) {
-            Log.e("WakeWordEngine", "Failed to stop recognizer", e)
-        }
-        speechRecognizer = null
-        Log.i("WakeWordEngine", "Jarvis wake-word engine stopped.")
+        return command.trim()
+            .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
     }
 }

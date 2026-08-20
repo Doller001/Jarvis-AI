@@ -22,7 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 data class JarvisUiState(
-    val voiceState: VoiceState = VoiceState.IDLE,
+    val voiceState: VoiceState = VoiceState.STOPPED,
     val wakeListening: Boolean = true,
     val connectionState: com.jarvis.assistant.network.ConnectionState =
         com.jarvis.assistant.network.ConnectionState.DISCONNECTED,
@@ -60,7 +60,13 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             if (ack.isNotBlank()) JarvisForegroundService.speak?.invoke(ack)
         }
         JarvisForegroundService.onResponseDone = {
-            _uiState.update { it.copy(voiceState = VoiceState.IDLE) }
+            _uiState.update { it.copy(voiceState = VoiceState.WAKE_LISTENING) }
+        }
+        JarvisForegroundService.onStateChanged = { state ->
+            _uiState.update { it.copy(voiceState = state) }
+        }
+        JarvisForegroundService.onWakeToggled = { active ->
+            _uiState.update { it.copy(wakeListening = active) }
         }
         ContextCompat.startForegroundService(application, Intent(application, JarvisForegroundService::class.java))
     }
