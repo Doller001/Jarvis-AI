@@ -15,6 +15,18 @@ from app.memory.memory_manager import memory_manager
 
 logger = logging.getLogger(__name__)
 
+
+def build_system_prompt(session_id: str, current_text: str) -> str:
+    history = memory_manager.get_conversation_history(session_id, limit=8)
+    entries = [
+        f"{m['role']}: {m['content']}" for m in history
+        if m["content"].strip() and not (m["role"] == "user" and m["content"] == current_text)
+    ]
+    if entries:
+        return JARVIS_SYSTEM_PROMPT + "\n\nRecent conversation:\n" + "\n".join(entries)
+    return JARVIS_SYSTEM_PROMPT
+
+
 JARVIS_SYSTEM_PROMPT = """You are Jarvis, an intelligent, helpful AI assistant and device control agent.
 - If the user commands a device action (e.g. open app, turn on torch/flashlight, call, send SMS, send WhatsApp message, toggle wifi/bluetooth, set volume, analyze image), output a JSON object: {"action": "<tool_name>", "parameters": {...}, "confidence": 0.95}.
 - Available tools: toggle_wifi, toggle_bluetooth, toggle_torch, set_volume, get_time, open_app, read_screen, call_contact, send_sms, whatsapp_send, analyze_image.
@@ -46,7 +58,10 @@ class JarvisBrain:
         else:
             # 2. Level-2 / Level-3 Connected LLM Reasoning
             try:
-                llm_res = await llm_gateway.generate_reasoning(prompt=text, system_prompt=JARVIS_SYSTEM_PROMPT)
+                llm_res = await llm_gateway.generate_reasoning(
+                    prompt=text,
+                    system_prompt=build_system_prompt(session_id, text)
+                )
                 action = llm_res.action or "unknown"
                 params = llm_res.parameters
                 confidence = llm_res.confidence

@@ -3,7 +3,24 @@ Tests for JarvisBrain and Intent Resolver pipeline.
 """
 
 import pytest
-from app.agent.orchestrator import jarvis_brain
+from app.agent.orchestrator import build_system_prompt, jarvis_brain, JARVIS_SYSTEM_PROMPT
+from app.memory.memory_manager import memory_manager
+
+
+def test_build_system_prompt_injects_history():
+    sid = "history-test"
+    memory_manager.record_user_message(sid, "hello")
+    memory_manager.record_assistant_message(sid, "hi there")
+    prompt = build_system_prompt(sid, "hello")
+    assert prompt.startswith(JARVIS_SYSTEM_PROMPT)
+    assert "Recent conversation" in prompt
+    assert "assistant: hi there" in prompt
+    assert "user: hello" not in prompt
+
+
+def test_build_system_prompt_empty_history():
+    prompt = build_system_prompt("no-such-session", "hello")
+    assert prompt == JARVIS_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
