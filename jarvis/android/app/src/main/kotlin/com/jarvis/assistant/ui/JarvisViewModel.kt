@@ -53,7 +53,13 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         refreshPermissions()
         _uiState.update { it.copy(messages = memoryStore.getHistory()) }
         refreshProviders()
-        JarvisForegroundService.onUtterance = { sendUtterance(it) }
+        JarvisForegroundService.onUtterance = { text ->
+            val ack = sendUtterance(text)
+            if (ack.isNotBlank()) JarvisForegroundService.speak?.invoke(ack)
+        }
+        JarvisForegroundService.onResponseDone = {
+            _uiState.update { it.copy(voiceState = VoiceState.IDLE) }
+        }
         ContextCompat.startForegroundService(application, Intent(application, JarvisForegroundService::class.java))
     }
 
@@ -80,8 +86,8 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun sendUtterance(text: String) {
-        if (text.isBlank()) return
+    fun sendUtterance(text: String): String {
+        if (text.isBlank()) return ""
         memoryStore.recordUserMessage(text)
         val plan = brain.processCommand(text)
         val ack: String = when (val intent = plan.intent) {
@@ -107,5 +113,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
                 runtimeState = RuntimeState.ACTING
             )
         }
+        return ack
     }
 }

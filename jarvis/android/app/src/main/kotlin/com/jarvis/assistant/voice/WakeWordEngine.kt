@@ -61,6 +61,10 @@ class WakeWordEngine(
 
                 override fun onError(error: Int) {
                     Log.e("WakeWordEngine", "Speech recognition error code: $error")
+                    if (error == AndroidSpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        isMonitoring = false
+                        return
+                    }
                     if (isMonitoring) listenOnce()
                 }
 

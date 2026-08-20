@@ -8,7 +8,7 @@ enum class VoiceState { IDLE, WAKE_DETECTED, LISTENING, PROCESSING, SPEAKING, ER
 class VoiceRuntime(
     private val context: Context? = null,
     private val wakeWordEngine: WakeWordEngine = WakeWordEngine(context = context),
-    private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine()
+    private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context)
 ) {
     var state: VoiceState = VoiceState.IDLE
         private set

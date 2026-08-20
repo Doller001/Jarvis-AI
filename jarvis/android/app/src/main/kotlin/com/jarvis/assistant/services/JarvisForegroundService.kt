@@ -15,6 +15,9 @@ class JarvisForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         voiceRuntime = VoiceRuntime(applicationContext)
+        speak = { text ->
+            voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
+        }
         Log.i("JarvisService", "Starting JarvisForegroundService runtime...")
         createNotificationChannel()
     }
@@ -31,8 +34,17 @@ class JarvisForegroundService : Service() {
         return START_STICKY
     }
 
+    fun speakResponse(text: String) {
+        Log.i("JarvisService", "Speaking response: '$text'")
+        voiceRuntime.speakResponse(text) {
+            onResponseDone?.invoke()
+        }
+    }
+
     companion object {
         var onUtterance: ((String) -> Unit)? = null
+        var onResponseDone: (() -> Unit)? = null
+        var speak: ((String) -> Unit)? = null
     }
 
     private fun createNotificationChannel() {
