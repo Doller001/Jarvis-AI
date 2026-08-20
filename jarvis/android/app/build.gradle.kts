@@ -19,6 +19,11 @@ android {
         // Picovoice Console AccessKey for Porcupine wake-word detection.
         // Leave empty to run in fallback text-matching mode.
         buildConfigField("String", "JARVIS_PICOVOICE_ACCESS_KEY", "\"\"")
+
+        ndk {
+            // Ship only phone ABIs — drop emulator-only x86 for a smaller APK.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
