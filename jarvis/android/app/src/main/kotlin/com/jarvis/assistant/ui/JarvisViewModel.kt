@@ -47,6 +47,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     private val memoryStore = MemoryStore()
     private val brain = JarvisBrain()
     private val apiClient = ApiClient()
+    private val commandExecutor = com.jarvis.assistant.execution.CommandExecutor(application)
 
     private val _uiState = MutableStateFlow(JarvisUiState())
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
@@ -69,6 +70,10 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { it.copy(wakeListening = active) }
         }
         ContextCompat.startForegroundService(application, Intent(application, JarvisForegroundService::class.java))
+    }
+
+    fun startListening() {
+        JarvisForegroundService.startCommandListening?.invoke()
     }
 
     fun refreshProviders() {
@@ -104,22 +109,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         if (text.isBlank()) return ""
         memoryStore.recordUserMessage(text)
         val plan = brain.processCommand(text)
-        val ack: String = when (val intent = plan.intent) {
-            is JarvisIntent.CallContact -> "Calling ${intent.contactName}…"
-            is JarvisIntent.SendSms -> "Sending SMS to ${intent.recipient}…"
-            is JarvisIntent.SendWhatsApp -> "Sending WhatsApp message to ${intent.contactName}…"
-            is JarvisIntent.OpenApp -> "Opening ${intent.appName}…"
-            is JarvisIntent.ToggleTorch -> "Torch turned ${intent.state}."
-            is JarvisIntent.ToggleWifi -> "Wi-Fi turned ${intent.state}."
-            is JarvisIntent.ToggleBluetooth -> "Bluetooth turned ${intent.state}."
-            is JarvisIntent.SetVolume -> "Volume set to ${intent.level}."
-            is JarvisIntent.GetTime -> "Checking the current time…"
-            is JarvisIntent.GetBattery -> "Reading battery level…"
-            is JarvisIntent.ReadScreen -> "Reading the screen…"
-            is JarvisIntent.Unknown -> {
-                routeToCloudBrain(text)
-                "Let me check the cloud brain…"
-            }
+        val ack: String = if (plan.intent is JarvisIntent.Unknown) {
+            routeToCloudBrain(text)
+            "Let me check the cloud brain…"
+        } else {
+            commandExecutor.execute(plan.intent)
         }
         memoryStore.recordAssistantMessage(ack)
         _uiState.update {

@@ -27,10 +27,13 @@ fun ConversationScreen(
     uiState: JarvisUiState,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
-    onToggleWakeListening: () -> Unit
+    onToggleWakeListening: () -> Unit,
+    onStartListening: () -> Unit = {}
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING ||
+            uiState.voiceState == com.jarvis.assistant.voice.VoiceState.WAKE_DETECTED
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -53,7 +56,7 @@ fun ConversationScreen(
         if (uiState.messages.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    "Say \"Jarvis\" then speak, or type a command like\n\"open YouTube\" or \"call mom\".",
+                    "Say \"Jarvis\" then speak, tap the mic, or type a command like\n\"open YouTube\" or \"turn on torch\".",
                     color = JarvisTextSecondary,
                     fontSize = 14.sp
                 )
@@ -73,7 +76,12 @@ fun ConversationScreen(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                placeholder = { Text("Type a command…", color = JarvisTextSecondary) },
+                placeholder = { 
+                    Text(
+                        if (isListeningNow) "Listening to you… speak now" else "Type a command…",
+                        color = if (isListeningNow) JarvisCyan else JarvisTextSecondary
+                    ) 
+                },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -84,7 +92,22 @@ fun ConversationScreen(
                 ),
                 modifier = Modifier.weight(1f)
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
+            Surface(
+                onClick = onStartListening,
+                shape = RoundedCornerShape(12.dp),
+                color = if (isListeningNow) JarvisCyan else JarvisCard,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Filled.Mic,
+                        contentDescription = "Speak",
+                        tint = if (isListeningNow) JarvisDark else JarvisCyan
+                    )
+                }
+            }
+            Spacer(Modifier.width(6.dp))
             Surface(
                 onClick = { if (text.isNotBlank()) { onSend(text); text = "" } },
                 shape = RoundedCornerShape(12.dp),

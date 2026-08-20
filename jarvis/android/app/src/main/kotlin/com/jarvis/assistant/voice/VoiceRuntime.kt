@@ -75,15 +75,31 @@ class VoiceRuntime(
         playBeep()
         wakeWordEngine.pause() // mic handoff to command recognizer
 
-        stateMachine.transition(VoiceState.COMMAND_LISTENING)
-        notifyState()
-
-        if (fallbackText != null) {
-            // Fallback mode: the command is embedded in the recognized utterance.
-            onCommandReceived(wakeWordEngine.extractCommand(fallbackText))
+        val extractedCommand = if (fallbackText != null) wakeWordEngine.extractCommand(fallbackText) else ""
+        if (extractedCommand.isNotBlank()) {
+            // User said wake word + command in one utterance
+            onCommandReceived(extractedCommand)
         } else {
+            // User said wake phrase — listen for their command until speech ends
+            stateMachine.transition(VoiceState.COMMAND_LISTENING)
+            notifyState()
             startCommandListening()
         }
+    }
+
+    /** Starts listening for a command immediately (e.g. from UI button or direct invocation). */
+    fun startListeningForCommand() {
+        if (state == VoiceState.SPEAKING) {
+            ttsEngine.stop()
+        }
+        wakeWordEngine.pause()
+        playBeep()
+        if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
+            Log.w(TAG, "Cannot transition to COMMAND_LISTENING from $state")
+            return
+        }
+        notifyState()
+        startCommandListening()
     }
 
     private fun startCommandListening() {
@@ -109,7 +125,7 @@ class VoiceRuntime(
             return
         }
         notifyState()
-        Log.i(TAG, "Processing command")
+        Log.i(TAG, "Processing command: '$command'")
         commandCallback?.invoke(command)
     }
 
@@ -120,7 +136,7 @@ class VoiceRuntime(
     }
 
     private fun handleError(reason: String) {
-        Log.e(TAG, "Voice error: $reason — recovering")
+        Log.w(TAG, "Voice event: $reason — recovering")
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechRecognizer.destroy()
         if (stateMachine.transition(VoiceState.ERROR)) notifyState()

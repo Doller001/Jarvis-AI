@@ -32,13 +32,13 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.STOPPED) {
         transition(VoiceState.WAKE_LISTENING) || state == VoiceState.WAKE_LISTENING
 
     private fun isLegal(from: VoiceState, to: VoiceState): Boolean = when (from) {
-        VoiceState.STOPPED -> to == VoiceState.STARTING || to == VoiceState.ERROR
+        VoiceState.STOPPED -> to == VoiceState.STARTING || to == VoiceState.COMMAND_LISTENING || to == VoiceState.ERROR
         VoiceState.STARTING -> to == VoiceState.WAKE_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.WAKE_LISTENING -> to == VoiceState.WAKE_DETECTED || to == VoiceState.SPEAKING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.WAKE_DETECTED -> to == VoiceState.COMMAND_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.COMMAND_LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.SPEAKING -> to == VoiceState.WAKE_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
+        VoiceState.WAKE_LISTENING -> to == VoiceState.WAKE_DETECTED || to == VoiceState.COMMAND_LISTENING || to == VoiceState.PROCESSING || to == VoiceState.SPEAKING || to == VoiceState.STOPPED || to == VoiceState.ERROR
+        VoiceState.WAKE_DETECTED -> to == VoiceState.COMMAND_LISTENING || to == VoiceState.PROCESSING || to == VoiceState.WAKE_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
+        VoiceState.COMMAND_LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.WAKE_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
+        VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.WAKE_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
+        VoiceState.SPEAKING -> to == VoiceState.WAKE_LISTENING || to == VoiceState.COMMAND_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
         VoiceState.ERROR -> to == VoiceState.WAKE_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
     }
 }

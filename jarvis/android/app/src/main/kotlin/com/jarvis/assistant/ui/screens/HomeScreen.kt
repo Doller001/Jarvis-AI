@@ -26,7 +26,8 @@ fun HomeScreen(
     uiState: JarvisUiState,
     onOpenConversation: () -> Unit,
     onOpenProviders: () -> Unit,
-    onOpenPermissions: () -> Unit
+    onOpenPermissions: () -> Unit,
+    onStartListening: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxSize()
@@ -60,7 +61,7 @@ fun HomeScreen(
 
                 Spacer(Modifier.height(24.dp))
 
-                ListeningOrb(voiceState = uiState.voiceState)
+                ListeningOrb(voiceState = uiState.voiceState, onClick = onStartListening)
 
                 Spacer(Modifier.height(16.dp))
                 Text(

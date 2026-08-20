@@ -3,6 +3,7 @@ package com.jarvis.assistant.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,7 +68,8 @@ fun ConnectionPill(connectionState: ConnectionState) {
 @Composable
 fun ListeningOrb(
     voiceState: com.jarvis.assistant.voice.VoiceState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     val isActive = voiceState == com.jarvis.assistant.voice.VoiceState.WAKE_LISTENING ||
             voiceState == com.jarvis.assistant.voice.VoiceState.WAKE_DETECTED ||
@@ -93,7 +95,10 @@ fun ListeningOrb(
     }
 
     Box(
-        modifier = modifier.size(200.dp),
+        modifier = modifier
+            .size(200.dp)
+            .clip(CircleShape)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         contentAlignment = Alignment.Center
     ) {
         // Outer pulse ring

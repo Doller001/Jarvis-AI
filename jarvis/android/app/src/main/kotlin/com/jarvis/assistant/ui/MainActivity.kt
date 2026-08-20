@@ -51,7 +51,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 uiState = uiState,
                 onOpenConversation = { navController.navigate("conversation") },
                 onOpenProviders = { navController.navigate("providers") },
-                onOpenPermissions = { navController.navigate("onboarding") }
+                onOpenPermissions = { navController.navigate("onboarding") },
+                onStartListening = viewModel::startListening
             )
         }
         composable("conversation") {
@@ -59,7 +60,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
                 onSend = viewModel::sendUtterance,
-                onToggleWakeListening = viewModel::toggleWakeListening
+                onToggleWakeListening = viewModel::toggleWakeListening,
+                onStartListening = viewModel::startListening
             )
         }
         composable("providers") {
