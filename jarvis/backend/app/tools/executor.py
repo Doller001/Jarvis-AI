@@ -34,7 +34,7 @@ class ToolExecutor:
             }
 
         if tool_name == "get_time":
-            now = datetime.datetime.now().strftime("%H:%M:%S, %A %d %B %Y")
+            now = datetime.datetime.now().strftime("%I:%M %p, %A %d %B %Y")
             return {
                 "status": "success",
                 "tool": tool_name,
@@ -46,15 +46,42 @@ class ToolExecutor:
             return {
                 "status": "success",
                 "tool": tool_name,
-                "result": "85%",
+                "result": "Battery level is 85%",
                 "parameters": parameters,
             }
 
         # For Android device actions, format payload for device runtime execution
+        state = parameters.get("state")
+        app_name = parameters.get("app_name")
+        level = parameters.get("level")
+        if tool_name == "toggle_torch":
+            result_msg = f"Turned flashlight {state or 'toggled'}."
+        elif tool_name == "toggle_wifi":
+            result_msg = f"Turned Wi-Fi {state or 'toggled'}."
+        elif tool_name == "toggle_bluetooth":
+            result_msg = f"Turned Bluetooth {state or 'toggled'}."
+        elif tool_name == "set_volume":
+            result_msg = f"Volume adjusted to {level or 50}%."
+        elif tool_name == "open_app":
+            result_msg = f"Opening {app_name or 'app'}."
+        elif tool_name == "read_screen":
+            result_msg = "Reading screen contents."
+        elif tool_name == "call_contact":
+            contact = parameters.get("contact_name", "contact")
+            result_msg = f"Calling {contact}."
+        elif tool_name == "send_sms":
+            recipient = parameters.get("recipient", "contact")
+            result_msg = f"Sending SMS to {recipient}."
+        elif tool_name == "whatsapp_send":
+            contact = parameters.get("contact_name", "contact")
+            result_msg = f"Sending WhatsApp message to {contact}."
+        else:
+            result_msg = f"Executed {tool_name}."
+
         return {
             "status": "success",
             "tool": tool_name,
-            "result": f"Dispatched '{tool_name}' to client runtime",
+            "result": result_msg,
             "parameters": parameters,
             "dispatch_to_device": True,
         }

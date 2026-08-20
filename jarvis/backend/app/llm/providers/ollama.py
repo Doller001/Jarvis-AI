@@ -3,12 +3,11 @@ Real Ollama Local API Adapter for Jarvis.
 """
 
 import os
-import json
 import logging
 from typing import List, AsyncGenerator, Optional
 import httpx
 
-from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse
+from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse, extract_action_and_params
 
 logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -65,23 +64,13 @@ class OllamaProvider(LLMProvider):
             data = resp.json()
             response_text = data.get("response", "")
 
-            action = "unknown"
-            params = {}
-            confidence = 0.85
-            try:
-                if response_text.strip().startswith("{"):
-                    parsed = json.loads(response_text)
-                    action = parsed.get("action", action)
-                    params = parsed.get("parameters", params)
-                    confidence = parsed.get("confidence", confidence)
-            except Exception:
-                pass
+            action, params, confidence = extract_action_and_params(response_text)
 
             return LLMResponse(
                 text=response_text,
-                action=action,
+                action=action or "unknown",
                 parameters=params,
-                confidence=confidence,
+                confidence=confidence if action else 0.85,
                 provider="ollama",
                 model=model,
                 raw_response=data

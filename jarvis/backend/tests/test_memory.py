@@ -2,6 +2,7 @@
 Tests for Memory Persistent Store (MongoDB Atlas, Supabase PostgreSQL, SQLite).
 """
 
+import sys
 import pytest
 from unittest.mock import MagicMock
 from app.memory.persistent_store import PersistentStore
@@ -30,11 +31,15 @@ def test_sqlite_fallback_memory(tmp_path, monkeypatch):
 
 
 def test_mock_mongodb_atlas(monkeypatch):
+    mock_pymongo = MagicMock()
     mock_client = MagicMock()
     mock_db = MagicMock()
     mock_client.get_default_database.return_value.name = "jarvis"
     mock_client.__getitem__.return_value = mock_db
-    
+    mock_pymongo.MongoClient.return_value = mock_client
+    mock_pymongo.ASCENDING = 1
+    mock_pymongo.DESCENDING = -1
+
     mock_conversations = MagicMock()
     mock_db.conversations = mock_conversations
     # Sort DESC returns latest first (101.0 assistant, then 100.0 user)
@@ -43,8 +48,8 @@ def test_mock_mongodb_atlas(monkeypatch):
         {"role": "user", "content": "Hi", "timestamp": 100.0}
     ]
 
+    monkeypatch.setitem(sys.modules, "pymongo", mock_pymongo)
     monkeypatch.setenv("MONGODB_URI", "mongodb+srv://user:pass@cluster.mongodb.net/jarvis")
-    monkeypatch.setattr("pymongo.MongoClient", lambda uri, **kwargs: mock_client)
 
     store = PersistentStore()
     assert store.is_mongodb

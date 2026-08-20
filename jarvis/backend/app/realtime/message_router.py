@@ -8,6 +8,7 @@ from typing import Dict, Any
 from app.agent.orchestrator import jarvis_brain
 from app.tools.executor import tool_executor
 from app.security.token_manager import token_manager
+from app.memory.memory_manager import memory_manager
 from app.realtime.connection_manager import connection_manager
 from app.realtime.protocol import (
     ClientCommandPayload,
@@ -21,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 class MessageRouter:
     async def route_message(self, session_id: str, raw_data: Dict[str, Any]) -> None:
+        if not isinstance(raw_data, dict):
+            return
+
         msg_type = raw_data.get("type")
 
         if msg_type == WireEventType.COMMAND:
@@ -72,13 +76,16 @@ class MessageRouter:
             return
 
         exec_res = await tool_executor.execute_tool(valid_payload.action, valid_payload.parameters)
+        response_text = exec_res.get("result") or f"Jarvis confirmed and executed '{valid_payload.action}'."
+        memory_manager.record_assistant_message(session_id, response_text)
+
         res = {
             "type": WireEventType.ACTION_RESULT,
             "request_id": payload.request_id,
             "session_id": session_id,
             "action": valid_payload.action,
             "parameters": valid_payload.parameters,
-            "response_text": f"Jarvis confirmed and executed '{valid_payload.action}'.",
+            "response_text": response_text,
             "execution_result": exec_res
         }
         await connection_manager.send_json(session_id, res)

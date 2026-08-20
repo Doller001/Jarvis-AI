@@ -2,9 +2,52 @@
 Base interface for Jarvis LLM Provider Adapters.
 """
 
+import re
+import json
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, AsyncGenerator, Optional
+from typing import List, Dict, Any, AsyncGenerator, Optional, Tuple
 from pydantic import BaseModel, Field
+
+
+def extract_action_and_params(content: str) -> Tuple[Optional[str], Dict[str, Any], float]:
+    """
+    Extracts action, parameters, and confidence from LLM response text,
+    supporting raw JSON, markdown code fences (```json ... ```), and embedded JSON.
+    """
+    if not content:
+        return None, {}, 0.0
+
+    text = content.strip()
+
+    # Check for markdown code blocks (```json ... ``` or ``` ... ```)
+    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict) and "action" in parsed:
+                return parsed.get("action"), parsed.get("parameters", {}), float(parsed.get("confidence", 0.95))
+        except Exception:
+            pass
+
+    # Check for raw or embedded JSON object with "action"
+    match = re.search(r"\{[^{}]*\"action\"\s*:\s*\"[^\"]+\"[^{}]*\}", text, re.DOTALL)
+    if match:
+        try:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, dict) and "action" in parsed:
+                return parsed.get("action"), parsed.get("parameters", {}), float(parsed.get("confidence", 0.95))
+        except Exception:
+            pass
+
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict) and "action" in parsed:
+                return parsed.get("action"), parsed.get("parameters", {}), float(parsed.get("confidence", 0.95))
+        except Exception:
+            pass
+
+    return None, {}, 0.0
 
 
 class ModelInfo(BaseModel):

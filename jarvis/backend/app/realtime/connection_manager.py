@@ -26,7 +26,11 @@ class ConnectionManager:
     async def send_json(self, session_id: str, data: Dict[str, Any]) -> None:
         websocket = self.active_connections.get(session_id)
         if websocket:
-            await websocket.send_json(data)
+            try:
+                await websocket.send_json(data)
+            except Exception as e:
+                logger.warning(f"Failed to send JSON to WebSocket session {session_id}: {e}")
+                self.disconnect(session_id)
 
 
 connection_manager = ConnectionManager()

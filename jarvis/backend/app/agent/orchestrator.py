@@ -75,7 +75,7 @@ class JarvisBrain:
                     "message": str(e)
                 }
 
-        if action == "unknown" or not action or action == "chat":
+        if action == "unknown" or not action or action == "chat" or action == "answer":
             ans_text = llm_text_response or "Hello! I am Jarvis. How can I assist you today?"
             res = {
                 "type": "command_result",
@@ -104,7 +104,7 @@ class JarvisBrain:
 
         # 4. Tool Execution & Memory Persistence
         exec_res = await tool_executor.execute_tool(action, params)
-        response_text = f"Jarvis executed: {action}"
+        response_text = exec_res.get("result") or f"Jarvis executed: {action}"
         memory_manager.record_assistant_message(session_id, response_text)
 
         return {

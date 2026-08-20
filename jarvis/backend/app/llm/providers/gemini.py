@@ -3,12 +3,11 @@ Real Google Gemini API Adapter for Jarvis.
 """
 
 import os
-import json
 import logging
 from typing import List, AsyncGenerator, Optional
 import httpx
 
-from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse
+from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse, extract_action_and_params
 
 logger = logging.getLogger(__name__)
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -16,11 +15,12 @@ GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 class GeminiProvider(LLMProvider):
     def __init__(self, api_key: Optional[str] = None):
+        self._api_key = api_key
         super().__init__("gemini", api_key=api_key)
 
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key or os.getenv("GEMINI_API_KEY")
+        return getattr(self, "_api_key", None) or os.getenv("GEMINI_API_KEY")
 
     @api_key.setter
     def api_key(self, value: Optional[str]):
@@ -86,23 +86,13 @@ class GeminiProvider(LLMProvider):
                 if parts:
                     text = parts[0].get("text", "")
 
-            action = "unknown"
-            params = {}
-            confidence = 0.92
-            try:
-                if text.strip().startswith("{"):
-                    parsed = json.loads(text)
-                    action = parsed.get("action", action)
-                    params = parsed.get("parameters", params)
-                    confidence = parsed.get("confidence", confidence)
-            except Exception:
-                pass
+            action, params, confidence = extract_action_and_params(text)
 
             return LLMResponse(
                 text=text,
-                action=action,
+                action=action or "unknown",
                 parameters=params,
-                confidence=confidence,
+                confidence=confidence if action else 0.92,
                 provider="gemini",
                 model=model,
                 raw_response=data

@@ -2,7 +2,9 @@
 Tests for Jarvis Security Layer.
 """
 
+import logging
 from app.security.token_manager import ConfirmationTokenManager
+from app.security.redaction import RedactingFormatter
 
 
 def test_token_randomness_and_replay_protection():
@@ -18,3 +20,20 @@ def test_token_randomness_and_replay_protection():
     # Replay attack fails
     replayed = mgr.validate_and_consume(t.token, session_id="s1")
     assert replayed is None
+
+
+def test_redacting_formatter_safely_redacts_keys_and_standalone_tokens():
+    formatter = RedactingFormatter()
+    record1 = logging.LogRecord(
+        name="test", level=logging.INFO, pathname="", lineno=0,
+        msg="Connecting with api_key=secret12345 to backend", args=(), exc_info=None
+    )
+    assert "[REDACTED]" in formatter.format(record1)
+    assert "secret12345" not in formatter.format(record1)
+
+    record2 = logging.LogRecord(
+        name="test", level=logging.INFO, pathname="", lineno=0,
+        msg="Using groq key gsk_123456789012345678901234 in header", args=(), exc_info=None
+    )
+    assert "[REDACTED_API_KEY]" in formatter.format(record2)
+    assert "gsk_" not in formatter.format(record2)

@@ -5,6 +5,7 @@ Tests for LLM Registry and Provider Discovery in Jarvis.
 import pytest
 from app.llm.registry import llm_registry, LLMRegistry
 from app.llm.providers.ollama import OllamaProvider
+from app.llm.base import extract_action_and_params
 
 
 @pytest.mark.asyncio
@@ -22,3 +23,23 @@ def test_registry_active_selection():
     sel = reg.get_active_selection()
     assert sel["provider"] == "groq"
     assert sel["model"] == "llama-3.3-70b-versatile"
+
+
+def test_extract_action_and_params_markdown_and_raw():
+    # Markdown json block
+    text1 = '```json\n{"action": "toggle_torch", "parameters": {"state": "on"}, "confidence": 0.98}\n```'
+    action1, params1, conf1 = extract_action_and_params(text1)
+    assert action1 == "toggle_torch"
+    assert params1 == {"state": "on"}
+    assert conf1 == 0.98
+
+    # Raw JSON
+    text2 = '{"action": "open_app", "parameters": {"app_name": "YouTube"}}'
+    action2, params2, conf2 = extract_action_and_params(text2)
+    assert action2 == "open_app"
+    assert params2 == {"app_name": "YouTube"}
+
+    # Conversational text without JSON action
+    text3 = "The capital of France is Paris."
+    action3, params3, conf3 = extract_action_and_params(text3)
+    assert action3 is None

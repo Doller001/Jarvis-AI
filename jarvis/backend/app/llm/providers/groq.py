@@ -3,12 +3,11 @@ Real Groq API Adapter for Jarvis.
 """
 
 import os
-import json
 import logging
 from typing import List, AsyncGenerator, Optional
 import httpx
 
-from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse
+from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse, extract_action_and_params
 
 logger = logging.getLogger(__name__)
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
@@ -16,11 +15,12 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 class GroqProvider(LLMProvider):
     def __init__(self, api_key: Optional[str] = None):
+        self._api_key = api_key
         super().__init__("groq", api_key=api_key)
 
     @property
     def api_key(self) -> Optional[str]:
-        return self._api_key or os.getenv("GROQ_API_KEY")
+        return getattr(self, "_api_key", None) or os.getenv("GROQ_API_KEY")
 
     @api_key.setter
     def api_key(self, value: Optional[str]):
@@ -85,23 +85,13 @@ class GroqProvider(LLMProvider):
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
 
-            action = "unknown"
-            params = {}
-            confidence = 0.95
-            try:
-                if content.strip().startswith("{"):
-                    parsed = json.loads(content)
-                    action = parsed.get("action", action)
-                    params = parsed.get("parameters", params)
-                    confidence = parsed.get("confidence", confidence)
-            except Exception:
-                pass
+            action, params, confidence = extract_action_and_params(content)
 
             return LLMResponse(
                 text=content,
-                action=action,
+                action=action or "unknown",
                 parameters=params,
-                confidence=confidence,
+                confidence=confidence if action else 0.95,
                 provider="groq",
                 model=model,
                 raw_response=data

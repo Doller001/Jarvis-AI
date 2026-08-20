@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 class ProviderRouter:
     def __init__(self) -> None:
         self.circuit_breakers: Dict[str, CircuitBreaker] = {
+            "nvidia": CircuitBreaker(),
             "groq": CircuitBreaker(),
             "openrouter": CircuitBreaker(),
             "gemini": CircuitBreaker(),
@@ -24,7 +25,7 @@ class ProviderRouter:
         fallback_fn: Callable[[], Awaitable[Any]]
     ) -> Any:
         for provider_name, fn in providers_chain:
-            cb = self.circuit_breakers.get(provider_name, CircuitBreaker())
+            cb = self.circuit_breakers.setdefault(provider_name, CircuitBreaker())
             if cb.allow_execution():
                 try:
                     result = await fn()
