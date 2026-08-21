@@ -20,6 +20,13 @@ android {
         // Leave empty to run in fallback text-matching mode.
         buildConfigField("String", "JARVIS_PICOVOICE_ACCESS_KEY", "\"\"")
 
+        // Strip non-essential language strings to shrink APK
+        resourceConfigurations += listOf("en", "hi")
+
+        vectorDrawables {
+            useSupportLibrary = true
+        }
+
         ndk {
             // Ship only phone ABIs — drop emulator-only x86 for a smaller APK.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -28,11 +35,29 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
+            )
+        }
+        debug {
+            isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/AL2.0",
+                "META-INF/LGPL2.1",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/DEPENDENCIES",
+                "META-INF/*.version"
             )
         }
     }
@@ -48,6 +73,9 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        )
     }
 
     buildFeatures {
@@ -71,7 +99,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    // Extended Material icons (Mic, Call, Contacts, Sms, CameraAlt, TouchApp, BatteryChargingFull…)
+    // Extended Material icons
     implementation("androidx.compose.material:material-icons-extended")
 
     // Navigation (Compose)
