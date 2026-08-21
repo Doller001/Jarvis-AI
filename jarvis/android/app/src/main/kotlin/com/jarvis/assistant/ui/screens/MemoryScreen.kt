@@ -222,17 +222,17 @@ fun KnowledgeGraphCard(uiState: JarvisUiState) {
             // Floating Node Badges
             Box(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                 GraphNodeBadge(
-                    label = "User: Device",
+                    label = "Owner: Minaty",
                     color = JarvisCyan,
                     modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 22.dp)
                 )
                 GraphNodeBadge(
-                    label = "LLM: ${uiState.activeProvider}",
+                    label = "Assistant: JARVIS (AGI)",
                     color = JarvisBlue,
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp)
                 )
                 GraphNodeBadge(
-                    label = "Voice: TTS Active",
+                    label = "Audio: Bluetooth/Device",
                     color = Color(0xFFC084FC),
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 26.dp)
                 )
@@ -242,7 +242,7 @@ fun KnowledgeGraphCard(uiState: JarvisUiState) {
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 12.dp)
                 )
                 GraphNodeBadge(
-                    label = "Project: Jarvis AI",
+                    label = "Role: Cognitive Operator",
                     color = JarvisAmber,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 14.dp)
                 )

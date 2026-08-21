@@ -2,6 +2,10 @@ package com.jarvis.assistant.voice
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,19 +17,66 @@ import java.util.Locale
 
 /**
  * Command-mode speech recognizer. Runs when listening for user commands.
- * Listens continuously until the user stops speaking, capturing partial
- * and final recognition results, and recovers speech even if the underlying
- * engine signals timeout after utterance completion.
+ * Captures speech continuously, handles Bluetooth / Device audio focus,
+ * recovers partial utterances on early silence, and supports multi-language.
  */
 class SpeechRecognizer(private val context: Context? = null) {
+
+    companion object {
+        private const val TAG = "SpeechRecognizer"
+    }
+
     private var isListening = false
     private var speechRecognizer: AndroidSpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastRecognizedText = ""
+    private val audioManager: AudioManager? = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var audioFocusRequest: AudioFocusRequest? = null
+
+    private fun requestAudioFocus() {
+        try {
+            val am = audioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val playbackAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+                val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                    .setAudioAttributes(playbackAttributes)
+                    .setAcceptsDelayedFocusGain(false)
+                    .build()
+                audioFocusRequest = request
+                am.requestAudioFocus(request)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Audio focus request failed", e)
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        try {
+            val am = audioManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(null)
+            }
+        } catch (_: Exception) {}
+    }
 
     fun startListening(onResult: (String) -> Unit, onError: (Int) -> Unit) {
         val ctx = context ?: run {
-            Log.w("SpeechRecognizer", "Context not available for native STT")
+            Log.w(TAG, "Context not available for native STT")
+            onError(AndroidSpeechRecognizer.ERROR_CLIENT)
+            return
+        }
+
+        if (!AndroidSpeechRecognizer.isRecognitionAvailable(ctx)) {
+            Log.e(TAG, "Speech recognition is not available on this device!")
             onError(AndroidSpeechRecognizer.ERROR_CLIENT)
             return
         }
@@ -34,6 +85,8 @@ class SpeechRecognizer(private val context: Context? = null) {
             try {
                 isListening = true
                 lastRecognizedText = ""
+
+                requestAudioFocus()
 
                 // Cancel previous session if any to avoid busy/stuck states
                 try {
@@ -45,22 +98,23 @@ class SpeechRecognizer(private val context: Context? = null) {
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
+                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                    // Keep listening until the user stops speaking
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000L)
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle?) {
-                        Log.d("SpeechRecognizer", "Ready for speech — listening...")
+                        Log.d(TAG, "Ready for speech — microphone active")
                     }
 
                     override fun onBeginningOfSpeech() {
-                        Log.d("SpeechRecognizer", "User began speaking")
+                        Log.d(TAG, "User started speaking")
                     }
 
                     override fun onRmsChanged(rmsdB: Float) {}
@@ -68,20 +122,21 @@ class SpeechRecognizer(private val context: Context? = null) {
                     override fun onBufferReceived(buffer: ByteArray?) {}
 
                     override fun onEndOfSpeech() {
-                        Log.d("SpeechRecognizer", "User stopped speaking — finalizing")
+                        Log.d(TAG, "User finished speaking — processing")
                     }
 
                     override fun onError(error: Int) {
                         isListening = false
-                        Log.e("SpeechRecognizer", "Speech recognition error code: $error")
+                        abandonAudioFocus()
+                        Log.w(TAG, "Speech recognition code: $error")
 
-                        // If user spoke and partial results were captured, recover them instead of failing
+                        // If partial results captured, deliver them instead of discarding
                         if (lastRecognizedText.isNotBlank() && (
                                 error == AndroidSpeechRecognizer.ERROR_NO_MATCH ||
                                 error == AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
                                 error == AndroidSpeechRecognizer.ERROR_CLIENT
                             )) {
-                            Log.i("SpeechRecognizer", "Recovered utterance from partial results: '$lastRecognizedText'")
+                            Log.i(TAG, "Recovered utterance from captured speech: '$lastRecognizedText'")
                             val text = lastRecognizedText
                             lastRecognizedText = ""
                             onResult(text)
@@ -92,15 +147,16 @@ class SpeechRecognizer(private val context: Context? = null) {
 
                     override fun onResults(results: Bundle?) {
                         isListening = false
+                        abandonAudioFocus()
                         val matches = results?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
                         val text = matches?.firstOrNull { it.isNotBlank() } ?: lastRecognizedText
                         lastRecognizedText = ""
 
                         if (text.isNotBlank()) {
-                            Log.i("SpeechRecognizer", "Command received: '$text'")
+                            Log.i(TAG, "Speech recognized: '$text'")
                             onResult(text)
                         } else {
-                            Log.w("SpeechRecognizer", "No speech matched")
+                            Log.w(TAG, "No speech recognized")
                             onError(AndroidSpeechRecognizer.ERROR_NO_MATCH)
                         }
                     }
@@ -110,7 +166,7 @@ class SpeechRecognizer(private val context: Context? = null) {
                         val text = matches?.firstOrNull { it.isNotBlank() }
                         if (!text.isNullOrBlank()) {
                             lastRecognizedText = text
-                            Log.d("SpeechRecognizer", "Partial speech captured: '$text'")
+                            Log.d(TAG, "Partial speech: '$text'")
                         }
                     }
 
@@ -118,10 +174,11 @@ class SpeechRecognizer(private val context: Context? = null) {
                 })
 
                 speechRecognizer?.startListening(intent)
-                Log.i("SpeechRecognizer", "STT engine listening started")
+                Log.i(TAG, "STT engine started listening")
             } catch (e: Exception) {
-                Log.e("SpeechRecognizer", "Failed to start speech recognizer", e)
+                Log.e(TAG, "Failed to start speech recognizer", e)
                 isListening = false
+                abandonAudioFocus()
                 onError(AndroidSpeechRecognizer.ERROR_CLIENT)
             }
         }
@@ -129,28 +186,26 @@ class SpeechRecognizer(private val context: Context? = null) {
 
     fun stopListening() {
         isListening = false
+        abandonAudioFocus()
         mainHandler.post {
             try {
                 speechRecognizer?.stopListening()
             } catch (e: Exception) {
-                Log.e("SpeechRecognizer", "Failed to stop speech recognizer", e)
+                Log.e(TAG, "Failed to stop speech recognizer", e)
             }
         }
     }
 
-    /**
-     * Destroy is deferred to the main thread: destroying a recognizer from
-     * inside its own callback is undefined behaviour on some OEM builds.
-     */
     fun destroy() {
         isListening = false
+        abandonAudioFocus()
         lastRecognizedText = ""
         mainHandler.post {
             try {
                 speechRecognizer?.cancel()
                 speechRecognizer?.destroy()
             } catch (e: Exception) {
-                Log.e("SpeechRecognizer", "Failed to destroy speech recognizer", e)
+                Log.e(TAG, "Failed to destroy speech recognizer", e)
             }
             speechRecognizer = null
         }

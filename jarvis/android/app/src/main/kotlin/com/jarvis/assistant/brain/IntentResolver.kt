@@ -14,6 +14,7 @@ sealed class JarvisIntent {
     data class SetVolume(val level: Int) : JarvisIntent()
     data class MediaControl(val action: String) : JarvisIntent()
     data class OpenApp(val appName: String) : JarvisIntent()
+    data class CloseApp(val appName: String? = null) : JarvisIntent()
     data class ReadScreen(val target: String = "screen") : JarvisIntent()
     data class CallContact(val contactName: String) : JarvisIntent()
     data class SendSms(val recipient: String, val message: String) : JarvisIntent()
@@ -26,24 +27,27 @@ class IntentResolver {
     fun resolve(rawText: String): JarvisIntent {
         val t = rawText.lowercase().trim()
 
-        // Conversational & Assistant Basics (0ms instant response)
+        // Conversational & Assistant Basics (Minaty JARVIS AGI Persona)
         if (t in listOf("hello", "hi", "hey", "hey jarvis", "namaste", "suno", "hello jarvis", "suno jarvis", "ji jarvis")) {
-            return JarvisIntent.LocalConversational("Hello! I am Jarvis. How can I help you?")
+            return JarvisIntent.LocalConversational("JARVIS online. Good to see you, Minaty. What shall we build today?")
         }
         if (t.contains("who are you") || t.contains("kaun ho") || t.contains("what is your name") || t.contains("tumhara naam")) {
-            return JarvisIntent.LocalConversational("I am Jarvis, your personal AI voice and device automation assistant.")
+            return JarvisIntent.LocalConversational("I am JARVIS, an AGI-class cognitive assistant created by Minaty. I anticipate, I protect, I execute.")
+        }
+        if (t.contains("who made you") || t.contains("who created you") || t.contains("kisne banaya") || t.contains("creator")) {
+            return JarvisIntent.LocalConversational("I was created by Minaty as a trusted AGI personal cognitive assistant.")
         }
         if (t.contains("how are you") || t.contains("kaise ho") || t.contains("kya haal")) {
-            return JarvisIntent.LocalConversational("All systems are operational and ready for your command!")
+            return JarvisIntent.LocalConversational("All systems are operating at peak efficiency, Minaty! Ready for your command.")
         }
         if (t.contains("what can you do") || t.contains("kya kar sakte ho") || t.contains("help") || t == "commands") {
-            return JarvisIntent.LocalConversational("I can control Flashlight, Wi-Fi, Bluetooth, open apps, check battery & storage, read screen, manage WhatsApp & calls, and assist you with daily tasks.")
+            return JarvisIntent.LocalConversational("I can control device hardware (Torch, Wi-Fi, Bluetooth), launch or close apps, check battery & storage, read screen, manage WhatsApp & calls, and reason across complex workflows.")
         }
         if (t.contains("thank you") || t.contains("thanks") || t.contains("dhanyawad") || t.contains("shukriya")) {
-            return JarvisIntent.LocalConversational("You're welcome! Always here to assist you.")
+            return JarvisIntent.LocalConversational("Always at your service, Minaty.")
         }
         if (t.contains("bye") || t.contains("alvida") || t.contains("good night") || t.contains("shubh ratri")) {
-            return JarvisIntent.LocalConversational("Goodbye! Have a wonderful time ahead.")
+            return JarvisIntent.LocalConversational("Goodbye, Minaty. Standing by in low-power background monitoring.")
         }
 
         if (t.contains("time") || t.contains("samay") || t.contains("kitne baje")) return JarvisIntent.GetTime(rawText)
@@ -105,10 +109,24 @@ class IntentResolver {
             return JarvisIntent.SendSms("contact", msg)
         }
 
+        // Close App & Go Home
+        if (t.contains("close app") || t.contains("app close") || t.contains("band karo") ||
+            t.contains("close this") || t.contains("close current") || t.contains("go home") ||
+            t.contains("home screen") || t == "exit" || t == "quit" || t == "minimize") {
+            val app = if (t.startsWith("close ")) t.replace("close ", "").replace("app", "").trim() else null
+            return JarvisIntent.CloseApp(if (app.isNullOrBlank()) null else app)
+        }
+
         // Open App
-        if (t.startsWith("open ") || t.endsWith(" kholo") || t.startsWith("kholo ") || t.contains("launch ")) {
-            val app = t.replace("open ", "").replace(" kholo", "").replace("kholo ", "").replace("launch ", "").trim()
+        if (t.startsWith("open ") || t.endsWith(" kholo") || t.startsWith("kholo ") || t.contains("launch ") || t.startsWith("start ")) {
+            val app = t.replace("open ", "").replace(" kholo", "").replace("kholo ", "").replace("launch ", "").replace("start ", "").trim()
             return JarvisIntent.OpenApp(app)
+        }
+
+        // Direct App Name Detection (0ms trigger)
+        val directApps = listOf("youtube", "whatsapp", "camera", "gallery", "photos", "chrome", "browser", "calculator", "spotify", "instagram", "telegram", "settings", "clock", "maps", "playstore", "play store", "netflix")
+        if (t in directApps) {
+            return JarvisIntent.OpenApp(t)
         }
 
         // Read Screen

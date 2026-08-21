@@ -28,7 +28,8 @@ class VoiceRuntime(
         detector = context?.let { PorcupineWakeWordDetector(it, config) }
     ),
     private val speechRecognizer: SpeechRecognizer = SpeechRecognizer(context = context),
-    private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context)
+    private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context),
+    private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context)
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
@@ -52,6 +53,7 @@ class VoiceRuntime(
 
     fun startRuntime(onCommandRecognized: (String) -> Unit) {
         if (state != VoiceState.STOPPED) return
+        audioRouteManager.start()
         commandCallback = onCommandRecognized
         stateMachine.transition(VoiceState.STARTING)
         notifyState()
@@ -207,6 +209,7 @@ class VoiceRuntime(
         mainHandler.removeCallbacksAndMessages(null)
         speechRecognizer.destroy()
         wakeWordEngine.release()
+        audioRouteManager.release()
         ttsEngine.shutdown()
         try {
             tone?.release()

@@ -34,7 +34,7 @@ data class JarvisUiState(
     val activeModel: String = "llama-3.3-70b-versatile",
     val isAccessibilityEnabled: Boolean = false,
     val lastUtterance: String = "",
-    val lastResponse: String = "Ready — listening for 'Jarvis'",
+    val lastResponse: String = "JARVIS online. Good to see you, Minaty. What shall we build today?",
     val messages: List<MessageLog> = emptyList(),
     val backendUrl: String = "https://and9-1.onrender.com",
     val providers: List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama"),

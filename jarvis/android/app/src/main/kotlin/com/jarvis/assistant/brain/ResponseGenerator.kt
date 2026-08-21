@@ -11,6 +11,7 @@ class ResponseGenerator {
             is JarvisIntent.SetVolume -> resultMessage
             is JarvisIntent.MediaControl -> resultMessage
             is JarvisIntent.OpenApp -> "Opening ${intent.appName}."
+            is JarvisIntent.CloseApp -> resultMessage
             is JarvisIntent.SendWhatsApp -> "Sending WhatsApp message to ${intent.contactName}."
             else -> resultMessage
         }
