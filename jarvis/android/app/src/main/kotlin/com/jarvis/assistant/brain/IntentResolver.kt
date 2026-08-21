@@ -113,7 +113,8 @@ class IntentResolver {
         // Close App & Go Home
         if (t.contains("close app") || t.contains("app close") || t.contains("band karo") ||
             t.contains("close this") || t.contains("close current") || t.contains("go home") ||
-            t.contains("home screen") || t == "exit" || t == "quit" || t == "minimize") {
+            t.contains("home screen") || t == "exit" || t == "quit" || t == "minimize" ||
+            t.startsWith("close ")) {
             val app = if (t.startsWith("close ")) t.replace("close ", "").replace("app", "").trim() else null
             return JarvisIntent.CloseApp(if (app.isNullOrBlank()) null else app)
         }
