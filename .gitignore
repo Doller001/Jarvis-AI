@@ -38,5 +38,18 @@ Thumbs.db
 # Archives (keep in releases, not in repo)
 *.tar.gz
 
+# Android / Gradle
+.gradle/
+**/build/
+**/app/build/
+*.aar
+local.properties
+.build-env/
+
+# Planning & Agent Cache
+.agents/
+planning/
+
 # Local databases
 *.db
+
