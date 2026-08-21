@@ -4,9 +4,11 @@ API Routes for System Tools and Jarvis Status.
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing import Optional
 
 from app.tools.registry import tool_registry
 from app.agent.orchestrator import jarvis_brain
+from app.retrieval.music_index import music_index
 
 api_router = APIRouter(prefix="/api/v1", tags=["System API"])
 
@@ -15,6 +17,34 @@ class ChatRequest(BaseModel):
     text: str
     session_id: str = "default-session"
     request_id: str = "req-http"
+
+
+class MusicSearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+    language: Optional[str] = None
+    mood: Optional[str] = None
+    era: Optional[str] = None
+    year_min: Optional[int] = None
+    year_max: Optional[int] = None
+
+
+@api_router.get("/music/status")
+async def music_status():
+    """Whether the music vector DB is loaded and how many songs it holds."""
+    import asyncio
+    return await asyncio.to_thread(music_index.status)
+
+
+@api_router.post("/music/search")
+async def music_search(req: MusicSearchRequest):
+    """Semantic song search over the local music vector DB."""
+    import asyncio
+    return await asyncio.to_thread(
+        music_index.search,
+        req.query, req.limit, req.language, req.mood,
+        req.era, req.year_min, req.year_max,
+    )
 
 
 @api_router.get("/tools")

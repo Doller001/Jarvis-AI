@@ -108,4 +108,26 @@ class IntentResolverTest {
         val settings = resolver.resolve("open settings")
         assertTrue(settings is JarvisIntent.OpenSettings)
     }
+
+    @Test
+    fun testNotificationAndScreenResolution() {
+        val notif = resolver.resolve("notification padho")
+        assertTrue(notif is JarvisIntent.ReadNotification)
+
+        val screen = resolver.resolve("screen padho")
+        assertTrue(screen is JarvisIntent.ReadScreen)
+    }
+
+    @Test
+    fun testPersonaAndCloseAppResolution() {
+        val who = resolver.resolve("who are you")
+        assertTrue(who is JarvisIntent.LocalConversational)
+        assertTrue((who as JarvisIntent.LocalConversational).answer.contains("Minaty"))
+
+        val close = resolver.resolve("close youtube app")
+        assertTrue(close is JarvisIntent.CloseApp)
+
+        val home = resolver.resolve("go home")
+        assertTrue(home is JarvisIntent.CloseApp)
+    }
 }

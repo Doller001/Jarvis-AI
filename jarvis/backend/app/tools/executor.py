@@ -2,6 +2,7 @@
 Tool Executor for Jarvis.
 """
 
+import asyncio
 import datetime
 import logging
 from typing import Dict, Any
@@ -23,6 +24,9 @@ class ToolExecutor:
 
         if tool_name == "web_search":
             return await self._execute_web_search(parameters.get("query", ""))
+
+        if tool_name == "search_music":
+            return await self._execute_search_music(parameters)
 
         if tool_name == "analyze_image":
             prompt = parameters.get("prompt", "Describe this image in detail.")
@@ -84,6 +88,55 @@ class ToolExecutor:
             "result": result_msg,
             "parameters": parameters,
             "dispatch_to_device": True,
+        }
+
+    async def _execute_search_music(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Semantic music search against the local vector DB.
+
+        Runs in a thread because embedding is CPU-bound and would otherwise
+        block the event loop (and every other WebSocket client with it).
+        """
+        from app.retrieval.music_index import music_index
+
+        query = (parameters.get("query") or "").strip()
+        if not query:
+            return {"status": "error", "tool": "search_music", "result": "Empty music query"}
+
+        def _int_or_none(v):
+            try:
+                return int(v) if v is not None else None
+            except (TypeError, ValueError):
+                return None
+
+        limit = _int_or_none(parameters.get("limit")) or 5
+        limit = max(1, min(limit, 20))
+
+        payload = await asyncio.to_thread(
+            music_index.search,
+            query,
+            limit,
+            parameters.get("language") or None,
+            parameters.get("mood") or None,
+            parameters.get("era") or None,
+            _int_or_none(parameters.get("year_min")),
+            _int_or_none(parameters.get("year_max")),
+        )
+
+        if payload.get("status") != "success":
+            return {
+                "status": "error",
+                "tool": "search_music",
+                "result": payload.get("error") or "Music index unavailable",
+                "query": query,
+            }
+
+        return {
+            "status": "success",
+            "tool": "search_music",
+            "result": music_index.speak_result(payload),
+            "query": query,
+            "count": payload.get("count", 0),
+            "songs": payload.get("results", []),
         }
 
     async def _execute_web_search(self, query: str) -> Dict[str, Any]:

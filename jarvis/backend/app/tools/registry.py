@@ -104,6 +104,24 @@ class ToolRegistry:
             name="analyze_image", description="Analyze image or screenshot contents using multimodal vision model.", risk_level="safe",
             platform="backend", parameters={"image_url_or_base64": ToolParameter(type="string", description="Base64 image data or URL"), "prompt": ToolParameter(type="string", description="Question about the image", required=False)}
         ))
+        self.register(ToolDefinition(
+            name="search_music",
+            description=(
+                "Semantic search over the local music library to find songs by mood, "
+                "vibe, language, era, artist or free-form description "
+                "(e.g. 'sad hindi song for late night', 'energetic party banger'). "
+                "Use this before playing music so you know WHICH song to play."
+            ),
+            risk_level="safe", platform="backend",
+            parameters={
+                "query": ToolParameter(type="string", description="Natural-language description of the song or vibe wanted"),
+                "limit": ToolParameter(type="integer", description="How many songs to return (default 5)", required=False),
+                "language": ToolParameter(type="string", description="Filter by language, e.g. Hindi, English, Tamil", required=False),
+                "mood": ToolParameter(type="string", description="Filter by mood, e.g. sad, romantic, party, energetic, motivational", required=False),
+                "year_min": ToolParameter(type="integer", description="Earliest release year", required=False),
+                "year_max": ToolParameter(type="integer", description="Latest release year", required=False),
+            }
+        ))
 
         # Risky confirmation tools
         self.register(ToolDefinition(
