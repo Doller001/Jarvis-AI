@@ -119,6 +119,7 @@ class CommandExecutor(private val context: Context? = null) {
                 val screenContent = accessibilityController.readScreen()
                 "Screen contents: $screenContent"
             }
+            is JarvisIntent.LocalConversational -> intent.answer
             is JarvisIntent.Unknown -> "Routed command to cloud brain: \"${intent.raw}\""
         }
     }

@@ -18,12 +18,33 @@ sealed class JarvisIntent {
     data class CallContact(val contactName: String) : JarvisIntent()
     data class SendSms(val recipient: String, val message: String) : JarvisIntent()
     data class SendWhatsApp(val contactName: String, val message: String) : JarvisIntent()
+    data class LocalConversational(val answer: String) : JarvisIntent()
     data class Unknown(val raw: String) : JarvisIntent()
 }
 
 class IntentResolver {
     fun resolve(rawText: String): JarvisIntent {
         val t = rawText.lowercase().trim()
+
+        // Conversational & Assistant Basics (0ms instant response)
+        if (t in listOf("hello", "hi", "hey", "hey jarvis", "namaste", "suno", "hello jarvis", "suno jarvis", "ji jarvis")) {
+            return JarvisIntent.LocalConversational("Hello! I am Jarvis. How can I help you?")
+        }
+        if (t.contains("who are you") || t.contains("kaun ho") || t.contains("what is your name") || t.contains("tumhara naam")) {
+            return JarvisIntent.LocalConversational("I am Jarvis, your personal AI voice and device automation assistant.")
+        }
+        if (t.contains("how are you") || t.contains("kaise ho") || t.contains("kya haal")) {
+            return JarvisIntent.LocalConversational("All systems are operational and ready for your command!")
+        }
+        if (t.contains("what can you do") || t.contains("kya kar sakte ho") || t.contains("help") || t == "commands") {
+            return JarvisIntent.LocalConversational("I can control Flashlight, Wi-Fi, Bluetooth, open apps, check battery & storage, read screen, manage WhatsApp & calls, and assist you with daily tasks.")
+        }
+        if (t.contains("thank you") || t.contains("thanks") || t.contains("dhanyawad") || t.contains("shukriya")) {
+            return JarvisIntent.LocalConversational("You're welcome! Always here to assist you.")
+        }
+        if (t.contains("bye") || t.contains("alvida") || t.contains("good night") || t.contains("shubh ratri")) {
+            return JarvisIntent.LocalConversational("Goodbye! Have a wonderful time ahead.")
+        }
 
         if (t.contains("time") || t.contains("samay") || t.contains("kitne baje")) return JarvisIntent.GetTime(rawText)
         if (t.contains("battery") || t.contains("charge") || t.contains("charging")) return JarvisIntent.GetBattery(rawText)

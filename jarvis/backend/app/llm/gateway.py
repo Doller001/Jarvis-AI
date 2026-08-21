@@ -41,11 +41,27 @@ class LLMGateway:
                 chain.append((p_name, lambda p=p: retry_policy.execute(lambda p=p: p.generate(req))))
 
         async def _local_fallback() -> LLMResponse:
+            p = prompt.lower().strip()
+            if any(w in p for w in ["hello", "hey", "hi", "suno", "namaste"]):
+                ans = "Hello! I am Jarvis. How can I assist you today?"
+            elif any(w in p for w in ["who are you", "what is your name", "aap kaun ho", "tum kaun ho"]):
+                ans = "I am Jarvis, your personal voice and device automation assistant."
+            elif any(w in p for w in ["how are you", "kaise ho", "kya haal"]):
+                ans = "All systems are operating at peak performance! Ready for your command."
+            elif any(w in p for w in ["what can you do", "kya kar sakte ho", "help", "features"]):
+                ans = "I can control device hardware (Torch, Wi-Fi, Volume), launch apps, check storage/battery, manage memory, and assist you with daily tasks."
+            elif any(w in p for w in ["thank", "dhanyawad", "shukriya"]):
+                ans = "You are most welcome! Always at your service."
+            elif any(w in p for w in ["bye", "good night", "alvida"]):
+                ans = "Goodbye! Let me know whenever you need assistance."
+            else:
+                ans = f"Processed '{prompt}'. Connected to Jarvis Cloud Gateway."
+
             return LLMResponse(
-                text="Jarvis local rule response",
-                action="unknown",
-                parameters={},
-                confidence=0.0,
+                text=ans,
+                action="answer",
+                parameters={"query": prompt},
+                confidence=0.95,
                 provider="fallback",
                 model="local-rule",
             )

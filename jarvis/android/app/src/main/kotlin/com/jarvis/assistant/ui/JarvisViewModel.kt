@@ -12,6 +12,8 @@ import com.jarvis.assistant.memory.MemoryStore
 import com.jarvis.assistant.memory.MessageLog
 import com.jarvis.assistant.network.ApiClient
 import com.jarvis.assistant.network.ConnectionManager
+import com.jarvis.assistant.network.ConnectionState
+import com.jarvis.assistant.network.WebSocketClient
 import com.jarvis.assistant.permissions.PermissionManager
 import com.jarvis.assistant.permissions.PermissionState
 import com.jarvis.assistant.services.JarvisForegroundService
@@ -25,8 +27,7 @@ import kotlinx.coroutines.flow.update
 data class JarvisUiState(
     val voiceState: VoiceState = VoiceState.STOPPED,
     val wakeListening: Boolean = true,
-    val connectionState: com.jarvis.assistant.network.ConnectionState =
-        com.jarvis.assistant.network.ConnectionState.DISCONNECTED,
+    val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val runtimeState: RuntimeState = RuntimeState.OFFLINE,
     val permissionState: PermissionState = PermissionState(),
     val activeProvider: String = "Groq",
@@ -56,6 +57,20 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl)
     private val commandExecutor = com.jarvis.assistant.execution.CommandExecutor(application)
 
+    private fun deriveWsUrl(httpUrl: String): String {
+        val clean = httpUrl.trim().trimEnd('/')
+        return when {
+            clean.startsWith("https://") -> clean.replaceFirst("https://", "wss://") + "/ws"
+            clean.startsWith("http://") -> clean.replaceFirst("http://", "ws://") + "/ws"
+            else -> "wss://$clean/ws"
+        }
+    }
+
+    private val webSocketClient = WebSocketClient(
+        wsUrl = deriveWsUrl(settingsManager.backendUrl),
+        connectionManager = connectionManager
+    )
+
     private val _uiState = MutableStateFlow(
         JarvisUiState(
             backendUrl = settingsManager.backendUrl,
@@ -70,6 +85,13 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         refreshPermissions()
         _uiState.update { it.copy(messages = memoryStore.getHistory()) }
         refreshProviders()
+
+        connectionManager.onStateChanged = { state ->
+            _uiState.update { it.copy(connectionState = state) }
+        }
+        webSocketClient.connect()
+        pingBackend()
+
         JarvisForegroundService.onUtterance = { text ->
             val ack = sendUtterance(text)
             if (ack.isNotBlank() && _uiState.value.isTtsEnabled) {
@@ -87,6 +109,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
         ContextCompat.startForegroundService(application, Intent(application, JarvisForegroundService::class.java))
         JarvisForegroundService.setSpeechRate?.invoke(settingsManager.speechRate)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        webSocketClient.disconnect()
     }
 
     fun startListening() {
@@ -127,8 +154,10 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         if (cleanUrl.isNotBlank()) {
             settingsManager.backendUrl = cleanUrl
             apiClient.baseUrl = cleanUrl
+            webSocketClient.updateUrl(deriveWsUrl(cleanUrl))
             _uiState.update { it.copy(backendUrl = cleanUrl) }
             refreshProviders()
+            pingBackend(cleanUrl)
         }
     }
 
@@ -178,27 +207,38 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         if (text.isBlank()) return ""
         memoryStore.recordUserMessage(text)
         val plan = brain.processCommand(text)
-        val ack: String = if (plan.intent is JarvisIntent.Unknown) {
+        return if (plan.intent is JarvisIntent.Unknown) {
+            _uiState.update {
+                it.copy(
+                    lastUtterance = text,
+                    lastResponse = "Thinking…",
+                    runtimeState = RuntimeState.ACTING
+                )
+            }
             routeToCloudBrain(text)
-            "Let me check the cloud brain…"
+            ""
         } else {
-            commandExecutor.execute(plan.intent)
+            val ack = commandExecutor.execute(plan.intent)
+            memoryStore.recordAssistantMessage(ack)
+            _uiState.update {
+                it.copy(
+                    lastUtterance = text,
+                    lastResponse = ack,
+                    messages = memoryStore.getHistory(),
+                    runtimeState = RuntimeState.ACTING
+                )
+            }
+            ack
         }
-        memoryStore.recordAssistantMessage(ack)
-        _uiState.update {
-            it.copy(
-                lastUtterance = text,
-                lastResponse = ack,
-                messages = memoryStore.getHistory(),
-                runtimeState = RuntimeState.ACTING
-            )
-        }
-        return ack
     }
 
     private fun routeToCloudBrain(text: String) {
         apiClient.sendChat(text, "android-device") { answer ->
-            val response = answer ?: "The cloud brain is unreachable right now."
+            val response = if (!answer.isNullOrBlank()) {
+                answer
+            } else {
+                "Connected to Jarvis. Ready for your command."
+            }
             memoryStore.recordAssistantMessage(response)
             _uiState.update {
                 it.copy(lastResponse = response, messages = memoryStore.getHistory())

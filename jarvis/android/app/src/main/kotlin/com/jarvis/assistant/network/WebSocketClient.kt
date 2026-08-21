@@ -7,12 +7,16 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
 
 class WebSocketClient(
     var wsUrl: String = "wss://and9-1.onrender.com/ws",
-    private val connectionManager: ConnectionManager = ConnectionManager()
+    val connectionManager: ConnectionManager = ConnectionManager()
 ) {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var reconnectJob: Job? = null
+
     private var client: OkHttpClient = OkHttpClient.Builder()
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
@@ -36,7 +40,17 @@ class WebSocketClient(
         connect()
     }
 
+    private fun scheduleReconnect() {
+        if (reconnectJob?.isActive == true) return
+        reconnectJob = scope.launch {
+            connectionManager.setConnectionState(ConnectionState.RECONNECTING)
+            delay(5000)
+            connect()
+        }
+    }
+
     fun connect() {
+        reconnectJob?.cancel()
         Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $wsUrl...")
         connectionManager.setConnectionState(ConnectionState.CONNECTING)
         val request = Request.Builder().url(wsUrl).build()
@@ -53,8 +67,9 @@ class WebSocketClient(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e("WebSocketClient", "WebSocket failure: ${t.message}", t)
+                Log.w("WebSocketClient", "WebSocket failure: ${t.message}. Scheduling auto-reconnect...")
                 connectionManager.onDisconnected()
+                scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {

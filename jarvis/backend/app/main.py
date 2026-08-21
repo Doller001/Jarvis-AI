@@ -69,6 +69,7 @@ if os.path.exists(webapp_dir):
     app.mount("/webapp", StaticFiles(directory=webapp_dir, html=True), name="webapp")
 
 @app.get("/", tags=["System"])
+@app.head("/", tags=["System"])
 async def root_redirect():
     if os.path.exists(webapp_dir):
         return RedirectResponse(url="/webapp/")
@@ -76,11 +77,13 @@ async def root_redirect():
 
 
 @app.get("/health", tags=["System"])
+@app.head("/health", tags=["System"])
 async def root_health():
     return {"status": "healthy", "service": "jarvis-backend", "version": "1.0.0"}
 
 
 @app.get("/api/v1/health", tags=["System"])
+@app.head("/api/v1/health", tags=["System"])
 async def api_v1_health():
     return {
         "status": "healthy",
