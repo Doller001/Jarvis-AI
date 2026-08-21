@@ -43,7 +43,10 @@ data class JarvisUiState(
     val speechRate: Float = 1.0f,
     val wakeSensitivity: String = "Balanced",
     val pingResult: String? = null,
-    val isPinging: Boolean = false
+    val isPinging: Boolean = false,
+    val environmentProfile: String = "Indoor (Quiet)",
+    val noiseFloorDb: Float = -58f,
+    val audioSnrDb: Float = 0f
 )
 
 class JarvisViewModel(application: Application) : AndroidViewModel(application) {
@@ -103,6 +106,12 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
         JarvisForegroundService.onStateChanged = { state ->
             _uiState.update { it.copy(voiceState = state) }
+        }
+        JarvisForegroundService.onEnvironmentChanged = { env ->
+            _uiState.update { it.copy(environmentProfile = env.displayName) }
+        }
+        JarvisForegroundService.onAudioMetrics = { metrics ->
+            _uiState.update { it.copy(noiseFloorDb = metrics.noiseFloorDb, audioSnrDb = metrics.snrDb) }
         }
         JarvisForegroundService.onWakeToggled = { active ->
             _uiState.update { it.copy(wakeListening = active) }

@@ -42,6 +42,12 @@ class JarvisForegroundService : Service() {
             onStateChanged?.invoke(state)
             updateNotification(state)
         }
+        voiceRuntime.onEnvironmentChanged = { env ->
+            onEnvironmentChanged?.invoke(env)
+        }
+        voiceRuntime.onAudioMetrics = { metrics ->
+            onAudioMetrics?.invoke(metrics)
+        }
         voiceRuntime.startRuntime { userUtterance ->
             Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
             onUtterance?.invoke(userUtterance)
@@ -77,6 +83,8 @@ class JarvisForegroundService : Service() {
         var onResponseDone: (() -> Unit)? = null
         var onWakeToggled: ((Boolean) -> Unit)? = null
         var onStateChanged: ((VoiceState) -> Unit)? = null
+        var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
+        var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
         var toggleWakeListening: (() -> Boolean)? = null
         var startCommandListening: (() -> Unit)? = null

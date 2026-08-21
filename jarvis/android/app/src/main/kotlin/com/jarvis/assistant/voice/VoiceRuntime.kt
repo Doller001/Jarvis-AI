@@ -29,7 +29,9 @@ class VoiceRuntime(
     ),
     private val speechRecognizer: SpeechRecognizer = SpeechRecognizer(context = context),
     private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context),
-    private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context)
+    private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context),
+    private val audioProcessor: NearFieldAudioProcessor = NearFieldAudioProcessor(sampleRate = 16000),
+    private val audioCapture: LowLatencyAudioCapture = LowLatencyAudioCapture(context, audioProcessor)
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
@@ -44,6 +46,9 @@ class VoiceRuntime(
     private var stateListener: ((VoiceState) -> Unit)? = null
     private var tone: ToneGenerator? = null
 
+    var onEnvironmentChanged: ((EnvironmentProfile) -> Unit)? = null
+    var onAudioMetrics: ((AudioProcessingResult) -> Unit)? = null
+
     private val commandTimeoutRunnable = Runnable { onCommandTimeout() }
 
     fun setStateListener(listener: (VoiceState) -> Unit) {
@@ -54,6 +59,10 @@ class VoiceRuntime(
     fun startRuntime(onCommandRecognized: (String) -> Unit) {
         if (state != VoiceState.STOPPED) return
         audioRouteManager.start()
+        audioCapture.onEnvironmentChanged = { env -> onEnvironmentChanged?.invoke(env) }
+        audioCapture.onFrameProcessed = { res -> onAudioMetrics?.invoke(res) }
+        audioCapture.start()
+
         commandCallback = onCommandRecognized
         stateMachine.transition(VoiceState.STARTING)
         notifyState()
@@ -63,7 +72,7 @@ class VoiceRuntime(
         )
         stateMachine.transition(VoiceState.WAKE_LISTENING)
         notifyState()
-        Log.i(TAG, "Runtime started — waiting for wake word")
+        Log.i(TAG, "Runtime started — waiting for wake word (Near-field DSP active)")
     }
 
     private fun onWakeDetected(fallbackText: String?) {
@@ -199,6 +208,7 @@ class VoiceRuntime(
 
     fun stopRuntime() {
         mainHandler.removeCallbacksAndMessages(null)
+        audioCapture.stop()
         speechRecognizer.destroy()
         wakeWordEngine.stopMonitoring()
         if (stateMachine.transition(VoiceState.STOPPED)) notifyState()
@@ -207,6 +217,7 @@ class VoiceRuntime(
 
     fun release() {
         mainHandler.removeCallbacksAndMessages(null)
+        audioCapture.stop()
         speechRecognizer.destroy()
         wakeWordEngine.release()
         audioRouteManager.release()

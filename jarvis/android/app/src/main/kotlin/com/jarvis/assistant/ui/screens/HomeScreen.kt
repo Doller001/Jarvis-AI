@@ -1,14 +1,17 @@
 package com.jarvis.assistant.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.FlashlightOn
@@ -132,7 +135,42 @@ fun HomeScreen(
                     )
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
+
+                // Adaptive Audio Acoustic Filter Badge
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .background(JarvisSurface.copy(alpha = 0.6f))
+                        .border(1.dp, JarvisCyan.copy(alpha = 0.25f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(if (uiState.environmentProfile.contains("Outdoor")) JarvisAmber else JarvisGreen)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Acoustic DSP: ${uiState.environmentProfile}",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    Text(
+                        "Floor: ${uiState.noiseFloorDb.toInt()}dB | Near-Voice SNR: ${uiState.audioSnrDb.toInt()}dB",
+                        color = JarvisTextSecondary,
+                        fontSize = 10.sp
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
 
                 // Quick Action Sub-Second Hardware Pills
                 Text(
