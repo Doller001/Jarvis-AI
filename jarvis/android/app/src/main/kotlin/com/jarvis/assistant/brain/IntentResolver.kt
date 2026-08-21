@@ -19,6 +19,7 @@ sealed class JarvisIntent {
     data class CallContact(val contactName: String) : JarvisIntent()
     data class SendSms(val recipient: String, val message: String) : JarvisIntent()
     data class SendWhatsApp(val contactName: String, val message: String) : JarvisIntent()
+    data class ReadNotification(val raw: String = "") : JarvisIntent()
     data class LocalConversational(val answer: String) : JarvisIntent()
     data class Unknown(val raw: String) : JarvisIntent()
 }
@@ -131,6 +132,11 @@ class IntentResolver {
 
         // Read Screen
         if (t.contains("read screen") || t.contains("screen padho") || t.contains("screen dekho")) return JarvisIntent.ReadScreen()
+
+        // Read Notifications
+        if (t.contains("read notification") || t.contains("notification padho") || t.contains("last notification") || t.contains("message padho") || t.contains("notif")) {
+            return JarvisIntent.ReadNotification(rawText)
+        }
 
         // Call
         if (t.startsWith("call ") || t.startsWith("phone ") || t.contains("ko call karo")) {

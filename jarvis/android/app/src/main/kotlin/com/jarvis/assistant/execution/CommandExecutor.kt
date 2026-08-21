@@ -21,6 +21,7 @@ class CommandExecutor(private val context: Context? = null) {
     private val galleryController = GalleryController(context)
     private val smsController = SmsController(context)
     private val mediaController = MediaController(context)
+    private val notificationController = com.jarvis.assistant.device.NotificationController(context)
     private val accessibilityController = AccessibilityController()
 
     fun execute(intent: JarvisIntent): String {
@@ -122,6 +123,14 @@ class CommandExecutor(private val context: Context? = null) {
             is JarvisIntent.ReadScreen -> {
                 val screenContent = accessibilityController.readScreen()
                 "Screen contents: $screenContent"
+            }
+            is JarvisIntent.ReadNotification -> {
+                val notifs = notificationController.readNotifications()
+                if (notifs.isNotEmpty()) {
+                    "Recent notifications:\n" + notifs.take(4).joinToString("\n")
+                } else {
+                    "No active notifications found."
+                }
             }
             is JarvisIntent.LocalConversational -> intent.answer
             is JarvisIntent.Unknown -> "Routed command to cloud brain: \"${intent.raw}\""

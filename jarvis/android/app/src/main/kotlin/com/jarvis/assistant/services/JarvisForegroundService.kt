@@ -13,6 +13,24 @@ import com.jarvis.assistant.voice.VoiceState
 class JarvisForegroundService : Service() {
     private lateinit var voiceRuntime: VoiceRuntime
 
+    companion object {
+        var isRunning: Boolean = false
+            private set
+        var onUtterance: ((String) -> Unit)? = null
+        var onResponseDone: (() -> Unit)? = null
+        var onWakeToggled: ((Boolean) -> Unit)? = null
+        var onStateChanged: ((VoiceState) -> Unit)? = null
+        var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
+        var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
+        var speak: ((String) -> Unit)? = null
+        var toggleWakeListening: (() -> Boolean)? = null
+        var startCommandListening: (() -> Unit)? = null
+        var setSpeechRate: ((Float) -> Unit)? = null
+
+        const val ACTION_START = "com.jarvis.assistant.START"
+        const val ACTION_STOP = "com.jarvis.assistant.STOP"
+    }
+
     override fun onCreate() {
         super.onCreate()
         voiceRuntime = VoiceRuntime(applicationContext)
@@ -35,6 +53,14 @@ class JarvisForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopForeground(true)
+            stopSelf()
+            isRunning = false
+            return START_NOT_STICKY
+        }
+
+        isRunning = true
         val notification = buildForegroundNotification().build()
         startForeground(1001, notification)
 
@@ -78,19 +104,6 @@ class JarvisForegroundService : Service() {
         }
     }
 
-    companion object {
-        var onUtterance: ((String) -> Unit)? = null
-        var onResponseDone: (() -> Unit)? = null
-        var onWakeToggled: ((Boolean) -> Unit)? = null
-        var onStateChanged: ((VoiceState) -> Unit)? = null
-        var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
-        var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
-        var speak: ((String) -> Unit)? = null
-        var toggleWakeListening: (() -> Boolean)? = null
-        var startCommandListening: (() -> Unit)? = null
-        var setSpeechRate: ((Float) -> Unit)? = null
-    }
-
     private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -118,6 +131,7 @@ class JarvisForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         if (::voiceRuntime.isInitialized) {
             voiceRuntime.release()
         }

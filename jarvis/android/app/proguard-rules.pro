@@ -47,6 +47,8 @@
 # 6. SQLite & Android Services
 -keep class com.jarvis.assistant.memory.JarvisMemoryDatabase { *; }
 -keep class com.jarvis.assistant.services.JarvisForegroundService { *; }
+-keep class com.jarvis.assistant.services.JarvisQuickTileService { *; }
+-keep class com.jarvis.assistant.services.JarvisNotificationListenerService { *; }
 -keep class com.jarvis.assistant.accessibility.JarvisAccessibilityService { *; }
 
 # 7. Strip verbose/debug logs in optimized release build

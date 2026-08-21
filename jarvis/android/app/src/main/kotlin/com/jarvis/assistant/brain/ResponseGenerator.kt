@@ -13,6 +13,7 @@ class ResponseGenerator {
             is JarvisIntent.OpenApp -> "Opening ${intent.appName}."
             is JarvisIntent.CloseApp -> resultMessage
             is JarvisIntent.SendWhatsApp -> "Sending WhatsApp message to ${intent.contactName}."
+            is JarvisIntent.ReadNotification -> resultMessage
             else -> resultMessage
         }
     }
