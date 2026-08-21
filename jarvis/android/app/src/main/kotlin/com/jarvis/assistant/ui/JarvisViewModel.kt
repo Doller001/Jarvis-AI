@@ -55,7 +55,8 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     private val permissionManager = PermissionManager(application)
     private val connectionManager = ConnectionManager()
     private val providerManager = ProviderManager()
-    private val memoryStore = MemoryStore()
+    private val memoryRouter = com.jarvis.assistant.memory.MemoryDecisionRouter(application)
+    private val memoryEngine = memoryRouter.getEngine()
     private val brain = JarvisBrain()
     private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl)
     private val commandExecutor = com.jarvis.assistant.execution.CommandExecutor(application)
@@ -86,7 +87,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         refreshPermissions()
-        _uiState.update { it.copy(messages = memoryStore.getHistory()) }
+        _uiState.update { it.copy(messages = memoryEngine.getRecentEpisodes()) }
         refreshProviders()
 
         connectionManager.onStateChanged = { state ->
@@ -199,13 +200,13 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearHistory() {
-        memoryStore.clearHistory()
+        memoryEngine.clearAllHistory()
         _uiState.update { it.copy(messages = emptyList(), lastUtterance = "", lastResponse = "History cleared.") }
     }
 
     fun deleteMemoryItem(timestamp: Long) {
-        memoryStore.deleteMessage(timestamp)
-        _uiState.update { it.copy(messages = memoryStore.getHistory()) }
+        memoryEngine.deleteEpisode(timestamp)
+        _uiState.update { it.copy(messages = memoryEngine.getRecentEpisodes()) }
     }
 
     fun executeQuickAction(commandText: String) {
@@ -214,7 +215,26 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
     fun sendUtterance(text: String): String {
         if (text.isBlank()) return ""
-        memoryStore.recordUserMessage(text)
+        memoryEngine.recordEpisode("user", text)
+
+        // 1. Check Router for FAST CAG path (< 1ms)
+        val routed = memoryRouter.route(text)
+        if (routed.source == com.jarvis.assistant.memory.RouteSource.FAST_CAG_EXACT ||
+            routed.source == com.jarvis.assistant.memory.RouteSource.FAST_CAG_NEAR) {
+            val cachedAnswer = routed.text
+            memoryEngine.recordEpisode("assistant", cachedAnswer)
+            _uiState.update {
+                it.copy(
+                    lastUtterance = text,
+                    lastResponse = cachedAnswer,
+                    messages = memoryEngine.getRecentEpisodes(),
+                    runtimeState = RuntimeState.ACTING
+                )
+            }
+            return cachedAnswer
+        }
+
+        // 2. Check local command executor
         val plan = brain.processCommand(text)
         return if (plan.intent is JarvisIntent.Unknown) {
             _uiState.update {
@@ -224,16 +244,17 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
                     runtimeState = RuntimeState.ACTING
                 )
             }
-            routeToCloudBrain(text)
+            routeToCloudBrain(text, routed)
             ""
         } else {
             val ack = commandExecutor.execute(plan.intent)
-            memoryStore.recordAssistantMessage(ack)
+            memoryEngine.recordEpisode("assistant", ack)
+            memoryRouter.learn(text, ack)
             _uiState.update {
                 it.copy(
                     lastUtterance = text,
                     lastResponse = ack,
-                    messages = memoryStore.getHistory(),
+                    messages = memoryEngine.getRecentEpisodes(),
                     runtimeState = RuntimeState.ACTING
                 )
             }
@@ -241,16 +262,29 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun routeToCloudBrain(text: String) {
-        apiClient.sendChat(text, "android-device") { answer ->
+    private fun routeToCloudBrain(text: String, routed: com.jarvis.assistant.memory.RoutedAnswer) {
+        var promptText = text
+        if (routed.ragContext.isNotEmpty() || routed.userFacts.isNotEmpty()) {
+            val ragInfo = routed.ragContext.joinToString("; ") { it.text }
+            val factInfo = routed.userFacts.joinToString("; ") { it.text }
+            val contextParts = mutableListOf<String>()
+            if (factInfo.isNotBlank()) contextParts.add("Known user facts: $factInfo")
+            if (ragInfo.isNotBlank()) contextParts.add("Knowledge context: $ragInfo")
+            if (contextParts.isNotEmpty()) {
+                promptText = "${contextParts.joinToString(" | ")}\nUser Question: $text"
+            }
+        }
+
+        apiClient.sendChat(promptText, "android-device") { answer ->
             val response = if (!answer.isNullOrBlank()) {
                 answer
             } else {
                 "Connected to Jarvis. Ready for your command."
             }
-            memoryStore.recordAssistantMessage(response)
+            memoryEngine.recordEpisode("assistant", response)
+            memoryRouter.learn(text, response)
             _uiState.update {
-                it.copy(lastResponse = response, messages = memoryStore.getHistory())
+                it.copy(lastResponse = response, messages = memoryEngine.getRecentEpisodes())
             }
             if (_uiState.value.isTtsEnabled) {
                 JarvisForegroundService.speak?.invoke(response)
