@@ -1,11 +1,12 @@
 package com.jarvis.assistant.memory
 
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 
 data class MessageLog(val role: String, val text: String, val timestamp: Long = System.currentTimeMillis())
 
 class MemoryStore {
-    private val history = mutableListOf<MessageLog>()
+    private val history = Collections.synchronizedList(mutableListOf<MessageLog>())
     private val preferences = ConcurrentHashMap<String, Any>()
 
     fun recordUserMessage(text: String) {
@@ -17,7 +18,9 @@ class MemoryStore {
     }
 
     fun getHistory(limit: Int = 10): List<MessageLog> {
-        return history.takeLast(limit)
+        synchronized(history) {
+            return history.takeLast(limit).toList()
+        }
     }
 
     fun setPreference(key: String, value: Any) {
@@ -25,4 +28,10 @@ class MemoryStore {
     }
 
     fun getPreference(key: String): Any? = preferences[key]
+
+    fun clearHistory() {
+        synchronized(history) {
+            history.clear()
+        }
+    }
 }

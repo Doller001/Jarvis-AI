@@ -28,6 +28,10 @@ class TextToSpeechEngine(private val context: Context? = null) {
     }
 
     fun speak(text: String, onComplete: () -> Unit = {}) {
+        if (text.isBlank()) {
+            onComplete()
+            return
+        }
         Log.i("TextToSpeechEngine", "Jarvis speaking: '$text'")
         val ttsEngine = tts
         if (ttsEngine != null && isInitialized) {
@@ -47,6 +51,14 @@ class TextToSpeechEngine(private val context: Context? = null) {
         } else {
             // Fallback if TTS not initialized or context missing
             onComplete()
+        }
+    }
+
+    fun setSpeechRate(rate: Float) {
+        try {
+            tts?.setSpeechRate(rate)
+        } catch (e: Exception) {
+            Log.e("TextToSpeechEngine", "Error setting speech rate", e)
         }
     }
 

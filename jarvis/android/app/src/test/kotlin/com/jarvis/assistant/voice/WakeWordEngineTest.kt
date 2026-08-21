@@ -30,6 +30,12 @@ class WakeWordEngineTest {
         assertTrue(engine.isWakePhraseMatch("Jarvis"))
         assertTrue(engine.isWakePhraseMatch("Hey Jarvis"))
         assertTrue(engine.isWakePhraseMatch("Jarvis suno"))
+        assertTrue(engine.isWakePhraseMatch("ji jarvis"))
+        assertTrue(engine.isWakePhraseMatch("ok jarvis"))
+        assertTrue(engine.isWakePhraseMatch("namaste jarvis"))
+        assertTrue(engine.isWakePhraseMatch("hey jarviz"))
+        // Fuzzy matches (Levenshtein distance <= 1 on jarvis token)
+        assertTrue(engine.isWakePhraseMatch("hey jarves"))
         assertFalse(engine.isWakePhraseMatch("random text"))
     }
 

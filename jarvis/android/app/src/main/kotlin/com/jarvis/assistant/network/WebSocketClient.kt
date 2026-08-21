@@ -10,7 +10,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 class WebSocketClient(
-    val wsUrl: String = "wss://and9-1.onrender.com/ws",
+    var wsUrl: String = "wss://and9-1.onrender.com/ws",
     private val connectionManager: ConnectionManager = ConnectionManager()
 ) {
     private var client: OkHttpClient = OkHttpClient.Builder()
@@ -21,6 +21,20 @@ class WebSocketClient(
 
     private var webSocket: WebSocket? = null
     var onMessageReceived: ((String) -> Unit)? = null
+
+    fun updateUrl(newWsUrl: String) {
+        val changed = wsUrl != newWsUrl.trim()
+        wsUrl = newWsUrl.trim()
+        if (changed && webSocket != null) {
+            disconnect()
+            connect()
+        }
+    }
+
+    fun reconnect() {
+        disconnect()
+        connect()
+    }
 
     fun connect() {
         Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $wsUrl...")

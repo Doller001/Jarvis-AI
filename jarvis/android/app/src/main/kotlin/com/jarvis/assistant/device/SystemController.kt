@@ -87,4 +87,43 @@ class SystemController(private val context: Context? = null) {
             "85%"
         }
     }
+
+    fun getStorageInfo(): String {
+        return try {
+            val path = android.os.Environment.getDataDirectory()
+            val stat = android.os.StatFs(path.path)
+            val blockSize = stat.blockSizeLong
+            val totalBlocks = stat.blockCountLong
+            val availableBlocks = stat.availableBlocksLong
+            val totalGB = (totalBlocks * blockSize) / (1024 * 1024 * 1024)
+            val freeGB = (availableBlocks * blockSize) / (1024 * 1024 * 1024)
+            "Storage: ${freeGB} GB free of ${totalGB} GB total"
+        } catch (e: Exception) {
+            "Storage status currently unavailable"
+        }
+    }
+
+    fun openSettings(section: String? = null): Boolean {
+        val ctx = context ?: return false
+        val action = when (section?.lowercase()?.trim()) {
+            "wifi", "wi-fi" -> Settings.ACTION_WIFI_SETTINGS
+            "bluetooth" -> Settings.ACTION_BLUETOOTH_SETTINGS
+            "display", "brightness" -> Settings.ACTION_DISPLAY_SETTINGS
+            "sound", "volume" -> Settings.ACTION_SOUND_SETTINGS
+            "apps", "applications" -> Settings.ACTION_APPLICATION_SETTINGS
+            "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
+            "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+            else -> Settings.ACTION_SETTINGS
+        }
+        return try {
+            val intent = Intent(action).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to open settings section $section", e)
+            false
+        }
+    }
 }

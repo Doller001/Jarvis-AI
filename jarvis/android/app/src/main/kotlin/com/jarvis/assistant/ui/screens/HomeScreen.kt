@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ fun HomeScreen(
     onOpenConversation: () -> Unit,
     onOpenProviders: () -> Unit,
     onOpenPermissions: () -> Unit,
+    onOpenSettings: () -> Unit,
     onStartListening: () -> Unit = {}
 ) {
     Column(
@@ -56,7 +58,13 @@ fun HomeScreen(
                             )
                         )
                     )
-                    ConnectionPill(uiState.connectionState)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ConnectionPill(uiState.connectionState)
+                        Spacer(Modifier.width(4.dp))
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = JarvisCyan)
+                        }
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))

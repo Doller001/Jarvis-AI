@@ -181,6 +181,10 @@ class VoiceRuntime(
         }
     }
 
+    fun setSpeechRate(rate: Float) {
+        ttsEngine.setSpeechRate(rate)
+    }
+
     fun toggleMonitoring(): Boolean {
         return if (state == VoiceState.STOPPED) {
             startRuntime(commandCallback ?: {})
@@ -192,7 +196,7 @@ class VoiceRuntime(
     }
 
     fun stopRuntime() {
-        mainHandler.removeCallbacks(commandTimeoutRunnable)
+        mainHandler.removeCallbacksAndMessages(null)
         speechRecognizer.destroy()
         wakeWordEngine.stopMonitoring()
         if (stateMachine.transition(VoiceState.STOPPED)) notifyState()
@@ -200,7 +204,7 @@ class VoiceRuntime(
     }
 
     fun release() {
-        mainHandler.removeCallbacks(commandTimeoutRunnable)
+        mainHandler.removeCallbacksAndMessages(null)
         speechRecognizer.destroy()
         wakeWordEngine.release()
         ttsEngine.shutdown()

@@ -21,7 +21,9 @@ if [ ! -x "$JAVA_HOME/bin/java" ]; then
     "https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse?project=jdk"
   tar -xzf /tmp/jdk.tar.gz -C "$JAVA_HOME" --strip-components=1
 fi
-export JAVA_HOME ANDROID_HOME GRADLE_HOME
+GRADLE_USER_HOME="$BASE/.gradle"
+ANDROID_USER_HOME="$BASE/.android"
+export JAVA_HOME ANDROID_HOME GRADLE_HOME GRADLE_USER_HOME ANDROID_USER_HOME
 export PATH="$JAVA_HOME/bin:$PATH"
 java -version
 

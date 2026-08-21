@@ -7,9 +7,12 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 class AccessibilityController(private val service: AccessibilityService? = null) {
 
+    private val activeService: AccessibilityService?
+        get() = service ?: JarvisAccessibilityService.instance
+
     fun tap(targetText: String): Boolean {
         Log.i("AccessibilityController", "Tapping node with text: '$targetText'")
-        val root = service?.rootInActiveWindow ?: return false
+        val root = activeService?.rootInActiveWindow ?: return false
         val nodes = root.findAccessibilityNodeInfosByText(targetText)
         for (node in nodes) {
             if (performClick(node)) return true
@@ -19,7 +22,7 @@ class AccessibilityController(private val service: AccessibilityService? = null)
 
     fun tapById(viewId: String): Boolean {
         Log.i("AccessibilityController", "Tapping node by ID: '$viewId'")
-        val root = service?.rootInActiveWindow ?: return false
+        val root = activeService?.rootInActiveWindow ?: return false
         val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
         for (node in nodes) {
             if (performClick(node)) return true
@@ -41,7 +44,7 @@ class AccessibilityController(private val service: AccessibilityService? = null)
 
     fun scroll(direction: String = "down"): Boolean {
         Log.i("AccessibilityController", "Scrolling screen $direction")
-        val root = service?.rootInActiveWindow ?: return false
+        val root = activeService?.rootInActiveWindow ?: return false
         val action = if (direction.equals("up", ignoreCase = true)) {
             AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
         } else {
@@ -52,22 +55,22 @@ class AccessibilityController(private val service: AccessibilityService? = null)
 
     fun back(): Boolean {
         Log.i("AccessibilityController", "Performing GLOBAL_ACTION_BACK")
-        return service?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) ?: true
+        return activeService?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) ?: false
     }
 
     fun home(): Boolean {
         Log.i("AccessibilityController", "Performing GLOBAL_ACTION_HOME")
-        return service?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) ?: true
+        return activeService?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME) ?: false
     }
 
     fun openRecents(): Boolean {
         Log.i("AccessibilityController", "Performing GLOBAL_ACTION_RECENTS")
-        return service?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS) ?: true
+        return activeService?.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS) ?: false
     }
 
     fun typeText(text: String): Boolean {
         Log.i("AccessibilityController", "Typing text into active field: '$text'")
-        val root = service?.rootInActiveWindow ?: return false
+        val root = activeService?.rootInActiveWindow ?: return false
         val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
         val arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
@@ -77,7 +80,7 @@ class AccessibilityController(private val service: AccessibilityService? = null)
 
     fun readScreen(): String {
         Log.i("AccessibilityController", "Reading interactive screen elements")
-        val root = service?.rootInActiveWindow ?: return "Accessibility Service not bound"
+        val root = activeService?.rootInActiveWindow ?: return "Accessibility Service not bound"
         val sb = StringBuilder()
         collectScreenText(root, sb)
         return if (sb.isNotBlank()) sb.toString() else "Screen contains no text elements"
@@ -96,9 +99,5 @@ class AccessibilityController(private val service: AccessibilityService? = null)
         for (i in 0 until node.childCount) {
             collectScreenText(node.getChild(i), sb)
         }
-    }
-
-    private fun String?.isNull_or_blank(): Boolean {
-        return this == null || this.isBlank()
     }
 }

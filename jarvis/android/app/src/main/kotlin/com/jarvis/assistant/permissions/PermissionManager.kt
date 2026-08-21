@@ -66,10 +66,13 @@ class PermissionManager(private val context: Context? = null) {
         val isAssistant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             runCatching {
                 val rm = ctx.getSystemService(android.app.role.RoleManager::class.java)
-                rm.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)
+                rm?.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT) == true
             }.getOrDefault(false)
         } else {
-            false
+            runCatching {
+                val defaultAssistant = Settings.Secure.getString(ctx.contentResolver, "assistant") ?: ""
+                defaultAssistant.contains(ctx.packageName, ignoreCase = true)
+            }.getOrDefault(true)
         }
 
         return PermissionState(
@@ -87,17 +90,19 @@ class PermissionManager(private val context: Context? = null) {
 
     /**
      * Detects whether an accessibility service matching this app is enabled in
-     * Settings > Accessibility. Uses the canonical secure-settings flat string.
+     * Settings > Accessibility. Resilient across different OEM ROM formats.
      */
     private fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val expected = "${context.packageName}/com.jarvis.assistant.accessibility.JarvisAccessibilityService"
         val enabledServices = runCatching {
             Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             ) ?: ""
         }.getOrDefault("")
-        return enabledServices.split(":").any { it.equals(expected, ignoreCase = true) }
+        return enabledServices.split(":").any {
+            it.contains(context.packageName, ignoreCase = true) &&
+            it.contains("JarvisAccessibilityService", ignoreCase = true)
+        }
     }
 }
 

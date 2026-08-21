@@ -32,7 +32,8 @@ class WakeWordEngine(
         private const val TAG = "WakeWordEngine"
         private val phraseVariants = listOf(
             "hey jarvis", "hey, jarvis", "hay jarvis", "jarvis", "jarvis listen", "okay jarvis",
-            "jarvis suno", "jarvis hello", "suno jarvis", "hello jarvis"
+            "ok jarvis", "jarvis suno", "suno jarvis", "ji jarvis", "hey jarviz", "jarviz",
+            "hello jarvis", "oye jarvis", "namaste jarvis", "jarvis hey"
         )
     }
 
@@ -45,6 +46,7 @@ class WakeWordEngine(
     private var fallbackRecognizer: AndroidSpeechRecognizer? = null
     private val restartHandler = Handler(Looper.getMainLooper())
     private var restartScheduled = false
+    private var restartAttempt = 0
 
     private val accumulated = StringBuilder()
     private var lastSpeechMs = 0L
@@ -65,6 +67,7 @@ class WakeWordEngine(
         onWakeCallback = onWake
         errorCallback = onError
         isMonitoring = true
+        restartAttempt = 0
         cooldown.reset()
         if (useFallback) {
             Log.i(TAG, "Fallback wake-word monitoring active (phrases: $phraseVariants)")
@@ -91,6 +94,7 @@ class WakeWordEngine(
 
     fun stopMonitoring() {
         isMonitoring = false
+        restartAttempt = 0
         cancelScheduledRestart()
         accumulated.setLength(0)
         detector?.stop()
@@ -111,6 +115,7 @@ class WakeWordEngine(
     /** Returns the microphone to wake-word listening. */
     fun resume() {
         if (!isMonitoring) return
+        restartAttempt = 0
         if (useFallback) {
             startListeningLoop()
         } else {
@@ -122,6 +127,7 @@ class WakeWordEngine(
     fun release() {
         onWakeCallback = null
         isMonitoring = false
+        restartAttempt = 0
         cancelScheduledRestart()
         accumulated.setLength(0)
         detector?.release()
@@ -164,7 +170,9 @@ class WakeWordEngine(
 
                 fallbackRecognizer?.setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
+                    override fun onBeginningOfSpeech() {
+                        restartAttempt = 0
+                    }
                     override fun onRmsChanged(rmsdB: Float) {}
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {}
@@ -179,7 +187,9 @@ class WakeWordEngine(
                             return
                         }
                         if (isMonitoring) {
-                            scheduleRestart(fallbackRestartDelayMs(error), recreate = shouldRecreateOnError(error))
+                            val delay = fallbackRestartDelayMs(error)
+                            val recreate = shouldRecreateOnError(error)
+                            scheduleRestart(delay, recreate = recreate)
                         }
                     }
 
@@ -188,6 +198,7 @@ class WakeWordEngine(
                             ?.firstOrNull { it.isNotBlank() }.orEmpty()
 
                         if (text.isNotBlank()) {
+                            restartAttempt = 0
                             accumulate(text)
                             lastSpeechMs = SystemClock.uptimeMillis()
                             val currentText = accumulated.toString()
@@ -203,7 +214,7 @@ class WakeWordEngine(
                         }
 
                         if (isMonitoring) {
-                            scheduleRestart(800L, recreate = false)
+                            scheduleRestart(500L, recreate = false)
                         }
                     }
 
@@ -212,6 +223,7 @@ class WakeWordEngine(
                             ?.firstOrNull { it.isNotBlank() }.orEmpty()
 
                         if (text.isNotBlank()) {
+                            restartAttempt = 0
                             accumulate(text)
                             lastSpeechMs = SystemClock.uptimeMillis()
                             val currentText = accumulated.toString()
@@ -266,13 +278,26 @@ class WakeWordEngine(
         }, delayMs)
     }
 
-    /** Backoff delay for recognizer resets so it does not rapidly cycle. */
+    /** Backoff delay for recognizer resets so it does not rapidly cycle or livelock. */
     internal fun fallbackRestartDelayMs(error: Int = -1): Long = when (error) {
-        AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1500L
-        AndroidSpeechRecognizer.ERROR_CLIENT -> 1200L
+        AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+            restartAttempt = (restartAttempt + 1).coerceAtMost(5)
+            500L * (1L shl restartAttempt) // exponential: 1000ms, 2000ms, 4000ms, 8000ms, 16000ms
+        }
+        AndroidSpeechRecognizer.ERROR_CLIENT -> {
+            restartAttempt = (restartAttempt + 1).coerceAtMost(4)
+            400L * (1L shl restartAttempt) // 800ms, 1600ms, 3200ms...
+        }
         AndroidSpeechRecognizer.ERROR_NO_MATCH,
-        AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 800L
-        else -> 800L
+        AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+        -1 -> {
+            restartAttempt = 0
+            500L
+        }
+        else -> {
+            restartAttempt = (restartAttempt + 1).coerceAtMost(3)
+            400L * (1L shl restartAttempt)
+        }
     }
 
     internal fun shouldRecreateOnError(error: Int): Boolean =
@@ -298,13 +323,51 @@ class WakeWordEngine(
         return accumulated.toString()
     }
 
+    /** Levenshtein distance for fuzzy wake-phrase matching. */
+    private fun levenshteinDistance(s1: String, s2: String): Int {
+        val dp = IntArray(s2.length + 1) { it }
+        for (i in 1..s1.length) {
+            var prev = dp[0]
+            dp[0] = i
+            for (j in 1..s2.length) {
+                val temp = dp[j]
+                dp[j] = if (s1[i - 1] == s2[j - 1]) prev else 1 + minOf(prev, dp[j], dp[j - 1])
+                prev = temp
+            }
+        }
+        return dp[s2.length]
+    }
+
     /** Public for manual command mode and tests. */
     fun isWakePhraseMatch(text: String): Boolean {
         if (!allowWake()) return false
         val cleaned = text.lowercase().trim()
-        return phraseVariants.any { variant ->
-            cleaned.contains(variant)
+        if (cleaned.isBlank()) return false
+
+        // 1. Direct match with phrase variants
+        if (phraseVariants.any { variant -> cleaned.contains(variant) }) {
+            return true
         }
+
+        // 2. Token / word-level fuzzy matching for "jarvis" / "jarviz"
+        val words = cleaned.split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotBlank() }
+        for (word in words) {
+            if (word.length in 4..8) {
+                if (levenshteinDistance(word, "jarvis") <= 1 || levenshteinDistance(word, "jarviz") <= 1) {
+                    return true
+                }
+            }
+        }
+
+        // 3. Sliding 2-word window fuzzy match (e.g., "hey jarvis")
+        for (i in 0 until words.size - 1) {
+            val twoWords = "${words[i]} ${words[i + 1]}"
+            if (levenshteinDistance(twoWords, "hey jarvis") <= 2 || levenshteinDistance(twoWords, "ok jarvis") <= 2) {
+                return true
+            }
+        }
+
+        return false
     }
 
     fun extractCommand(fullText: String): String {
@@ -312,7 +375,8 @@ class WakeWordEngine(
         for (variant in phraseVariants) {
             command = command.replace(variant.lowercase(), " ")
         }
-        return command.trim()
+        return command.replace(Regex("[,.!?]"), " ").trim()
+            .replace(Regex("\\s+"), " ")
             .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
     }
 }

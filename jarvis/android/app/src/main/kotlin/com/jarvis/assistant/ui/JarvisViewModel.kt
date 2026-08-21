@@ -15,6 +15,7 @@ import com.jarvis.assistant.network.ConnectionManager
 import com.jarvis.assistant.permissions.PermissionManager
 import com.jarvis.assistant.permissions.PermissionState
 import com.jarvis.assistant.services.JarvisForegroundService
+import com.jarvis.assistant.settings.SettingsManager
 import com.jarvis.assistant.voice.VoiceState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,20 +37,33 @@ data class JarvisUiState(
     val messages: List<MessageLog> = emptyList(),
     val backendUrl: String = "https://and9-1.onrender.com",
     val providers: List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama"),
-    val providersLoading: Boolean = false
+    val providersLoading: Boolean = false,
+    val isTtsEnabled: Boolean = true,
+    val speechRate: Float = 1.0f,
+    val wakeSensitivity: String = "Balanced",
+    val pingResult: String? = null,
+    val isPinging: Boolean = false
 )
 
 class JarvisViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val settingsManager = SettingsManager(application)
     private val permissionManager = PermissionManager(application)
     private val connectionManager = ConnectionManager()
     private val providerManager = ProviderManager()
     private val memoryStore = MemoryStore()
     private val brain = JarvisBrain()
-    private val apiClient = ApiClient()
+    private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl)
     private val commandExecutor = com.jarvis.assistant.execution.CommandExecutor(application)
 
-    private val _uiState = MutableStateFlow(JarvisUiState())
+    private val _uiState = MutableStateFlow(
+        JarvisUiState(
+            backendUrl = settingsManager.backendUrl,
+            isTtsEnabled = settingsManager.isTtsEnabled,
+            speechRate = settingsManager.speechRate,
+            wakeSensitivity = settingsManager.wakeSensitivity
+        )
+    )
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
 
     init {
@@ -58,7 +72,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         refreshProviders()
         JarvisForegroundService.onUtterance = { text ->
             val ack = sendUtterance(text)
-            if (ack.isNotBlank()) JarvisForegroundService.speak?.invoke(ack)
+            if (ack.isNotBlank() && _uiState.value.isTtsEnabled) {
+                JarvisForegroundService.speak?.invoke(ack)
+            }
         }
         JarvisForegroundService.onResponseDone = {
             _uiState.update { it.copy(voiceState = VoiceState.WAKE_LISTENING) }
@@ -70,6 +86,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { it.copy(wakeListening = active) }
         }
         ContextCompat.startForegroundService(application, Intent(application, JarvisForegroundService::class.java))
+        JarvisForegroundService.setSpeechRate?.invoke(settingsManager.speechRate)
     }
 
     fun startListening() {
@@ -105,6 +122,49 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateBackendUrl(newUrl: String) {
+        val cleanUrl = newUrl.trim().trimEnd('/')
+        if (cleanUrl.isNotBlank()) {
+            settingsManager.backendUrl = cleanUrl
+            apiClient.baseUrl = cleanUrl
+            _uiState.update { it.copy(backendUrl = cleanUrl) }
+            refreshProviders()
+        }
+    }
+
+    fun pingBackend(urlToTest: String = _uiState.value.backendUrl) {
+        _uiState.update { it.copy(isPinging = true, pingResult = null) }
+        apiClient.pingBackend(urlToTest) { result ->
+            _uiState.update {
+                it.copy(
+                    isPinging = false,
+                    pingResult = result.message
+                )
+            }
+        }
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        settingsManager.isTtsEnabled = enabled
+        _uiState.update { it.copy(isTtsEnabled = enabled) }
+    }
+
+    fun setSpeechRate(rate: Float) {
+        settingsManager.speechRate = rate
+        JarvisForegroundService.setSpeechRate?.invoke(rate)
+        _uiState.update { it.copy(speechRate = rate) }
+    }
+
+    fun setWakeSensitivity(sensitivity: String) {
+        settingsManager.wakeSensitivity = sensitivity
+        _uiState.update { it.copy(wakeSensitivity = sensitivity) }
+    }
+
+    fun clearHistory() {
+        memoryStore.clearHistory()
+        _uiState.update { it.copy(messages = emptyList(), lastUtterance = "", lastResponse = "History cleared.") }
+    }
+
     fun sendUtterance(text: String): String {
         if (text.isBlank()) return ""
         memoryStore.recordUserMessage(text)
@@ -134,7 +194,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(lastResponse = response, messages = memoryStore.getHistory())
             }
-            JarvisForegroundService.speak?.invoke(response)
+            if (_uiState.value.isTtsEnabled) {
+                JarvisForegroundService.speak?.invoke(response)
+            }
         }
     }
 }

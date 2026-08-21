@@ -1,8 +1,9 @@
 package com.jarvis.assistant.network
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -11,14 +12,50 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 
-class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
+data class PingResult(val isSuccess: Boolean, val latencyMs: Long, val message: String)
+
+class ApiClient(var baseUrl: String = "https://and9-1.onrender.com") {
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    fun pingBackend(urlToTest: String = baseUrl, onResult: (PingResult) -> Unit) {
+        scope.launch {
+            val start = System.currentTimeMillis()
+            var conn: HttpURLConnection? = null
+            val result = try {
+                val cleanUrl = urlToTest.trim().trimEnd('/')
+                val url = URL("$cleanUrl/api/v1/health")
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+
+                val code = conn.responseCode
+                val latency = System.currentTimeMillis() - start
+                if (code in 200..299) {
+                    PingResult(true, latency, "Online (${latency}ms) — HTTP $code")
+                } else {
+                    PingResult(false, latency, "HTTP error $code")
+                }
+            } catch (e: Exception) {
+                val latency = System.currentTimeMillis() - start
+                PingResult(false, latency, e.message ?: "Connection failed")
+            } finally {
+                conn?.disconnect()
+            }
+            launch(Dispatchers.Main) {
+                onResult(result)
+            }
+        }
+    }
 
     fun fetchAvailableProviders(onResult: (List<String>) -> Unit) {
         Log.i("ApiClient", "Fetching active providers from $baseUrl/api/v1/providers")
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
+            var conn: HttpURLConnection? = null
             val providers = try {
                 val url = URL("$baseUrl/api/v1/providers")
-                val conn = url.openConnection() as HttpURLConnection
+                conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "GET"
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
@@ -40,6 +77,8 @@ class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
             } catch (e: Exception) {
                 Log.w("ApiClient", "Failed to fetch providers via HTTP: ${e.message}. Using default list.")
                 defaultProviders()
+            } finally {
+                conn?.disconnect()
             }
             launch(Dispatchers.Main) {
                 onResult(providers)
@@ -48,10 +87,11 @@ class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
     }
 
     fun selectProviderOnBackend(provider: String, model: String, onResult: (Boolean) -> Unit = {}) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
+            var conn: HttpURLConnection? = null
             val success = try {
                 val url = URL("$baseUrl/api/v1/providers/select")
-                val conn = url.openConnection() as HttpURLConnection
+                conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.doOutput = true
@@ -69,6 +109,8 @@ class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
             } catch (e: Exception) {
                 Log.w("ApiClient", "Failed to select provider on backend: ${e.message}")
                 false
+            } finally {
+                conn?.disconnect()
             }
             launch(Dispatchers.Main) {
                 onResult(success)
@@ -77,10 +119,11 @@ class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
     }
 
     fun sendChat(text: String, sessionId: String, onResult: (String?) -> Unit) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
+            var conn: HttpURLConnection? = null
             val responseText = try {
                 val url = URL("$baseUrl/api/v1/chat")
-                val conn = url.openConnection() as HttpURLConnection
+                conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.connectTimeout = 10000
@@ -103,6 +146,8 @@ class ApiClient(val baseUrl: String = "https://and9-1.onrender.com") {
             } catch (e: Exception) {
                 Log.w("ApiClient", "Chat request failed: ${e.message}")
                 null
+            } finally {
+                conn?.disconnect()
             }
             launch(Dispatchers.Main) { onResult(responseText) }
         }

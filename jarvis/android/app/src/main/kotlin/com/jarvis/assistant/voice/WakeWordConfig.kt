@@ -7,7 +7,7 @@ package com.jarvis.assistant.voice
 data class WakeWordConfig(
     val enabled: Boolean = true,
     /** 0.0 (least sensitive) .. 1.0 (most sensitive). */
-    val sensitivity: Float = 0.6f,
+    val sensitivity: Float = 0.8f,
     /** Minimum gap between wake events. */
     val cooldownMs: Long = 1500,
     /** Max time the command recognizer listens before giving up. */

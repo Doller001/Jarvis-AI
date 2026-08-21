@@ -17,6 +17,7 @@ import com.jarvis.assistant.ui.screens.ConversationScreen
 import com.jarvis.assistant.ui.screens.HomeScreen
 import com.jarvis.assistant.ui.screens.OnboardingScreen
 import com.jarvis.assistant.ui.screens.ProvidersScreen
+import com.jarvis.assistant.ui.screens.SettingsScreen
 import com.jarvis.assistant.ui.theme.JarvisTheme
 
 class MainActivity : ComponentActivity() {
@@ -52,6 +53,7 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onOpenConversation = { navController.navigate("conversation") },
                 onOpenProviders = { navController.navigate("providers") },
                 onOpenPermissions = { navController.navigate("onboarding") },
+                onOpenSettings = { navController.navigate("settings") },
                 onStartListening = viewModel::startListening
             )
         }
@@ -69,6 +71,18 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
                 onSelectProvider = { viewModel.selectProvider(it) }
+            )
+        }
+        composable("settings") {
+            SettingsScreen(
+                uiState = uiState,
+                onBack = { navController.popBackStack() },
+                onUpdateBackendUrl = viewModel::updateBackendUrl,
+                onPingBackend = viewModel::pingBackend,
+                onToggleTts = viewModel::setTtsEnabled,
+                onSelectSpeechRate = viewModel::setSpeechRate,
+                onSelectWakeSensitivity = viewModel::setWakeSensitivity,
+                onClearHistory = viewModel::clearHistory
             )
         }
     }

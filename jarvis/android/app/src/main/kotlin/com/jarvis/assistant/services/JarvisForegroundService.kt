@@ -11,7 +11,7 @@ import com.jarvis.assistant.voice.VoiceRuntime
 import com.jarvis.assistant.voice.VoiceState
 
 class JarvisForegroundService : Service() {
-    private var voiceRuntime = VoiceRuntime(context = null)
+    private lateinit var voiceRuntime: VoiceRuntime
 
     override fun onCreate() {
         super.onCreate()
@@ -26,6 +26,9 @@ class JarvisForegroundService : Service() {
         }
         startCommandListening = {
             voiceRuntime.startListeningForCommand()
+        }
+        setSpeechRate = { rate ->
+            voiceRuntime.setSpeechRate(rate)
         }
         Log.i("JarvisService", "Starting JarvisForegroundService runtime...")
         createNotificationChannel()
@@ -62,8 +65,10 @@ class JarvisForegroundService : Service() {
 
     fun speakResponse(text: String) {
         Log.i("JarvisService", "Speaking response: '$text'")
-        voiceRuntime.speakResponse(text) {
-            onResponseDone?.invoke()
+        if (::voiceRuntime.isInitialized) {
+            voiceRuntime.speakResponse(text) {
+                onResponseDone?.invoke()
+            }
         }
     }
 
@@ -75,6 +80,7 @@ class JarvisForegroundService : Service() {
         var speak: ((String) -> Unit)? = null
         var toggleWakeListening: (() -> Boolean)? = null
         var startCommandListening: (() -> Unit)? = null
+        var setSpeechRate: ((Float) -> Unit)? = null
     }
 
     private fun createNotificationChannel() {
@@ -104,7 +110,9 @@ class JarvisForegroundService : Service() {
     }
 
     override fun onDestroy() {
-        voiceRuntime.release()
+        if (::voiceRuntime.isInitialized) {
+            voiceRuntime.release()
+        }
         onUtterance = null
         onResponseDone = null
         onWakeToggled = null
