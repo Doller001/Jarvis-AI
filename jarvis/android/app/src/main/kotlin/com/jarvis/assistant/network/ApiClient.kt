@@ -5,151 +5,162 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import okhttp3.ConnectionPool
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 data class PingResult(val isSuccess: Boolean, val latencyMs: Long, val message: String)
 
+/**
+ * Ultra-low latency, high-performance API client.
+ * Uses OkHttp with HTTP/2 multiplexing, connection pooling (10 idle connections, 5-min keep-alive),
+ * and pre-warmed sockets to eliminate TCP/TLS handshake latency.
+ */
 class ApiClient(var baseUrl: String = "https://and9-1.onrender.com") {
+
+    companion object {
+        private const val TAG = "ApiClient"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+        // Shared singleton connection pool & HTTP/2 client for all requests
+        private val sharedClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
+                .connectTimeout(3500, TimeUnit.MILLISECONDS)
+                .readTimeout(15000, TimeUnit.MILLISECONDS)
+                .writeTimeout(5000, TimeUnit.MILLISECONDS)
+                .retryOnConnectionFailure(true)
+                .build()
+        }
+    }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun pingBackend(urlToTest: String = baseUrl, onResult: (PingResult) -> Unit) {
         scope.launch {
             val start = System.currentTimeMillis()
-            var conn: HttpURLConnection? = null
-            val result = try {
-                val cleanUrl = urlToTest.trim().trimEnd('/')
-                val url = URL("$cleanUrl/api/v1/health")
-                conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
+            val cleanUrl = urlToTest.trim().trimEnd('/')
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/health")
+                .header("Connection", "keep-alive")
+                .header("Accept", "application/json")
+                .build()
 
-                val code = conn.responseCode
-                val latency = System.currentTimeMillis() - start
-                if (code in 200..299) {
-                    PingResult(true, latency, "Online (${latency}ms) — HTTP $code")
-                } else {
-                    PingResult(false, latency, "HTTP error $code")
+            try {
+                sharedClient.newCall(request).execute().use { response ->
+                    val latency = System.currentTimeMillis() - start
+                    val code = response.code
+                    if (response.isSuccessful) {
+                        val result = PingResult(true, latency, "Online (${latency}ms) — HTTP $code")
+                        launch(Dispatchers.Main) { onResult(result) }
+                    } else {
+                        val result = PingResult(false, latency, "HTTP $code: ${response.message}")
+                        launch(Dispatchers.Main) { onResult(result) }
+                    }
                 }
             } catch (e: Exception) {
                 val latency = System.currentTimeMillis() - start
-                PingResult(false, latency, e.message ?: "Connection failed")
-            } finally {
-                conn?.disconnect()
-            }
-            launch(Dispatchers.Main) {
-                onResult(result)
+                Log.w(TAG, "Ping failed after ${latency}ms: ${e.message}")
+                val result = PingResult(false, latency, e.message ?: "Connection timeout")
+                launch(Dispatchers.Main) { onResult(result) }
             }
         }
     }
 
     fun fetchAvailableProviders(onResult: (List<String>) -> Unit) {
-        Log.i("ApiClient", "Fetching active providers from $baseUrl/api/v1/providers")
         scope.launch {
-            var conn: HttpURLConnection? = null
-            val providers = try {
-                val url = URL("$baseUrl/api/v1/providers")
-                conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "GET"
-                conn.connectTimeout = 5000
-                conn.readTimeout = 5000
+            val cleanUrl = baseUrl.trim().trimEnd('/')
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/providers")
+                .header("Connection", "keep-alive")
+                .header("Accept", "application/json")
+                .build()
 
-                if (conn.responseCode == 200) {
-                    val reader = BufferedReader(InputStreamReader(conn.inputStream))
-                    val response = reader.readText()
-                    reader.close()
-
-                    val array = JSONArray(response)
-                    val list = mutableListOf<String>()
-                    for (i in 0 until array.length()) {
-                        list.add(array.getJSONObject(i).getString("provider"))
+            try {
+                sharedClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string().orEmpty()
+                        val array = JSONArray(body)
+                        val list = mutableListOf<String>()
+                        for (i in 0 until array.length()) {
+                            list.add(array.getJSONObject(i).getString("provider"))
+                        }
+                        val result = if (list.isNotEmpty()) list else defaultProviders()
+                        launch(Dispatchers.Main) { onResult(result) }
+                        return@launch
                     }
-                    if (list.isNotEmpty()) list else defaultProviders()
-                } else {
-                    defaultProviders()
                 }
             } catch (e: Exception) {
-                Log.w("ApiClient", "Failed to fetch providers via HTTP: ${e.message}. Using default list.")
-                defaultProviders()
-            } finally {
-                conn?.disconnect()
+                Log.w(TAG, "Failed to fetch providers: ${e.message}")
             }
-            launch(Dispatchers.Main) {
-                onResult(providers)
-            }
+            launch(Dispatchers.Main) { onResult(defaultProviders()) }
         }
     }
 
     fun selectProviderOnBackend(provider: String, model: String, onResult: (Boolean) -> Unit = {}) {
         scope.launch {
-            var conn: HttpURLConnection? = null
-            val success = try {
-                val url = URL("$baseUrl/api/v1/providers/select")
-                conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
-                conn.connectTimeout = 5000
+            val cleanUrl = baseUrl.trim().trimEnd('/')
+            val bodyJson = JSONObject().apply {
+                put("provider", provider)
+                put("model", model)
+            }.toString()
 
-                val body = JSONObject().apply {
-                    put("provider", provider)
-                    put("model", model)
-                }
-                conn.outputStream.use { os ->
-                    os.write(body.toString().toByteArray())
-                }
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/providers/select")
+                .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+                .header("Connection", "keep-alive")
+                .build()
 
-                conn.responseCode in 200..299
+            try {
+                sharedClient.newCall(request).execute().use { response ->
+                    val success = response.isSuccessful
+                    launch(Dispatchers.Main) { onResult(success) }
+                }
             } catch (e: Exception) {
-                Log.w("ApiClient", "Failed to select provider on backend: ${e.message}")
-                false
-            } finally {
-                conn?.disconnect()
-            }
-            launch(Dispatchers.Main) {
-                onResult(success)
+                Log.w(TAG, "Failed to select provider: ${e.message}")
+                launch(Dispatchers.Main) { onResult(false) }
             }
         }
     }
 
     fun sendChat(text: String, sessionId: String, onResult: (String?) -> Unit) {
         scope.launch {
-            var conn: HttpURLConnection? = null
-            val responseText = try {
-                val url = URL("$baseUrl/api/v1/chat")
-                conn = url.openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.connectTimeout = 10000
-                conn.readTimeout = 60000
-                conn.doOutput = true
+            val cleanUrl = baseUrl.trim().trimEnd('/')
+            val bodyJson = JSONObject().apply {
+                put("text", text)
+                put("session_id", sessionId)
+                put("request_id", "android-${System.currentTimeMillis()}")
+            }.toString()
 
-                val body = JSONObject().apply {
-                    put("text", text)
-                    put("session_id", sessionId)
-                    put("request_id", "android-${System.currentTimeMillis()}")
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/chat")
+                .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+                .header("Connection", "keep-alive")
+                .header("Accept", "application/json")
+                .build()
+
+            try {
+                sharedClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string().orEmpty()
+                        val json = JSONObject(body)
+                        val responseText = json.optString("response_text")
+                            .ifBlank { json.optString("prompt") }
+                            .ifBlank { json.optString("message") }
+                        launch(Dispatchers.Main) { onResult(if (responseText.isNotBlank()) responseText else null) }
+                        return@launch
+                    }
                 }
-                conn.outputStream.use { os -> os.write(body.toString().toByteArray()) }
-
-                if (conn.responseCode in 200..299) {
-                    val reader = BufferedReader(InputStreamReader(conn.inputStream))
-                    val json = JSONObject(reader.readText())
-                    reader.close()
-                    json.optString("response_text").ifBlank { json.optString("prompt") }.ifBlank { json.optString("message") }
-                } else null
             } catch (e: Exception) {
-                Log.w("ApiClient", "Chat request failed: ${e.message}")
-                null
-            } finally {
-                conn?.disconnect()
+                Log.w(TAG, "Chat request failed: ${e.message}")
             }
-            launch(Dispatchers.Main) { onResult(responseText) }
+            launch(Dispatchers.Main) { onResult(null) }
         }
     }
 

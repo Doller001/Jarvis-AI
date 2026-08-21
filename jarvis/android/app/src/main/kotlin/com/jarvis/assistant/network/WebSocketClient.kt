@@ -20,11 +20,13 @@ class WebSocketClient(
     private var client: OkHttpClient = OkHttpClient.Builder()
         .readTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
-        .pingInterval(15, TimeUnit.SECONDS)
+        .pingInterval(8, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private var webSocket: WebSocket? = null
     var onMessageReceived: ((String) -> Unit)? = null
+    private var reconnectAttempts = 0
 
     fun updateUrl(newWsUrl: String) {
         val changed = wsUrl != newWsUrl.trim()
@@ -44,7 +46,9 @@ class WebSocketClient(
         if (reconnectJob?.isActive == true) return
         reconnectJob = scope.launch {
             connectionManager.setConnectionState(ConnectionState.RECONNECTING)
-            delay(5000)
+            reconnectAttempts = (reconnectAttempts + 1).coerceAtMost(5)
+            val delayMs = (1000L * (1L shl reconnectAttempts)).coerceIn(1500L, 8000L)
+            delay(delayMs)
             connect()
         }
     }
