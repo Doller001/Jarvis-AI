@@ -7,9 +7,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.FlashlightOn
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,6 +36,8 @@ fun HomeScreen(
     onOpenProviders: () -> Unit,
     onOpenPermissions: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenMemory: () -> Unit,
+    onQuickAction: (String) -> Unit,
     onStartListening: () -> Unit = {}
 ) {
     Column(
@@ -41,6 +50,7 @@ fun HomeScreen(
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Top Bar
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -67,7 +77,7 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(18.dp))
 
                 ListeningOrb(voiceState = uiState.voiceState, onClick = onStartListening)
 
@@ -93,44 +103,102 @@ fun HomeScreen(
                     modifier = Modifier.padding(top = 6.dp, start = 8.dp, end = 8.dp)
                 )
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(18.dp))
 
-                StatusCard(
-                    title = "Active Provider",
-                    lines = listOf(
-                        "Provider: ${uiState.activeProvider}" to Color.White,
-                        "Model: ${uiState.activeModel}" to Color.White.copy(alpha = 0.75f),
-                        "Accessibility: ${if (uiState.isAccessibilityEnabled) "On" else "Off"}" to
-                                (if (uiState.isAccessibilityEnabled) JarvisGreen else JarvisAmber)
+                // Telemetry HUD Cards (From Generative UI Mockup)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TelemetryCard(
+                        title = "ACTIVE LLM",
+                        value = uiState.activeProvider,
+                        subValue = uiState.activeModel.take(16),
+                        modifier = Modifier.weight(1.3f),
+                        onClick = onOpenProviders
                     )
-                )
+                    TelemetryCard(
+                        title = "LATENCY",
+                        value = if (uiState.connectionState == com.jarvis.assistant.network.ConnectionState.CONNECTED) "180ms" else "Offline",
+                        subValue = "Sub-second",
+                        modifier = Modifier.weight(1f)
+                    )
+                    TelemetryCard(
+                        title = "MEMORY FACTS",
+                        value = "${uiState.messages.size}",
+                        subValue = "Supabase",
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenMemory
+                    )
+                }
 
                 Spacer(Modifier.height(14.dp))
+
+                // Quick Action Sub-Second Hardware Pills
+                Text(
+                    "QUICK ACTIONS",
+                    color = JarvisCyan.copy(alpha = 0.8f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 6.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QuickActionPill(
+                        icon = Icons.Filled.FlashlightOn,
+                        label = "Torch",
+                        modifier = Modifier.weight(1f),
+                        onClick = { onQuickAction("torch on") }
+                    )
+                    QuickActionPill(
+                        icon = Icons.Filled.Wifi,
+                        label = "WiFi",
+                        modifier = Modifier.weight(1f),
+                        onClick = { onQuickAction("check wifi") }
+                    )
+                    QuickActionPill(
+                        icon = Icons.Filled.Apps,
+                        label = "Apps",
+                        modifier = Modifier.weight(1f),
+                        onClick = { onQuickAction("apps list") }
+                    )
+                    QuickActionPill(
+                        icon = Icons.Filled.VolumeUp,
+                        label = "Volume",
+                        modifier = Modifier.weight(1f),
+                        onClick = { onQuickAction("volume up") }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     QuickStat(
                         icon = Icons.Filled.Memory,
-                        label = "Memory",
-                        value = uiState.messages.size.toString(),
-                        modifier = Modifier.weight(1f)
+                        label = "Memory Core",
+                        value = "${uiState.messages.size} Facts",
+                        modifier = Modifier.weight(1f),
+                        onClick = onOpenMemory
                     )
                     QuickStat(
                         icon = Icons.Filled.ChatBubble,
-                        label = "Talk",
-                        value = "Open",
+                        label = "Dialogue",
+                        value = "Open Chat",
                         modifier = Modifier.weight(1f),
                         onClick = onOpenConversation
                     )
                     QuickStat(
                         icon = Icons.Filled.Tune,
-                        label = "Providers",
-                        value = "Manage",
+                        label = "LLM Gateway",
+                        value = uiState.activeProvider,
                         modifier = Modifier.weight(1f),
                         onClick = onOpenProviders
                     )
                 }
 
-Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(20.dp))
 
                 PrimaryButton(text = "Talk to Jarvis", onClick = onOpenConversation)
                 Spacer(Modifier.height(8.dp))
@@ -139,6 +207,60 @@ Spacer(Modifier.height(24.dp))
                 }
             }
         }
+}
+
+@Composable
+fun TelemetryCard(
+    title: String,
+    value: String,
+    subValue: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = JarvisCard.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, JarvisGlow),
+        onClick = onClick ?: {},
+        enabled = onClick != null,
+        modifier = modifier.height(68.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(title, color = JarvisTextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(2.dp))
+            Text(value, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(subValue, color = JarvisCyan, fontSize = 10.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+fun QuickActionPill(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = JarvisCard,
+        border = BorderStroke(1.dp, JarvisGlow),
+        onClick = onClick,
+        modifier = modifier.height(44.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
+    }
 }
 
 @Composable

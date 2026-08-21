@@ -165,6 +165,15 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(messages = emptyList(), lastUtterance = "", lastResponse = "History cleared.") }
     }
 
+    fun deleteMemoryItem(timestamp: Long) {
+        memoryStore.deleteMessage(timestamp)
+        _uiState.update { it.copy(messages = memoryStore.getHistory()) }
+    }
+
+    fun executeQuickAction(commandText: String) {
+        sendUtterance(commandText)
+    }
+
     fun sendUtterance(text: String): String {
         if (text.isBlank()) return ""
         memoryStore.recordUserMessage(text)

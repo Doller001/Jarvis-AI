@@ -15,6 +15,7 @@ import androidx.navigation.compose.rememberNavController
 import com.jarvis.assistant.ui.components.CosmicScreen
 import com.jarvis.assistant.ui.screens.ConversationScreen
 import com.jarvis.assistant.ui.screens.HomeScreen
+import com.jarvis.assistant.ui.screens.MemoryScreen
 import com.jarvis.assistant.ui.screens.OnboardingScreen
 import com.jarvis.assistant.ui.screens.ProvidersScreen
 import com.jarvis.assistant.ui.screens.SettingsScreen
@@ -54,6 +55,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onOpenProviders = { navController.navigate("providers") },
                 onOpenPermissions = { navController.navigate("onboarding") },
                 onOpenSettings = { navController.navigate("settings") },
+                onOpenMemory = { navController.navigate("memory") },
+                onQuickAction = { viewModel.executeQuickAction(it) },
                 onStartListening = viewModel::startListening
             )
         }
@@ -71,6 +74,14 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
                 onSelectProvider = { viewModel.selectProvider(it) }
+            )
+        }
+        composable("memory") {
+            MemoryScreen(
+                uiState = uiState,
+                onBack = { navController.popBackStack() },
+                onDeleteMessage = { viewModel.deleteMemoryItem(it) },
+                onClearHistory = viewModel::clearHistory
             )
         }
         composable("settings") {

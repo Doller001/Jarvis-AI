@@ -86,6 +86,22 @@ fun ListeningOrb(
             RepeatMode.Reverse
         ), label = "pulse"
     )
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            tween(10000, easing = LinearEasing),
+            RepeatMode.Restart
+        ), label = "rotation"
+    )
+    val wavePhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            tween(1200, easing = LinearEasing),
+            RepeatMode.Restart
+        ), label = "wavePhase"
+    )
 
     val ringColor = when {
         isActive -> JarvisCyan
@@ -96,14 +112,42 @@ fun ListeningOrb(
 
     Box(
         modifier = modifier
-            .size(200.dp)
+            .size(220.dp)
             .clip(CircleShape)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         contentAlignment = Alignment.Center
     ) {
+        // Outer Radial Waveform Equalizer Spikes
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+            val baseRadius = size.minDimension / 2f * 0.70f
+            val barCount = 36
+            for (i in 0 until barCount) {
+                val angleDeg = (i * (360f / barCount)) + (if (isActive || isSpeaking) rotation else 0f)
+                val angleRad = Math.toRadians(angleDeg.toDouble()).toFloat()
+                val ampMultiplier = if (isActive || isSpeaking) {
+                    0.25f + 0.75f * kotlin.math.abs(kotlin.math.sin(i * 0.5f + wavePhase))
+                } else 0.12f
+                val barLen = 14.dp.toPx() * ampMultiplier
+                val startX = center.x + baseRadius * kotlin.math.cos(angleRad)
+                val startY = center.y + baseRadius * kotlin.math.sin(angleRad)
+                val endX = center.x + (baseRadius + barLen) * kotlin.math.cos(angleRad)
+                val endY = center.y + (baseRadius + barLen) * kotlin.math.sin(angleRad)
+
+                drawLine(
+                    color = ringColor.copy(alpha = if (isActive || isSpeaking) 0.85f else 0.3f),
+                    start = androidx.compose.ui.geometry.Offset(startX, startY),
+                    end = androidx.compose.ui.geometry.Offset(endX, endY),
+                    strokeWidth = 2.5.dp.toPx(),
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round
+                )
+            }
+        }
+
         // Outer pulse ring
         Box(
             modifier = Modifier
+                .size(175.dp)
                 .fillMaxSize(pulse)
                 .clip(CircleShape)
                 .background(
@@ -115,7 +159,7 @@ fun ListeningOrb(
         // Halo glow
         Box(
             modifier = Modifier
-                .size(150.dp)
+                .size(140.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(
@@ -126,7 +170,7 @@ fun ListeningOrb(
         // Inner core
         Box(
             modifier = Modifier
-                .size(116.dp)
+                .size(108.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.radialGradient(

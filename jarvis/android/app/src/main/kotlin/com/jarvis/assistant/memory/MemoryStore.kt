@@ -34,4 +34,10 @@ class MemoryStore {
             history.clear()
         }
     }
+
+    fun deleteMessage(timestamp: Long) {
+        synchronized(history) {
+            history.removeAll { it.timestamp == timestamp }
+        }
+    }
 }
