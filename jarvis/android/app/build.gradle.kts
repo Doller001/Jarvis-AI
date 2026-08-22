@@ -53,7 +53,10 @@ android {
                 "META-INF/LICENSE*",
                 "META-INF/NOTICE*",
                 "META-INF/DEPENDENCIES",
-                "META-INF/*.version"
+                "META-INF/*.version",
+                "META-INF/*.kotlin_module",
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties"
             )
         }
     }

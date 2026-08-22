@@ -94,6 +94,7 @@ class MemoryEngine(private val context: Context) {
         val qNorm = query.trim().lowercase()
         val tokens = qNorm.split(" ").filter { it.length > 2 }
         if (tokens.isEmpty()) return null
+        val queryWords = qNorm.split(" ").filter { it.length > 1 }.toSet()
 
         return try {
             val cursor = db.rawQuery(
@@ -111,7 +112,7 @@ class MemoryEngine(private val context: Context) {
                     val ans = it.getString(2)
                     val hits = it.getInt(3)
 
-                    val similarity = computeTokenSimilarity(qNorm, storedNorm)
+                    val similarity = computeTokenSimilarity(queryWords, qNorm, storedNorm)
                     if (similarity > bestScore) {
                         bestScore = similarity
                         bestResult = CagResult(ans, similarity, hits)
@@ -348,14 +349,21 @@ class MemoryEngine(private val context: Context) {
     private fun computeTokenSimilarity(s1: String, s2: String): Float {
         if (s1 == s2) return 1.0f
         val words1 = s1.split(" ").filter { it.length > 1 }.toSet()
+        return computeTokenSimilarity(words1, s1, s2)
+    }
+
+    private fun computeTokenSimilarity(words1: Set<String>, s1: String, s2: String): Float {
+        if (s1 == s2) return 1.0f
+        if (words1.isEmpty()) return 0f
         val words2 = s2.split(" ").filter { it.length > 1 }.toSet()
-        if (words1.isEmpty() || words2.isEmpty()) return 0f
+        if (words2.isEmpty()) return 0f
 
         val intersection = words1.intersect(words2).size.toFloat()
         val union = words1.union(words2).size.toFloat()
         val jaccard = if (union > 0) intersection / union else 0f
 
         val maxLen = max(s1.length, s2.length)
+        if (maxLen == 0) return 0f
         val editDist = levenshtein(s1, s2)
         val editSim = 1.0f - (editDist.toFloat() / maxLen)
 
@@ -363,6 +371,9 @@ class MemoryEngine(private val context: Context) {
     }
 
     private fun levenshtein(s1: String, s2: String): Int {
+        if (s1 == s2) return 0
+        if (kotlin.math.abs(s1.length - s2.length) > 30) return max(s1.length, s2.length)
+
         val dp = IntArray(s2.length + 1) { it }
         for (i in 1..s1.length) {
             var prev = dp[0]

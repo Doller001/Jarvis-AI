@@ -48,9 +48,16 @@
 -keep class com.jarvis.assistant.services.JarvisNotificationListenerService { *; }
 -keep class com.jarvis.assistant.accessibility.JarvisAccessibilityService { *; }
 
+
+
 # 7. Strip verbose/debug logs in optimized release build
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(...);
     public static int d(...);
 }
+
+# 8. R8 Access Modifications & Optimizations
+-allowaccessmodification
+-repackageclasses 'com.jarvis.assistant.optimized'
+
