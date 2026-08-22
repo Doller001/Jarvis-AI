@@ -85,3 +85,19 @@
 | **U5.5** | **Provider Selection Screen** | `ProvidersScreen.kt` | Live provider cards with health ping metrics, model selectors, and latency stats. |
 | **U5.6** | **Settings Screen** | `SettingsScreen.kt` | Controls TTS speech rate, wake sensitivity, backend URL, and permission status. |
 | **U5.7** | **Onboarding Screen** | `OnboardingScreen.kt` | Step-by-step setup for microphone, accessibility, and background service permissions. |
+
+---
+
+## 6. ⚡ Multi-Action Task Engine (Task-to-Task Action Architecture)
+
+| # | Feature / Function | File / Class | Description & Operational Flow |
+|---|---|---|---|
+| **A6.1** | **Task Plan Decomposer & Planner** | `LocalTaskPlanner.kt` | Decomposes composite user commands ("YouTube kholo aur gaana bajao", "WhatsApp kholo aur message bhejo", "Torch on karo aur volume badhao") into multi-step atomic `ActionStep` sequences. |
+| **A6.2** | **Multi-Step Action Executor** | `ActionExecutor.kt` | Orchestrates sequential step execution, respects prerequisites, handles step retries with backoff delays, and tracks live `TaskState` (`PLANNING` -> `EXECUTING` -> `VERIFYING` -> `COMPLETED`). |
+| **A6.3** | **YouTube Automation Adapter** | `YouTubeAdapter.kt` | Targeted YouTube app search, deep-link video playback, and background media control. |
+| **A6.4** | **WhatsApp Automation Adapter** | `WhatsAppAdapter.kt` | Resolves contact phone number from phonebook and launches targeted chat via direct WhatsApp intent with encoded message payload. |
+| **A6.5** | **Chrome Web Navigation Adapter** | `ChromeAdapter.kt` | Deep link and web search query dispatching to Chrome. |
+| **A6.6** | **Phone & Call Log Adapter** | `PhoneAdapter.kt` | Reads recent call logs and initiates outgoing phone calls. |
+| **A6.7** | **Risk Policy & User Confirmation** | `ActionPolicy.kt` | Enforces risk tiers (`LOW`, `MEDIUM`, `HIGH`) requiring explicit confirmation before executing calls or messaging actions. |
+| **A6.8** | **Hinglish/English Failure Reporter** | `FailureReporter.kt` | Converts failure codes (`APP_NOT_INSTALLED`, `ELEMENT_NOT_FOUND`, `PERMISSION_DENIED`, `TIMEOUT`) into natural spoken feedback in Hindi & English. |
+

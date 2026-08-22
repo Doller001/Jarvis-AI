@@ -20,13 +20,22 @@ sealed class JarvisIntent {
     data class SendSms(val recipient: String, val message: String) : JarvisIntent()
     data class SendWhatsApp(val contactName: String, val message: String) : JarvisIntent()
     data class ReadNotification(val raw: String = "") : JarvisIntent()
+    data class MultiStepTask(val plan: com.jarvis.assistant.actionengine.model.TaskPlan) : JarvisIntent()
     data class LocalConversational(val answer: String) : JarvisIntent()
     data class Unknown(val raw: String) : JarvisIntent()
 }
 
 class IntentResolver {
+    private val taskPlanner = com.jarvis.assistant.actionengine.planner.LocalTaskPlanner()
+
     fun resolve(rawText: String): JarvisIntent {
         val t = rawText.lowercase().trim()
+
+        // Multi-Step Task Plan Decomposer
+        val plannedTask = taskPlanner.plan(rawText)
+        if (plannedTask != null) {
+            return JarvisIntent.MultiStepTask(plannedTask)
+        }
 
         // Conversational & Assistant Basics (Minaty JARVIS AGI Persona)
         if (t in listOf("hello", "hi", "hey", "hey jarvis", "namaste", "suno", "hello jarvis", "suno jarvis", "ji jarvis")) {

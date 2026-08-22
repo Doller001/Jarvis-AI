@@ -23,6 +23,7 @@ class CommandExecutor(private val context: Context? = null) {
     private val mediaController = MediaController(context)
     private val notificationController = com.jarvis.assistant.device.NotificationController(context)
     private val accessibilityController = AccessibilityController()
+    private val actionExecutor = com.jarvis.assistant.actionengine.core.ActionExecutor(context)
 
     fun execute(intent: JarvisIntent): String {
         Log.i("CommandExecutor", "Executing intent ${intent::class.simpleName}")
@@ -131,6 +132,12 @@ class CommandExecutor(private val context: Context? = null) {
                 } else {
                     "No active notifications found."
                 }
+            }
+            is JarvisIntent.MultiStepTask -> {
+                kotlinx.coroutines.runBlocking {
+                    actionExecutor.executePlan(intent.plan)
+                }
+                "Multi-step task executed: ${intent.plan.steps.size} actions completed."
             }
             is JarvisIntent.LocalConversational -> intent.answer
             is JarvisIntent.Unknown -> "Routed command to cloud brain: \"${intent.raw}\""

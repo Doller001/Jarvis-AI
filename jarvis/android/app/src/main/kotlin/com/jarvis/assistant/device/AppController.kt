@@ -48,7 +48,15 @@ class AppController(private val context: Context? = null) {
             "gmail" to listOf("com.google.android.gm"),
             "play store" to listOf("com.android.vending"),
             "playstore" to listOf("com.android.vending"),
-            "netflix" to listOf("com.netflix.ninja", "com.netflix.mediaclient")
+            "netflix" to listOf("com.netflix.ninja", "com.netflix.mediaclient"),
+            "music" to listOf("com.sec.android.app.music", "com.vivo.music", "com.google.android.apps.youtube.music", "com.spotify.music", "com.jio.media.jiobeats"),
+            "samsung music" to listOf("com.sec.android.app.music"),
+            "notes" to listOf("com.samsung.android.app.notes", "com.google.android.keep", "com.vivo.notes"),
+            "files" to listOf("com.sec.android.app.myfiles", "com.google.android.apps.nbu.files", "com.android.documentsui", "com.vivo.FileManager"),
+            "my files" to listOf("com.sec.android.app.myfiles", "com.google.android.apps.nbu.files"),
+            "calendar" to listOf("com.samsung.android.calendar", "com.google.android.calendar", "com.bbk.calendar"),
+            "weather" to listOf("com.sec.android.daemonapp", "com.google.android.googlequicksearchbox", "com.vivo.weather"),
+            "video" to listOf("com.sec.android.app.videoplayer", "org.videolan.vlc", "com.vivo.video")
         )
     }
 

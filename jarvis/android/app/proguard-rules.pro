@@ -38,6 +38,7 @@
 -keep class com.jarvis.assistant.memory.MessageLog { *; }
 -keep class com.jarvis.assistant.device.AppInfo { *; }
 -keep class com.jarvis.assistant.brain.JarvisIntent** { *; }
+-keep class com.jarvis.assistant.actionengine.** { *; }
 -keep class com.jarvis.assistant.ui.JarvisUiState { *; }
 
 # 5. Picovoice Porcupine (JNI & Native Engine)
