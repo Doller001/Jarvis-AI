@@ -27,13 +27,11 @@ fun ConversationScreen(
     uiState: JarvisUiState,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
-    onToggleWakeListening: () -> Unit,
     onStartListening: () -> Unit = {}
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING ||
-            uiState.voiceState == com.jarvis.assistant.voice.VoiceState.WAKE_DETECTED
+    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -56,7 +54,7 @@ fun ConversationScreen(
         if (uiState.messages.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    "Say \"Jarvis\" then speak, tap the mic, or type a command like\n\"open YouTube\" or \"turn on torch\".",
+                    "Tap the mic to speak or type a command like\n\"open YouTube\" or \"turn on torch\".",
                     color = JarvisTextSecondary,
                     fontSize = 14.sp
                 )
@@ -118,24 +116,6 @@ fun ConversationScreen(
                     Icon(Icons.Filled.Send, contentDescription = "Send", tint = JarvisDark)
                 }
             }
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onToggleWakeListening,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = JarvisBlue),
-            modifier = Modifier.fillMaxWidth().height(48.dp)
-        ) {
-            Icon(
-                Icons.Filled.Mic,
-                contentDescription = null,
-                tint = if (uiState.wakeListening) JarvisBlue else JarvisRed
-            )
-            Spacer(Modifier.width(8.dp))
-            Text(
-                if (uiState.wakeListening) "Wake word on — say \"Jarvis\"" else "Wake word paused",
-                fontSize = 14.sp
-            )
         }
     }
 }

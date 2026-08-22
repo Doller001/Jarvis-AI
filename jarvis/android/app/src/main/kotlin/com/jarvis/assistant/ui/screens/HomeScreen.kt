@@ -82,12 +82,12 @@ fun HomeScreen(
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {
-                VoiceState.COMMAND_LISTENING, VoiceState.WAKE_DETECTED -> "LISTENING..."
+                VoiceState.COMMAND_LISTENING -> "LISTENING..."
                 VoiceState.PROCESSING -> "THINKING..."
                 VoiceState.SPEAKING -> "SPEAKING..."
                 VoiceState.STARTING -> "STARTING..."
                 VoiceState.ERROR -> "RECOVERING..."
-                else -> "LISTENING..."
+                else -> "TAP MIC TO SPEAK"
             }
 
             Text(
@@ -127,11 +127,11 @@ fun HomeScreen(
 
             // 4. ACTION BUTTONS GRID
             ActionGrid(
-                onSystemsCheck = { onQuickAction("check wifi") },
-                onAnalyzeData = onOpenMemory,
+                onSystemsCheck = { onQuickAction("systems check") },
+                onAnalyzeData = { onQuickAction("analyze data") },
                 onVoiceCommand = onOpenConversation,
-                onHomeControl = { onQuickAction("torch on") },
-                onSchedule = onOpenProviders
+                onHomeControl = { onQuickAction("home control") },
+                onSchedule = { onQuickAction("schedule") }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -144,9 +144,7 @@ fun GlowingMicOrb(
     voiceState: VoiceState = VoiceState.STOPPED,
     onClick: () -> Unit = {}
 ) {
-    val isListening = voiceState == VoiceState.COMMAND_LISTENING ||
-            voiceState == VoiceState.WAKE_DETECTED ||
-            voiceState == VoiceState.WAKE_LISTENING
+    val isListening = voiceState == VoiceState.COMMAND_LISTENING
 
     // Do not keep a 60fps infinite animation running while idle.
     val scale by animateFloatAsState(

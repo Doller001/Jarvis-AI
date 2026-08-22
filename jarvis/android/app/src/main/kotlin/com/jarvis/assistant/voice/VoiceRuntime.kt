@@ -8,25 +8,16 @@ import android.os.Looper
 import android.util.Log
 
 /**
- * Central voice coordinator. Owns the [VoiceStateMachine] and guarantees that
- * exactly one component owns the microphone at any time:
+ * Central voice coordinator for push-to-talk / direct command listening:
  *
- *   WAKE_LISTENING    -> WakeWordEngine (offline detector or fallback STT)
- *   WAKE_DETECTED     -> beep, then hand mic to command recognizer
+ *   STOPPED / IDLE    -> Waiting for user to tap mic or trigger command
  *   COMMAND_LISTENING -> SpeechRecognizer owns the mic (with command timeout)
- *   PROCESSING        -> command routed to the brain
- *   SPEAKING          -> TTS owns the mic path; wake detector paused so
- *                        Jarvis never triggers on its own voice
- *   WAKE_LISTENING    -> detector resumed after cooldown
+ *   PROCESSING        -> Command routed to local brain or cloud brain
+ *   SPEAKING          -> TTS speaks response to user
+ *   STOPPED           -> Returned to resting state
  */
 class VoiceRuntime(
     private val context: Context? = null,
-    config: WakeWordConfig = WakeWordConfig(),
-    private val wakeWordEngine: WakeWordEngine = WakeWordEngine(
-        context = context,
-        config = config,
-        detector = context?.let { PorcupineWakeWordDetector(it, config) }
-    ),
     private val speechRecognizer: SpeechRecognizer = SpeechRecognizer(context = context),
     private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context),
     private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context),
@@ -35,9 +26,10 @@ class VoiceRuntime(
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
+        private const val COMMAND_TIMEOUT_MS = 8000L
+        private const val COOLDOWN_MS = 500L
     }
 
-    private val config: WakeWordConfig = config
     private val stateMachine = VoiceStateMachine()
     val state: VoiceState get() = stateMachine.state
 
@@ -57,53 +49,18 @@ class VoiceRuntime(
     }
 
     fun startRuntime(onCommandRecognized: (String) -> Unit) {
-        if (state != VoiceState.STOPPED) return
+        commandCallback = onCommandRecognized
         audioRouteManager.start()
         audioCapture.onEnvironmentChanged = { env -> onEnvironmentChanged?.invoke(env) }
         audioCapture.onFrameProcessed = { res -> onAudioMetrics?.invoke(res) }
-        audioCapture.start()
-
-        commandCallback = onCommandRecognized
-        stateMachine.transition(VoiceState.STARTING)
-        notifyState()
-        wakeWordEngine.startMonitoring(
-            onWake = { fallbackText -> onWakeDetected(fallbackText) },
-            onError = { e -> handleError("wake detector: ${e.message}") }
-        )
-        stateMachine.transition(VoiceState.WAKE_LISTENING)
-        notifyState()
-        Log.i(TAG, "Runtime started — waiting for wake word (Near-field DSP active)")
+        Log.i(TAG, "Runtime initialized — ready for voice commands")
     }
 
-    private fun onWakeDetected(fallbackText: String?) {
-        Log.i(TAG, "Wake detected${if (fallbackText != null) " (fallback: '$fallbackText')" else ""}")
-        if (!stateMachine.transition(VoiceState.WAKE_DETECTED)) {
-            Log.w(TAG, "Wake ignored — state is ${stateMachine.state}")
-            return
-        }
-        notifyState()
-
-        playBeep()
-        wakeWordEngine.pause() // mic handoff to command recognizer
-
-        val extractedCommand = if (fallbackText != null) wakeWordEngine.extractCommand(fallbackText) else ""
-        if (extractedCommand.isNotBlank()) {
-            // User said wake word + command in one utterance
-            onCommandReceived(extractedCommand)
-        } else {
-            // User said wake phrase — listen for their command until speech ends
-            stateMachine.transition(VoiceState.COMMAND_LISTENING)
-            notifyState()
-            startCommandListening()
-        }
-    }
-
-    /** Starts listening for a command immediately (e.g. from UI button or direct invocation). */
+    /** Starts listening for a voice command immediately. */
     fun startListeningForCommand() {
         if (state == VoiceState.SPEAKING) {
             ttsEngine.stop()
         }
-        wakeWordEngine.pause()
         playBeep()
         if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
             Log.w(TAG, "Cannot transition to COMMAND_LISTENING from $state")
@@ -115,20 +72,20 @@ class VoiceRuntime(
 
     private fun startCommandListening() {
         mainHandler.removeCallbacks(commandTimeoutRunnable)
-        mainHandler.postDelayed(commandTimeoutRunnable, config.commandTimeoutMs)
+        mainHandler.postDelayed(commandTimeoutRunnable, COMMAND_TIMEOUT_MS)
         speechRecognizer.startListening(
             onResult = { cmd -> onCommandReceived(cmd) },
             onError = { error -> handleError("recognizer error $error") }
         )
-        Log.i(TAG, "SpeechRecognizer started — command mode (timeout ${config.commandTimeoutMs}ms)")
+        Log.i(TAG, "SpeechRecognizer started — command mode (timeout ${COMMAND_TIMEOUT_MS}ms)")
     }
 
     private fun onCommandReceived(command: String) {
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechRecognizer.destroy()
         if (command.isBlank()) {
-            Log.i(TAG, "Empty command — returning to wake listening")
-            scheduleWakeResume()
+            Log.i(TAG, "Empty command — returning to idle")
+            if (stateMachine.transition(VoiceState.STOPPED)) notifyState()
             return
         }
         if (!stateMachine.transition(VoiceState.PROCESSING)) {
@@ -147,28 +104,16 @@ class VoiceRuntime(
     }
 
     private fun handleError(reason: String) {
-        Log.w(TAG, "Voice event: $reason — recovering")
+        Log.w(TAG, "Voice event: $reason — returning to idle")
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechRecognizer.destroy()
         if (stateMachine.transition(VoiceState.ERROR)) notifyState()
         mainHandler.postDelayed({
-            if (state == VoiceState.STOPPED) return@postDelayed
-            wakeWordEngine.resume()
             if (stateMachine.recoverFromError()) notifyState()
-            Log.i(TAG, "Recovered — wake listening")
-        }, config.cooldownMs)
+        }, COOLDOWN_MS)
     }
 
-    /** Blank command path: cooldown, then hand the mic back to the detector. */
-    private fun scheduleWakeResume() {
-        mainHandler.postDelayed({
-            if (state == VoiceState.STOPPED) return@postDelayed
-            wakeWordEngine.resume()
-            if (stateMachine.transition(VoiceState.WAKE_LISTENING)) notifyState()
-        }, config.cooldownMs)
-    }
-
-    /** Pauses wake detection while Jarvis speaks; resumes after TTS + cooldown. */
+    /** Speaks response using TTS engine and returns to STOPPED state upon completion. */
     fun speakResponse(text: String, onComplete: () -> Unit = {}) {
         if (!stateMachine.transition(VoiceState.SPEAKING)) {
             Log.w(TAG, "TTS skipped — state is ${stateMachine.state}")
@@ -176,19 +121,13 @@ class VoiceRuntime(
             return
         }
         notifyState()
-        wakeWordEngine.pause()
-        Log.i(TAG, "TTS started — wake detector paused")
+        Log.i(TAG, "TTS started")
         ttsEngine.speak(text) {
             Log.i(TAG, "TTS completed")
             mainHandler.postDelayed({
-                if (state == VoiceState.STOPPED) {
-                    onComplete()
-                    return@postDelayed
-                }
-                wakeWordEngine.resume()
-                if (stateMachine.transition(VoiceState.WAKE_LISTENING)) notifyState()
+                if (stateMachine.transition(VoiceState.STOPPED)) notifyState()
                 onComplete()
-            }, config.ttsCooldownMs)
+            }, 200L)
         }
     }
 
@@ -196,21 +135,11 @@ class VoiceRuntime(
         ttsEngine.setSpeechRate(rate)
     }
 
-    fun toggleMonitoring(): Boolean {
-        return if (state == VoiceState.STOPPED) {
-            startRuntime(commandCallback ?: {})
-            true
-        } else {
-            stopRuntime()
-            false
-        }
-    }
-
     fun stopRuntime() {
         mainHandler.removeCallbacksAndMessages(null)
         audioCapture.stop()
         speechRecognizer.destroy()
-        wakeWordEngine.stopMonitoring()
+        ttsEngine.stop()
         if (stateMachine.transition(VoiceState.STOPPED)) notifyState()
         Log.i(TAG, "Runtime stopped")
     }
@@ -219,7 +148,6 @@ class VoiceRuntime(
         mainHandler.removeCallbacksAndMessages(null)
         audioCapture.stop()
         speechRecognizer.destroy()
-        wakeWordEngine.release()
         audioRouteManager.release()
         ttsEngine.shutdown()
         try {

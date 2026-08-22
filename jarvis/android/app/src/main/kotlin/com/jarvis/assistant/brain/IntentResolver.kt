@@ -22,6 +22,10 @@ sealed class JarvisIntent {
     data class ReadNotification(val raw: String = "") : JarvisIntent()
     data class MultiStepTask(val plan: com.jarvis.assistant.actionengine.model.TaskPlan) : JarvisIntent()
     data class LocalConversational(val answer: String) : JarvisIntent()
+    data class SystemsCheck(val raw: String = "") : JarvisIntent()
+    data class AnalyzeData(val raw: String = "") : JarvisIntent()
+    data class HomeControl(val raw: String = "") : JarvisIntent()
+    data class ScheduleCheck(val raw: String = "") : JarvisIntent()
     data class Unknown(val raw: String) : JarvisIntent()
 }
 
@@ -35,6 +39,26 @@ class IntentResolver {
         val plannedTask = taskPlanner.plan(rawText)
         if (plannedTask != null) {
             return JarvisIntent.MultiStepTask(plannedTask)
+        }
+
+        // Systems Check & Diagnostics
+        if (t.contains("systems check") || t.contains("system check") || t.contains("diagnostics") || t == "check status" || t == "status check") {
+            return JarvisIntent.SystemsCheck(rawText)
+        }
+
+        // Analyze Data & Memory telemetry
+        if (t.contains("analyze data") || t.contains("data analysis") || t.contains("analyze memory") || t == "analytics") {
+            return JarvisIntent.AnalyzeData(rawText)
+        }
+
+        // Home Control
+        if (t.contains("home control") || t.contains("smart home") || t.contains("device control")) {
+            return JarvisIntent.HomeControl(rawText)
+        }
+
+        // Schedule
+        if (t.contains("schedule") || t.contains("calendar") || t.contains("my schedule") || t.contains("agenda")) {
+            return JarvisIntent.ScheduleCheck(rawText)
         }
 
         // Conversational & Assistant Basics (Minaty JARVIS AGI Persona)

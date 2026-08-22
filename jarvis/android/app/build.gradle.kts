@@ -16,10 +16,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Picovoice Console AccessKey for Porcupine wake-word detection.
-        // Leave empty to run in fallback text-matching mode.
-        buildConfigField("String", "JARVIS_PICOVOICE_ACCESS_KEY", "\"\"")
-
         // Strip non-essential language strings to shrink APK
         resourceConfigurations += listOf("en", "hi")
 
@@ -117,9 +113,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
-
-    // Offline wake-word detection (Picovoice Porcupine)
-    implementation("ai.picovoice:porcupine-android:3.0.3")
 
     // Testing
     testImplementation("junit:junit:4.13.2")

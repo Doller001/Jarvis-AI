@@ -22,12 +22,10 @@ class JarvisForegroundService : Service() {
             private set
         var onUtterance: ((String) -> Unit)? = null
         var onResponseDone: (() -> Unit)? = null
-        var onWakeToggled: ((Boolean) -> Unit)? = null
         var onStateChanged: ((VoiceState) -> Unit)? = null
         var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
         var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
-        var toggleWakeListening: (() -> Boolean)? = null
         var startCommandListening: (() -> Unit)? = null
         var setSpeechRate: ((Float) -> Unit)? = null
 
@@ -41,11 +39,6 @@ class JarvisForegroundService : Service() {
         voiceRuntime = VoiceRuntime(applicationContext)
         speak = { text ->
             voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
-        }
-        toggleWakeListening = {
-            val active = voiceRuntime.toggleMonitoring()
-            onWakeToggled?.invoke(active)
-            active
         }
         startCommandListening = {
             voiceRuntime.startListeningForCommand()
@@ -107,9 +100,8 @@ class JarvisForegroundService : Service() {
 
     private fun updateNotification(state: VoiceState) {
         val text = when (state) {
-            VoiceState.STOPPED, VoiceState.STARTING -> "Starting…"
-            VoiceState.WAKE_LISTENING -> "Listening for 'Hey Jarvis'"
-            VoiceState.WAKE_DETECTED, VoiceState.COMMAND_LISTENING -> "Listening…"
+            VoiceState.STOPPED, VoiceState.STARTING -> "JARVIS Assistant Active"
+            VoiceState.COMMAND_LISTENING -> "Listening for command…"
             VoiceState.PROCESSING -> "Processing…"
             VoiceState.SPEAKING -> "Speaking…"
             VoiceState.ERROR -> "Recovering…"
@@ -148,7 +140,7 @@ class JarvisForegroundService : Service() {
         }
         return builder
             .setContentTitle("JARVIS")
-            .setContentText("Listening for 'Hey Jarvis'")
+            .setContentText("JARVIS Assistant Active")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
     }
@@ -160,12 +152,10 @@ class JarvisForegroundService : Service() {
         }
         onUtterance = null
         onResponseDone = null
-        onWakeToggled = null
         onStateChanged = null
         onEnvironmentChanged = null
         onAudioMetrics = null
         speak = null
-        toggleWakeListening = null
         startCommandListening = null
         setSpeechRate = null
         super.onDestroy()

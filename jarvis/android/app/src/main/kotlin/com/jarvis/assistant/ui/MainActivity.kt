@@ -65,7 +65,6 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
                 onSend = viewModel::sendUtterance,
-                onToggleWakeListening = viewModel::toggleWakeListening,
                 onStartListening = viewModel::startListening
             )
         }
@@ -96,7 +95,6 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onPingBackend = viewModel::pingBackend,
                 onToggleTts = viewModel::setTtsEnabled,
                 onSelectSpeechRate = viewModel::setSpeechRate,
-                onSelectWakeSensitivity = viewModel::setWakeSensitivity,
                 onClearHistory = viewModel::clearHistory
             )
         }

@@ -41,11 +41,7 @@
 -keep class com.jarvis.assistant.actionengine.** { *; }
 -keep class com.jarvis.assistant.ui.JarvisUiState { *; }
 
-# 5. Picovoice Porcupine (JNI & Native Engine)
--keep class ai.picovoice.porcupine.** { *; }
--dontwarn ai.picovoice.porcupine.**
-
-# 6. SQLite & Android Services
+# 5. SQLite & Android Services
 -keep class com.jarvis.assistant.memory.JarvisMemoryDatabase { *; }
 -keep class com.jarvis.assistant.services.JarvisForegroundService { *; }
 -keep class com.jarvis.assistant.services.JarvisQuickTileService { *; }

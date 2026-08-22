@@ -34,7 +34,7 @@ object AllPermissions {
             id = "microphone",
             androidPermission = android.Manifest.permission.RECORD_AUDIO,
             title = "Microphone",
-            description = "Capture voice for wake-word detection and speech commands.",
+            description = "Capture voice for speech recognition and assistant commands.",
             icon = Icons.Filled.Mic,
             required = true,
             grant = GrantKind.RUNTIME

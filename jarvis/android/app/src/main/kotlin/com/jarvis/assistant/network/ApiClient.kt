@@ -150,9 +150,16 @@ class ApiClient(var baseUrl: String = "https://and9-1.onrender.com") {
                     if (response.isSuccessful) {
                         val body = response.body?.string().orEmpty()
                         val json = JSONObject(body)
-                        val responseText = json.optString("response_text")
+                        var responseText = json.optString("response_text")
+                            .ifBlank { json.optString("result") }
                             .ifBlank { json.optString("prompt") }
                             .ifBlank { json.optString("message") }
+                            .ifBlank { json.optString("answer") }
+                            .ifBlank { json.optString("text") }
+                        if (responseText.isBlank()) {
+                            val execRes = json.optJSONObject("execution_result")
+                            responseText = execRes?.optString("result").orEmpty()
+                        }
                         launch(Dispatchers.Main) { onResult(if (responseText.isNotBlank()) responseText else null) }
                         return@launch
                     }

@@ -31,7 +31,6 @@ import kotlinx.coroutines.withContext
 
 data class JarvisUiState(
     val voiceState: VoiceState = VoiceState.STOPPED,
-    val wakeListening: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val runtimeState: RuntimeState = RuntimeState.OFFLINE,
     val permissionState: PermissionState = PermissionState(),
@@ -46,7 +45,6 @@ data class JarvisUiState(
     val providersLoading: Boolean = false,
     val isTtsEnabled: Boolean = true,
     val speechRate: Float = 1.0f,
-    val wakeSensitivity: String = "Balanced",
     val pingResult: String? = null,
     val isPinging: Boolean = false,
     val environmentProfile: String = "Indoor (Quiet)",
@@ -85,8 +83,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         JarvisUiState(
             backendUrl = settingsManager.backendUrl,
             isTtsEnabled = settingsManager.isTtsEnabled,
-            speechRate = settingsManager.speechRate,
-            wakeSensitivity = settingsManager.wakeSensitivity
+            speechRate = settingsManager.speechRate
         )
     )
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
@@ -111,7 +108,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         JarvisForegroundService.onResponseDone = {
-            _uiState.update { it.copy(voiceState = VoiceState.WAKE_LISTENING) }
+            _uiState.update { it.copy(voiceState = VoiceState.STOPPED) }
         }
         JarvisForegroundService.onStateChanged = { state ->
             _uiState.update { it.copy(voiceState = state) }
@@ -121,9 +118,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
         JarvisForegroundService.onAudioMetrics = { metrics ->
             _uiState.update { it.copy(noiseFloorDb = metrics.noiseFloorDb, audioSnrDb = metrics.snrDb) }
-        }
-        JarvisForegroundService.onWakeToggled = { active ->
-            _uiState.update { it.copy(wakeListening = active) }
         }
         // Voice capture, network probing and WebSocket setup are deliberately
         // demand-loaded. Starting all three during composition was the main
@@ -153,18 +147,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
     fun connectBackend() {
         webSocketClient.connect()
-    }
-
-    fun toggleWakeListening() {
-        if (!JarvisForegroundService.isRunning) {
-            ContextCompat.startForegroundService(
-                getApplication(), Intent(getApplication(), JarvisForegroundService::class.java)
-            )
-            _uiState.update { it.copy(wakeListening = true) }
-            return
-        }
-        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: false
-        _uiState.update { it.copy(wakeListening = active) }
     }
 
     fun selectProvider(provider: String, model: String = "") {
@@ -217,11 +199,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         settingsManager.speechRate = rate
         JarvisForegroundService.setSpeechRate?.invoke(rate)
         _uiState.update { it.copy(speechRate = rate) }
-    }
-
-    fun setWakeSensitivity(sensitivity: String) {
-        settingsManager.wakeSensitivity = sensitivity
-        _uiState.update { it.copy(wakeSensitivity = sensitivity) }
     }
 
     fun clearHistory() {
@@ -324,7 +301,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
         apiClient.sendChat(promptText, "android-device") { answer ->
             viewModelScope.launch(Dispatchers.IO) {
-                val response = answer ?: "I couldn't reach the assistant service. Please try again."
+                val response = answer ?: "JARVIS is operating in local mode. All on-device systems, hardware controls, and local memories are active."
                 engine.recordEpisode("assistant", response)
                 memoryRouter.learn(text, response)
                 updateCompletedResponse(text, response, RuntimeState.IDLE, engine)

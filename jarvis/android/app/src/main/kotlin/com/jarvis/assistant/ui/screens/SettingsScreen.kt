@@ -35,7 +35,6 @@ fun SettingsScreen(
     onPingBackend: (String) -> Unit,
     onToggleTts: (Boolean) -> Unit,
     onSelectSpeechRate: (Float) -> Unit,
-    onSelectWakeSensitivity: (String) -> Unit,
     onClearHistory: () -> Unit
 ) {
     var urlInput by remember(uiState.backendUrl) { mutableStateOf(uiState.backendUrl) }
@@ -48,7 +47,6 @@ fun SettingsScreen(
     )
 
     val rates = listOf(0.8f to "0.8x", 1.0f to "1.0x", 1.2f to "1.2x", 1.5f to "1.5x")
-    val sensitivities = listOf("Low", "Balanced", "High")
 
     if (showClearDialog) {
         AlertDialog(
@@ -303,34 +301,6 @@ fun SettingsScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(14.dp))
-
-                    Text("Wake Word Sensitivity:", color = JarvisTextSecondary, fontSize = 12.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        sensitivities.forEach { sensitivity ->
-                            val isSelected = uiState.wakeSensitivity == sensitivity
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isSelected) JarvisBlue.copy(alpha = 0.25f) else JarvisDark,
-                                border = BorderStroke(1.dp, if (isSelected) JarvisCyan else JarvisGlow),
-                                onClick = { onSelectWakeSensitivity(sensitivity) },
-                                modifier = Modifier.weight(1f).height(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        sensitivity,
-                                        color = if (isSelected) JarvisCyan else JarvisTextSecondary,
-                                        fontSize = 13.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
@@ -383,7 +353,7 @@ fun SettingsScreen(
                     Text("JARVIS Android Runtime", color = JarvisCyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text("Version: 1.0.0 • Target SDK: 34 (Android 14)", color = JarvisTextSecondary, fontSize = 12.sp)
-                    Text("Pipeline: Offline Wake Word → Level-1 On-Device → FastAPI Cloud", color = JarvisTextSecondary, fontSize = 12.sp)
+                    Text("Pipeline: On-Device Voice → Level-1 Deterministic Engine → Cloud Brain", color = JarvisTextSecondary, fontSize = 12.sp)
                 }
             }
         }
