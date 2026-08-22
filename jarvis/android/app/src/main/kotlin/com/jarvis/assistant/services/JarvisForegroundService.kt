@@ -7,11 +7,15 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
+import com.jarvis.assistant.brain.JarvisBrain
+import com.jarvis.assistant.execution.CommandExecutor
 import com.jarvis.assistant.voice.VoiceRuntime
 import com.jarvis.assistant.voice.VoiceState
 
 class JarvisForegroundService : Service() {
     private lateinit var voiceRuntime: VoiceRuntime
+    private val brain by lazy { JarvisBrain() }
+    private val commandExecutor by lazy { CommandExecutor(applicationContext) }
 
     companion object {
         var isRunning: Boolean = false
@@ -76,7 +80,21 @@ class JarvisForegroundService : Service() {
         }
         voiceRuntime.startRuntime { userUtterance ->
             Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
-            onUtterance?.invoke(userUtterance)
+            val uiHandler = onUtterance
+            if (uiHandler != null) {
+                uiHandler(userUtterance)
+            } else {
+                // The service can outlive the activity.  Keep local commands
+                // working in that state, while never executing a risky action
+                // without the UI's confirmation flow.
+                val plan = brain.processCommand(userUtterance)
+                val response = if (plan.requiresConfirmation) {
+                    "Please open Jarvis to confirm this action."
+                } else {
+                    commandExecutor.execute(plan.intent)
+                }
+                voiceRuntime.speakResponse(response)
+            }
         }
 
         return START_STICKY
@@ -139,9 +157,12 @@ class JarvisForegroundService : Service() {
         onResponseDone = null
         onWakeToggled = null
         onStateChanged = null
+        onEnvironmentChanged = null
+        onAudioMetrics = null
         speak = null
         toggleWakeListening = null
         startCommandListening = null
+        setSpeechRate = null
         super.onDestroy()
     }
 

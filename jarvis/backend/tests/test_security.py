@@ -22,6 +22,14 @@ def test_token_randomness_and_replay_protection():
     assert replayed is None
 
 
+def test_token_is_bound_to_its_request_id():
+    mgr = ConfirmationTokenManager(ttl_seconds=60)
+    token = mgr.create_token("s1", "request-1", "call_contact", {"contact": "Alice"})
+
+    assert mgr.validate_and_consume(token.token, session_id="s1", request_id="request-2") is None
+    assert mgr.validate_and_consume(token.token, session_id="s1", request_id="request-1") is not None
+
+
 def test_redacting_formatter_safely_redacts_keys_and_standalone_tokens():
     formatter = RedactingFormatter()
     record1 = logging.LogRecord(

@@ -50,12 +50,16 @@ class ConfirmationTokenManager:
         self,
         token_str: str,
         session_id: str,
+        request_id: Optional[str] = None,
         expected_action: Optional[str] = None
     ) -> Optional[ConfirmationTokenPayload]:
         self._purge_expired()
 
         payload = self._tokens.get(token_str)
         if not payload or payload.used or payload.session_id != session_id:
+            return None
+
+        if request_id is not None and payload.request_id != request_id:
             return None
 
         if expected_action and payload.action != expected_action:

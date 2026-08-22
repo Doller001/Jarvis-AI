@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Install JDK17 + Android SDK (cmdline-tools, platform-34, build-tools 34.0.0)
 # into a home dir (no root needed). Idempotent-ish.
-set -e
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT="$(cd "$SCRIPT_DIR/../android" && pwd)"
 export BASE="$HOME/android-build-env"
 mkdir -p "$BASE"
 export JAVA_HOME="$BASE/jdk"
@@ -36,8 +38,6 @@ sdkmanager --sdk_root="$ANDROID_HOME" \
   "build-tools;34.0.0"
 
 echo "[4/6] Create local.properties for the project..."
-PROJECT="$BASE/../../Downloads/raphael-ai-assistant-main/jarvis/android"
-PROJECT="/home/saif/Downloads/raphael-ai-assistant-main/jarvis/android"
 echo "sdk.dir=${ANDROID_HOME}" > "$PROJECT/local.properties"
 echo "android.home=${ANDROID_HOME}" >> "$PROJECT/local.properties"
 

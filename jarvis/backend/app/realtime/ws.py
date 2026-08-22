@@ -34,7 +34,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = None, session_id
             data = await websocket.receive_json()
             await message_router.route_message(session_id, data)
     except WebSocketDisconnect:
-        connection_manager.disconnect(session_id)
+        connection_manager.disconnect(session_id, websocket)
     except Exception as e:
         logger.error(f"Error handling WebSocket session {session_id}: {e}")
-        connection_manager.disconnect(session_id)
+        connection_manager.disconnect(session_id, websocket)

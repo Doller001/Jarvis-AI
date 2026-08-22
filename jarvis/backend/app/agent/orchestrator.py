@@ -10,6 +10,7 @@ from app.agent.intent_resolver import intent_resolver
 from app.agent.planner import risk_policy, task_planner
 from app.llm.gateway import llm_gateway
 from app.tools.executor import tool_executor
+from app.tools.registry import tool_registry
 from app.security.token_manager import token_manager
 from app.memory.memory_manager import memory_manager
 
@@ -98,6 +99,18 @@ class JarvisBrain:
             }
             memory_manager.record_assistant_message(session_id, ans_text)
             return res
+
+        # LLM output is untrusted.  Never turn an unregistered action into a
+        # confirmation request or let it reach the executor as a server error.
+        if not tool_registry.get_tool(action):
+            logger.warning("Ignoring unregistered action from reasoning: %s", action)
+            return {
+                "type": "error",
+                "request_id": request_id,
+                "session_id": session_id,
+                "code": "UNKNOWN_ACTION",
+                "message": "Requested action is not supported.",
+            }
 
         # 3. Safety Risk Gate Evaluation
         if not risk_policy.is_auto_executable(action):

@@ -134,10 +134,17 @@ class CommandExecutor(private val context: Context? = null) {
                 }
             }
             is JarvisIntent.MultiStepTask -> {
-                kotlinx.coroutines.runBlocking {
+                val results = kotlinx.coroutines.runBlocking {
                     actionExecutor.executePlan(intent.plan)
                 }
-                "Multi-step task executed: ${intent.plan.steps.size} actions completed."
+                val completed = results.count { it.executionSuccess }
+                val failed = results.firstOrNull { !it.executionSuccess }
+                if (failed == null) {
+                    "Multi-step task completed: $completed actions finished."
+                } else {
+                    "Multi-step task stopped after $completed actions: " +
+                        (failed.failure?.message ?: "${failed.actionId} failed")
+                }
             }
             is JarvisIntent.LocalConversational -> intent.answer
             is JarvisIntent.Unknown -> "Routed command to cloud brain: \"${intent.raw}\""

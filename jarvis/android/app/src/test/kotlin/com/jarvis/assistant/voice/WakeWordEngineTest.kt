@@ -40,6 +40,15 @@ class WakeWordEngineTest {
     }
 
     @Test
+    fun `matching a phrase does not consume the wake cooldown`() {
+        val engine = WakeWordEngine(config = WakeWordConfig(cooldownMs = 60_000L))
+
+        assertTrue(engine.isWakePhraseMatch("hey jarvis"))
+        // The caller, not the matcher, owns this single cooldown claim.
+        assertTrue(engine.isWakePhraseMatch("hey jarvis"))
+    }
+
+    @Test
     fun testExtractCommandStripsWakePhrase() {
         assertEquals("Open youtube", engine.extractCommand("Hey Jarvis open YouTube"))
         assertEquals("Open youtube", engine.extractCommand("jarvis open YouTube"))

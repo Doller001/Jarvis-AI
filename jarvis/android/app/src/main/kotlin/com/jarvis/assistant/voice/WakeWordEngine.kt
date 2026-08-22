@@ -338,9 +338,14 @@ class WakeWordEngine(
         return dp[s2.length]
     }
 
-    /** Public for manual command mode and tests. */
+    /**
+     * Pure phrase matcher used by the fallback recognizer.
+     *
+     * Cooldown ownership deliberately stays with the detection callback.  If
+     * this method consumed it, the callback's subsequent allowWake() check
+     * would reject the same genuine wake event.
+     */
     fun isWakePhraseMatch(text: String): Boolean {
-        if (!allowWake()) return false
         val cleaned = text.lowercase().trim()
         if (cleaned.isBlank()) return false
 

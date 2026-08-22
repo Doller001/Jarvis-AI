@@ -63,7 +63,8 @@ class MessageRouter:
 
         valid_payload = token_manager.validate_and_consume(
             token_str=payload.confirmation_token,
-            session_id=session_id
+            session_id=session_id,
+            request_id=payload.request_id,
         )
 
         if not valid_payload:

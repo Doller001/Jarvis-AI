@@ -18,8 +18,11 @@ class ConnectionManager:
         self.active_connections[session_id] = websocket
         logger.info(f"Jarvis WebSocket session connected: {session_id}")
 
-    def disconnect(self, session_id: str) -> None:
-        if session_id in self.active_connections:
+    def disconnect(self, session_id: str, websocket: WebSocket | None = None) -> None:
+        active = self.active_connections.get(session_id)
+        # A reconnect can replace a session's socket.  Do not let the stale
+        # socket's finally block remove the newly connected client.
+        if active is not None and (websocket is None or active is websocket):
             del self.active_connections[session_id]
             logger.info(f"Jarvis WebSocket session disconnected: {session_id}")
 

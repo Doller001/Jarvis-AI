@@ -108,21 +108,24 @@ class PersistentStore:
 
         # SQLite fallback
         conn = self._get_sqlite_connection()
-        with conn:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS conversations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    timestamp REAL NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS user_preferences (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at REAL NOT NULL
-                );
-            """)
+        try:
+            with conn:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS conversations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        timestamp REAL NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS user_preferences (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at REAL NOT NULL
+                    );
+                """)
+        finally:
+            conn.close()
 
     def save_message(self, session_id: str, role: str, content: str) -> None:
         now = time.time()
@@ -153,11 +156,14 @@ class PersistentStore:
                 logger.error(f"PostgreSQL save_message error: {e}")
 
         conn = self._get_sqlite_connection()
-        with conn:
-            conn.execute(
-                "INSERT INTO conversations (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-                (session_id, role, content, now)
-            )
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT INTO conversations (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+                    (session_id, role, content, now)
+                )
+        finally:
+            conn.close()
 
     def get_history(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
         if self.is_mongodb and self.mongo_db is not None:
@@ -187,12 +193,15 @@ class PersistentStore:
                 logger.error(f"PostgreSQL get_history error: {e}")
 
         conn = self._get_sqlite_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT role, content, timestamp FROM conversations WHERE session_id = ? ORDER BY id DESC LIMIT ?",
-            (session_id, limit)
-        )
-        rows = cur.fetchall()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT role, content, timestamp FROM conversations WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+                (session_id, limit)
+            )
+            rows = cur.fetchall()
+        finally:
+            conn.close()
         return [{"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]} for r in reversed(rows)]
 
 

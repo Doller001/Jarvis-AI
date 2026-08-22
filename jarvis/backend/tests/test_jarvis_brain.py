@@ -5,6 +5,7 @@ Tests for JarvisBrain and Intent Resolver pipeline.
 import pytest
 from app.agent.orchestrator import build_system_prompt, jarvis_brain, JARVIS_SYSTEM_PROMPT
 from app.memory.memory_manager import memory_manager
+from app.llm.base import LLMResponse
 
 
 def test_build_system_prompt_injects_history():
@@ -37,3 +38,15 @@ async def test_jarvis_brain_risky_action():
     assert res["type"] == "confirmation_request"
     assert res["action"] == "call_contact"
     assert "confirmation_token" in res
+
+
+@pytest.mark.asyncio
+async def test_jarvis_brain_rejects_unregistered_llm_action(monkeypatch):
+    async def fake_reasoning(**_kwargs):
+        return LLMResponse(text='{"action":"delete_everything"}', action="delete_everything")
+
+    monkeypatch.setattr("app.agent.orchestrator.llm_gateway.generate_reasoning", fake_reasoning)
+    res = await jarvis_brain.process_utterance("do something unusual", session_id="s2", request_id="r3")
+
+    assert res["type"] == "error"
+    assert res["code"] == "UNKNOWN_ACTION"
