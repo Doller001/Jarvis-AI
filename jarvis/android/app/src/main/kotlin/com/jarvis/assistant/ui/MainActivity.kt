@@ -40,7 +40,7 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     CosmicScreen {
-        NavHost(navController = navController, startDestination = "onboarding") {
+        NavHost(navController = navController, startDestination = "home") {
         composable("onboarding") {
             OnboardingScreen(
                 permissionState = uiState.permissionState,

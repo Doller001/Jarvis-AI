@@ -1,37 +1,37 @@
 package com.jarvis.assistant.ui.screens
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.FlashlightOn
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jarvis.assistant.ui.components.*
-import com.jarvis.assistant.ui.theme.*
 import com.jarvis.assistant.ui.JarvisUiState
+import com.jarvis.assistant.voice.VoiceState
 
+// --- COLOR PALETTE ---
+val BgColor = Color(0xFF040812) // Deep dark blue/black
+val CyanGlow = Color(0xFF00E5FF) // Neon Cyan
+val DarkCardBg = Color(0xFF071B26) // Slightly lighter dark blue for cards
+val TextGray = Color(0xFFA0B4C4)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     uiState: JarvisUiState,
@@ -43,288 +43,296 @@ fun HomeScreen(
     onQuickAction: (String) -> Unit,
     onStartListening: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Top Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "JARVIS",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = JarvisCyan,
-                        style = androidx.compose.ui.text.TextStyle(
-                            shadow = androidx.compose.ui.graphics.Shadow(
-                                color = JarvisCyan,
-                                blurRadius = 18f
-                            )
-                        )
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ConnectionPill(uiState.connectionState)
-                        Spacer(Modifier.width(4.dp))
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = JarvisCyan)
-                        }
-                    }
-                }
-
-                Spacer(Modifier.height(18.dp))
-
-                ListeningOrb(voiceState = uiState.voiceState, onClick = onStartListening)
-
-                Spacer(Modifier.height(16.dp))
-                Text(
-                    text = when (uiState.voiceState) {
-                        com.jarvis.assistant.voice.VoiceState.WAKE_DETECTED,
-                        com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING -> "Listening…"
-                        com.jarvis.assistant.voice.VoiceState.PROCESSING -> "Thinking…"
-                        com.jarvis.assistant.voice.VoiceState.SPEAKING -> "Speaking…"
-                        com.jarvis.assistant.voice.VoiceState.ERROR -> "Recovering…"
-                        com.jarvis.assistant.voice.VoiceState.STOPPED,
-                        com.jarvis.assistant.voice.VoiceState.STARTING -> "Starting…"
-                        else -> "Listening for \"Hey Jarvis\""
-                    },
-                    fontSize = 16.sp,
-                    color = Color.White
-                )
-                Text(
-                    text = uiState.lastResponse,
-                    fontSize = 13.sp,
-                    color = JarvisTextSecondary,
-                    modifier = Modifier.padding(top = 6.dp, start = 8.dp, end = 8.dp)
-                )
-
-                Spacer(Modifier.height(18.dp))
-
-                // Telemetry HUD Cards (From Generative UI Mockup)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    TelemetryCard(
-                        title = "ACTIVE LLM",
-                        value = uiState.activeProvider,
-                        subValue = uiState.activeModel.take(16),
-                        modifier = Modifier.weight(1.3f),
-                        onClick = onOpenProviders
-                    )
-                    TelemetryCard(
-                        title = "LATENCY",
-                        value = if (uiState.connectionState == com.jarvis.assistant.network.ConnectionState.CONNECTED) "180ms" else "Offline",
-                        subValue = "Sub-second",
-                        modifier = Modifier.weight(1f)
-                    )
-                    TelemetryCard(
-                        title = "MEMORY FACTS",
-                        value = "${uiState.messages.size}",
-                        subValue = "Supabase",
-                        modifier = Modifier.weight(1f),
-                        onClick = onOpenMemory
-                    )
-                }
-
-                Spacer(Modifier.height(10.dp))
-
-                // Adaptive Audio Acoustic Filter Badge
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .background(JarvisSurface.copy(alpha = 0.6f))
-                        .border(1.dp, JarvisCyan.copy(alpha = 0.25f), androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .background(if (uiState.environmentProfile.contains("Outdoor")) JarvisAmber else JarvisGreen)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Acoustic DSP: ${uiState.environmentProfile}",
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    Text(
-                        "Floor: ${uiState.noiseFloorDb.toInt()}dB | Near-Voice SNR: ${uiState.audioSnrDb.toInt()}dB",
-                        color = JarvisTextSecondary,
-                        fontSize = 10.sp
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Quick Action Sub-Second Hardware Pills
-                Text(
-                    "QUICK ACTIONS",
-                    color = JarvisCyan.copy(alpha = 0.8f),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 6.dp)
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QuickActionPill(
-                        icon = Icons.Filled.FlashlightOn,
-                        label = "Torch",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onQuickAction("torch on") }
-                    )
-                    QuickActionPill(
-                        icon = Icons.Filled.Wifi,
-                        label = "WiFi",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onQuickAction("check wifi") }
-                    )
-                    QuickActionPill(
-                        icon = Icons.Filled.Apps,
-                        label = "Apps",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onQuickAction("apps list") }
-                    )
-                    QuickActionPill(
-                        icon = Icons.Filled.VolumeUp,
-                        label = "Volume",
-                        modifier = Modifier.weight(1f),
-                        onClick = { onQuickAction("volume up") }
-                    )
-                }
-
-                Spacer(Modifier.height(16.dp))
-
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    QuickStat(
-                        icon = Icons.Filled.Memory,
-                        label = "Memory Core",
-                        value = "${uiState.messages.size} Facts",
-                        modifier = Modifier.weight(1f),
-                        onClick = onOpenMemory
-                    )
-                    QuickStat(
-                        icon = Icons.Filled.ChatBubble,
-                        label = "Dialogue",
-                        value = "Open Chat",
-                        modifier = Modifier.weight(1f),
-                        onClick = onOpenConversation
-                    )
-                    QuickStat(
-                        icon = Icons.Filled.Tune,
-                        label = "LLM Gateway",
-                        value = uiState.activeProvider,
-                        modifier = Modifier.weight(1f),
-                        onClick = onOpenProviders
-                    )
-                }
-
-                Spacer(Modifier.height(20.dp))
-
-                PrimaryButton(text = "Talk to Jarvis", onClick = onOpenConversation)
-                Spacer(Modifier.height(8.dp))
-                TextButton(onClick = onOpenPermissions, modifier = Modifier.fillMaxWidth()) {
-                    Text("Review permissions", color = JarvisTextSecondary, fontSize = 13.sp)
-                }
-            }
+    Scaffold(
+        containerColor = BgColor,
+        bottomBar = {
+            JarvisBottomNavigation(
+                onHome = {},
+                onData = onOpenMemory,
+                onMap = onOpenProviders,
+                onCommunication = onOpenConversation,
+                onSettings = onOpenSettings
+            )
         }
-}
-
-@Composable
-fun TelemetryCard(
-    title: String,
-    value: String,
-    subValue: String,
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
-) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = JarvisCard.copy(alpha = 0.9f),
-        border = BorderStroke(1.dp, JarvisGlow),
-        onClick = onClick ?: {},
-        enabled = onClick != null,
-        modifier = modifier.height(68.dp)
-    ) {
+    ) { paddingValues ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(title, color = JarvisTextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(2.dp))
-            Text(value, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(subValue, color = JarvisCyan, fontSize = 10.sp, maxLines = 1)
-        }
-    }
-}
-
-@Composable
-fun QuickActionPill(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = JarvisCard,
-        border = BorderStroke(1.dp, JarvisGlow),
-        onClick = onClick,
-        modifier = modifier.height(44.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-@Composable
-fun QuickStat(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    onClick: (() -> Unit)? = null
-) {
-    Surface(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-        color = JarvisCard,
-        onClick = onClick ?: {},
-        enabled = onClick != null,
-        modifier = modifier.height(78.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(12.dp),
-            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(icon, contentDescription = null, tint = JarvisBlue, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(value, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            Text(label, color = JarvisTextSecondary, fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 1. HEADER SECTION
+            Text(
+                text = "JARVIS",
+                color = CyanGlow,
+                fontSize = 40.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp
+            )
+            Text(
+                text = "Personal AI Assistant",
+                color = TextGray,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 28.dp)
+            )
+
+            // 2. CENTRAL ORB / LISTENING SECTION
+            val statusText = when (uiState.voiceState) {
+                VoiceState.COMMAND_LISTENING, VoiceState.WAKE_DETECTED -> "LISTENING..."
+                VoiceState.PROCESSING -> "THINKING..."
+                VoiceState.SPEAKING -> "SPEAKING..."
+                VoiceState.STARTING -> "STARTING..."
+                VoiceState.ERROR -> "RECOVERING..."
+                else -> "LISTENING..."
+            }
+
+            Text(
+                text = statusText,
+                color = CyanGlow,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            GlowingMicOrb(
+                voiceState = uiState.voiceState,
+                onClick = onStartListening
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // 3. GREETING MESSAGE BUBBLE
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, CyanGlow, RoundedCornerShape(12.dp))
+                    .background(DarkCardBg, RoundedCornerShape(12.dp))
+                    .clickable { onOpenConversation() }
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = uiState.lastResponse.ifBlank { "Good Morning, user!\nWhat can I assist you with today?" },
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 4. ACTION BUTTONS GRID
+            ActionGrid(
+                onSystemsCheck = { onQuickAction("check wifi") },
+                onAnalyzeData = onOpenMemory,
+                onVoiceCommand = onOpenConversation,
+                onHomeControl = { onQuickAction("torch on") },
+                onSchedule = onOpenProviders
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
+
+@Composable
+fun GlowingMicOrb(
+    voiceState: VoiceState = VoiceState.STOPPED,
+    onClick: () -> Unit = {}
+) {
+    val isListening = voiceState == VoiceState.COMMAND_LISTENING ||
+            voiceState == VoiceState.WAKE_DETECTED ||
+            voiceState == VoiceState.WAKE_LISTENING
+
+    // Pulsing Animation
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = if (isListening) 0.9f else 0.95f,
+        targetValue = if (isListening) 1.1f else 1.03f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ), label = "pulse"
+    )
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(160.dp)
+            .scale(scale)
+            .clickable(onClick = onClick)
+    ) {
+        // Outer glowing rings
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .border(2.dp, CyanGlow.copy(alpha = 0.5f), CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .size(130.dp)
+                .border(4.dp, CyanGlow.copy(alpha = 0.8f), CircleShape)
+        )
+        // Inner Mic Button
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(80.dp)
+                .clip(CircleShape)
+                .background(DarkCardBg)
+                .border(2.dp, CyanGlow, CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = "Microphone",
+                tint = Color.White,
+                modifier = Modifier.size(36.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun ActionGrid(
+    onSystemsCheck: () -> Unit,
+    onAnalyzeData: () -> Unit,
+    onVoiceCommand: () -> Unit,
+    onHomeControl: () -> Unit,
+    onSchedule: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ActionCard(
+                icon = Icons.Default.SettingsSuggest,
+                title = "Systems Check",
+                modifier = Modifier.weight(1f),
+                onClick = onSystemsCheck
+            )
+            ActionCard(
+                icon = Icons.Default.Analytics,
+                title = "Analyze Data",
+                modifier = Modifier.weight(1f),
+                onClick = onAnalyzeData
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ActionCard(
+                icon = Icons.Default.MicNone,
+                title = "Voice Command",
+                modifier = Modifier.weight(1f),
+                onClick = onVoiceCommand
+            )
+            ActionCard(
+                icon = Icons.Default.Home,
+                title = "Home Control",
+                modifier = Modifier.weight(1f),
+                onClick = onHomeControl
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ActionCard(
+                icon = Icons.Default.CalendarMonth,
+                title = "Schedule",
+                modifier = Modifier.weight(0.5f),
+                onClick = onSchedule
+            )
+            Spacer(modifier = Modifier.weight(0.5f)) // Empty space to match the layout
+        }
+    }
+}
+
+@Composable
+fun ActionCard(
+    icon: ImageVector,
+    title: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .border(1.dp, CyanGlow, RoundedCornerShape(12.dp))
+            .background(DarkCardBg, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = CyanGlow,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 13.sp
+        )
+    }
+}
+
+@Composable
+fun JarvisBottomNavigation(
+    onHome: () -> Unit,
+    onData: () -> Unit,
+    onMap: () -> Unit,
+    onCommunication: () -> Unit,
+    onSettings: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF020409))
+            .border(width = 1.dp, color = CyanGlow.copy(alpha = 0.3f))
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        BottomNavItem(icon = Icons.Default.Home, label = "Home", isSelected = true, onClick = onHome)
+        BottomNavItem(icon = Icons.Default.BarChart, label = "Data", isSelected = false, onClick = onData)
+        BottomNavItem(icon = Icons.Default.Place, label = "Map", isSelected = false, onClick = onMap)
+        BottomNavItem(icon = Icons.Default.ChatBubbleOutline, label = "Communication", isSelected = false, onClick = onCommunication)
+        BottomNavItem(icon = Icons.Default.Settings, label = "Settings", isSelected = false, onClick = onSettings)
+    }
+}
+
+@Composable
+fun BottomNavItem(
+    icon: ImageVector,
+    label: String,
+    isSelected: Boolean = false,
+    onClick: () -> Unit = {}
+) {
+    val color = if (isSelected) CyanGlow else TextGray
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = label,
+            color = color,
+            fontSize = 10.sp
+        )
+    }
+}
+
