@@ -27,6 +27,7 @@ class WebSocketClient(
     private var webSocket: WebSocket? = null
     var onMessageReceived: ((String) -> Unit)? = null
     private var reconnectAttempts = 0
+    @Volatile private var disconnectRequested = false
 
     fun updateUrl(newWsUrl: String) {
         val changed = wsUrl != newWsUrl.trim()
@@ -43,6 +44,7 @@ class WebSocketClient(
     }
 
     private fun scheduleReconnect() {
+        if (disconnectRequested) return
         if (reconnectJob?.isActive == true) return
         reconnectJob = scope.launch {
             connectionManager.setConnectionState(ConnectionState.RECONNECTING)
@@ -54,6 +56,7 @@ class WebSocketClient(
     }
 
     fun connect() {
+        disconnectRequested = false
         reconnectJob?.cancel()
         Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $wsUrl...")
         connectionManager.setConnectionState(ConnectionState.CONNECTING)
@@ -62,6 +65,7 @@ class WebSocketClient(
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i("WebSocketClient", "WebSocket Connection Established")
+                reconnectAttempts = 0
                 connectionManager.onConnected()
             }
 
@@ -94,9 +98,11 @@ class WebSocketClient(
     }
 
     fun disconnect() {
+        disconnectRequested = true
+        reconnectJob?.cancel()
+        reconnectJob = null
         webSocket?.close(1000, "Client disconnect requested")
         webSocket = null
         connectionManager.onDisconnected()
     }
 }
-

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.app.RuntimeState
 import com.jarvis.assistant.brain.JarvisBrain
 import com.jarvis.assistant.brain.JarvisIntent
@@ -23,10 +24,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class JarvisUiState(
     val voiceState: VoiceState = VoiceState.STOPPED,
-    val wakeListening: Boolean = true,
+    val wakeListening: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val runtimeState: RuntimeState = RuntimeState.OFFLINE,
     val permissionState: PermissionState = PermissionState(),
@@ -55,8 +60,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     private val permissionManager = PermissionManager(application)
     private val connectionManager = ConnectionManager()
     private val providerManager = ProviderManager()
-    private val memoryRouter = com.jarvis.assistant.memory.MemoryDecisionRouter(application)
-    private val memoryEngine = memoryRouter.getEngine()
+    // Opening and warming the SQLite memory store can take noticeable time on a
+    // cold start. Keep it lazy and only create it from the IO dispatcher.
+    private val memoryRouter by lazy { com.jarvis.assistant.memory.MemoryDecisionRouter(application) }
     private val brain = JarvisBrain()
     private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl)
     private val commandExecutor = com.jarvis.assistant.execution.CommandExecutor(application)
@@ -84,18 +90,20 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         )
     )
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
+    private var commandJob: Job? = null
 
     init {
         refreshPermissions()
-        _uiState.update { it.copy(messages = memoryEngine.getRecentEpisodes()) }
-        refreshProviders()
+        viewModelScope.launch(Dispatchers.IO) {
+            val messages = memoryRouter.getEngine().getRecentEpisodes()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(messages = messages) }
+            }
+        }
 
         connectionManager.onStateChanged = { state ->
             _uiState.update { it.copy(connectionState = state) }
         }
-        webSocketClient.connect()
-        pingBackend()
-
         JarvisForegroundService.onUtterance = { text ->
             val ack = sendUtterance(text)
             if (ack.isNotBlank() && _uiState.value.isTtsEnabled) {
@@ -117,17 +125,23 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         JarvisForegroundService.onWakeToggled = { active ->
             _uiState.update { it.copy(wakeListening = active) }
         }
-        ContextCompat.startForegroundService(application, Intent(application, JarvisForegroundService::class.java))
-        JarvisForegroundService.setSpeechRate?.invoke(settingsManager.speechRate)
+        // Voice capture, network probing and WebSocket setup are deliberately
+        // demand-loaded. Starting all three during composition was the main
+        // cold-start contention source on lower-end phones.
     }
 
     override fun onCleared() {
         super.onCleared()
+        commandJob?.cancel()
         webSocketClient.disconnect()
     }
 
     fun startListening() {
-        JarvisForegroundService.startCommandListening?.invoke()
+        ContextCompat.startForegroundService(
+            getApplication(), Intent(getApplication(), JarvisForegroundService::class.java).apply {
+                action = JarvisForegroundService.ACTION_LISTEN_FOR_COMMAND
+            }
+        )
     }
 
     fun refreshProviders() {
@@ -137,8 +151,19 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun connectBackend() {
+        webSocketClient.connect()
+    }
+
     fun toggleWakeListening() {
-        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: true
+        if (!JarvisForegroundService.isRunning) {
+            ContextCompat.startForegroundService(
+                getApplication(), Intent(getApplication(), JarvisForegroundService::class.java)
+            )
+            _uiState.update { it.copy(wakeListening = true) }
+            return
+        }
+        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: false
         _uiState.update { it.copy(wakeListening = active) }
     }
 
@@ -200,13 +225,21 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun clearHistory() {
-        memoryEngine.clearAllHistory()
-        _uiState.update { it.copy(messages = emptyList(), lastUtterance = "", lastResponse = "History cleared.") }
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRouter.getEngine().clearAllHistory()
+            withContext(Dispatchers.Main) {
+                _uiState.update { it.copy(messages = emptyList(), lastUtterance = "", lastResponse = "History cleared.") }
+            }
+        }
     }
 
     fun deleteMemoryItem(timestamp: Long) {
-        memoryEngine.deleteEpisode(timestamp)
-        _uiState.update { it.copy(messages = memoryEngine.getRecentEpisodes()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val engine = memoryRouter.getEngine()
+            engine.deleteEpisode(timestamp)
+            val messages = engine.getRecentEpisodes()
+            withContext(Dispatchers.Main) { _uiState.update { it.copy(messages = messages) } }
+        }
     }
 
     fun executeQuickAction(commandText: String) {
@@ -215,54 +248,68 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
     fun sendUtterance(text: String): String {
         if (text.isBlank()) return ""
-        memoryEngine.recordEpisode("user", text)
+        commandJob?.cancel()
+        _uiState.update {
+            it.copy(lastUtterance = text, lastResponse = "Thinking…", runtimeState = RuntimeState.THINKING)
+        }
+        commandJob = viewModelScope.launch(Dispatchers.IO) { processUtterance(text) }
+        // Voice responses are delivered when the background command finishes;
+        // never make the audio callback wait for SQLite, package-manager or I/O.
+        return ""
+    }
+
+    private suspend fun processUtterance(text: String) {
+        val engine = memoryRouter.getEngine()
+        engine.recordEpisode("user", text)
 
         // 1. Check Router for FAST CAG path (< 1ms)
         val routed = memoryRouter.route(text)
         if (routed.source == com.jarvis.assistant.memory.RouteSource.FAST_CAG_EXACT ||
             routed.source == com.jarvis.assistant.memory.RouteSource.FAST_CAG_NEAR) {
             val cachedAnswer = routed.text
-            memoryEngine.recordEpisode("assistant", cachedAnswer)
-            _uiState.update {
-                it.copy(
-                    lastUtterance = text,
-                    lastResponse = cachedAnswer,
-                    messages = memoryEngine.getRecentEpisodes(),
-                    runtimeState = RuntimeState.ACTING
-                )
-            }
-            return cachedAnswer
+            engine.recordEpisode("assistant", cachedAnswer)
+            updateCompletedResponse(text, cachedAnswer, RuntimeState.ACTING, engine)
+            return
         }
 
         // 2. Check local command executor
         val plan = brain.processCommand(text)
-        return if (plan.intent is JarvisIntent.Unknown) {
-            _uiState.update {
-                it.copy(
-                    lastUtterance = text,
-                    lastResponse = "Thinking…",
-                    runtimeState = RuntimeState.ACTING
-                )
-            }
-            routeToCloudBrain(text, routed)
-            ""
+        if (plan.intent is JarvisIntent.Unknown) {
+            routeToCloudBrain(text, routed, engine)
         } else {
             val ack = commandExecutor.execute(plan.intent)
-            memoryEngine.recordEpisode("assistant", ack)
+            engine.recordEpisode("assistant", ack)
             memoryRouter.learn(text, ack)
-            _uiState.update {
-                it.copy(
-                    lastUtterance = text,
-                    lastResponse = ack,
-                    messages = memoryEngine.getRecentEpisodes(),
-                    runtimeState = RuntimeState.ACTING
-                )
-            }
-            ack
+            updateCompletedResponse(text, ack, RuntimeState.ACTING, engine)
         }
     }
 
-    private fun routeToCloudBrain(text: String, routed: com.jarvis.assistant.memory.RoutedAnswer) {
+    private suspend fun updateCompletedResponse(
+        text: String,
+        response: String,
+        state: RuntimeState,
+        engine: com.jarvis.assistant.memory.MemoryEngine
+    ) {
+        val messages = engine.getRecentEpisodes()
+        withContext(Dispatchers.Main) {
+            val shouldSpeak = _uiState.value.isTtsEnabled
+            _uiState.update {
+                it.copy(
+                    lastUtterance = text,
+                    lastResponse = response,
+                    messages = messages,
+                    runtimeState = state
+                )
+            }
+            if (shouldSpeak) JarvisForegroundService.speak?.invoke(response)
+        }
+    }
+
+    private fun routeToCloudBrain(
+        text: String,
+        routed: com.jarvis.assistant.memory.RoutedAnswer,
+        engine: com.jarvis.assistant.memory.MemoryEngine
+    ) {
         var promptText = text
         if (routed.ragContext.isNotEmpty() || routed.userFacts.isNotEmpty()) {
             val ragInfo = routed.ragContext.joinToString("; ") { it.text }
@@ -276,18 +323,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         apiClient.sendChat(promptText, "android-device") { answer ->
-            val response = if (!answer.isNullOrBlank()) {
-                answer
-            } else {
-                "Connected to Jarvis. Ready for your command."
-            }
-            memoryEngine.recordEpisode("assistant", response)
-            memoryRouter.learn(text, response)
-            _uiState.update {
-                it.copy(lastResponse = response, messages = memoryEngine.getRecentEpisodes())
-            }
-            if (_uiState.value.isTtsEnabled) {
-                JarvisForegroundService.speak?.invoke(response)
+            viewModelScope.launch(Dispatchers.IO) {
+                val response = answer ?: "I couldn't reach the assistant service. Please try again."
+                engine.recordEpisode("assistant", response)
+                memoryRouter.learn(text, response)
+                updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
             }
         }
     }

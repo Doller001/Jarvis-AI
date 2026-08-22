@@ -10,6 +10,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -33,21 +35,15 @@ import kotlin.random.Random
  */
 @Composable
 fun CosmicBackground(modifier: Modifier = Modifier) {
-    val isResumed = LocalLifecycleOwner.current.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-    var resumed by remember { mutableStateOf(isResumed) }
-    LaunchedEffect(isResumed) { resumed = isResumed }
-
-    val transition = rememberInfiniteTransition(label = "cosmic")
-    val drift by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            tween(60000, easing = LinearEasing),
-            RepeatMode.Restart
-        ),
-        label = "drift"
-    )
-    val value = if (resumed) drift else 0f
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, _ ->
+            resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     val rng = remember { Random(42) }
     val nodes = remember {
@@ -63,6 +59,22 @@ fun CosmicBackground(modifier: Modifier = Modifier) {
         }
     }
 
+    if (resumed) {
+        val transition = rememberInfiniteTransition(label = "cosmic")
+        val value by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(60000, easing = LinearEasing), RepeatMode.Restart),
+            label = "drift"
+        )
+        CosmicCanvas(modifier, nodes, value)
+    } else {
+        CosmicCanvas(modifier, nodes, 0f)
+    }
+}
+
+@Composable
+private fun CosmicCanvas(modifier: Modifier, nodes: List<Node>, value: Float) {
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height

@@ -148,15 +148,11 @@ fun GlowingMicOrb(
             voiceState == VoiceState.WAKE_DETECTED ||
             voiceState == VoiceState.WAKE_LISTENING
 
-    // Pulsing Animation
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val scale by infiniteTransition.animateFloat(
-        initialValue = if (isListening) 0.9f else 0.95f,
-        targetValue = if (isListening) 1.1f else 1.03f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1000, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ), label = "pulse"
+    // Do not keep a 60fps infinite animation running while idle.
+    val scale by animateFloatAsState(
+        targetValue = if (isListening) 1.06f else 1f,
+        animationSpec = tween(250, easing = FastOutSlowInEasing),
+        label = "micScale"
     )
 
     Box(
@@ -335,4 +331,3 @@ fun BottomNavItem(
         )
     }
 }
-

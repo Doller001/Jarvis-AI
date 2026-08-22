@@ -33,6 +33,7 @@ class JarvisForegroundService : Service() {
 
         const val ACTION_START = "com.jarvis.assistant.START"
         const val ACTION_STOP = "com.jarvis.assistant.STOP"
+        const val ACTION_LISTEN_FOR_COMMAND = "com.jarvis.assistant.LISTEN_FOR_COMMAND"
     }
 
     override fun onCreate() {
@@ -95,6 +96,10 @@ class JarvisForegroundService : Service() {
                 }
                 voiceRuntime.speakResponse(response)
             }
+        }
+
+        if (intent?.action == ACTION_LISTEN_FOR_COMMAND) {
+            voiceRuntime.startListeningForCommand()
         }
 
         return START_STICKY
