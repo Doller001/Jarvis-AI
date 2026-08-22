@@ -8,51 +8,61 @@ import org.junit.Test
 class VoiceStateMachineTest {
 
     @Test
-    fun `happy path follows the full push-to-talk cycle`() {
+    fun `happy path follows the full cycle IDLE to LISTENING to PROCESSING to SPEAKING to IDLE`() {
         val sm = VoiceStateMachine()
-        assertEquals(VoiceState.STOPPED, sm.state)
-        assertTrue(sm.transition(VoiceState.STARTING))
-        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
+        assertEquals(VoiceState.IDLE, sm.state)
+        assertTrue(sm.isIdle)
+        assertTrue(sm.transition(VoiceState.LISTENING))
+        assertTrue(sm.isListening)
         assertTrue(sm.transition(VoiceState.PROCESSING))
         assertTrue(sm.transition(VoiceState.SPEAKING))
-        assertTrue(sm.transition(VoiceState.STOPPED))
-        assertEquals(VoiceState.STOPPED, sm.state)
+        assertTrue(sm.transition(VoiceState.IDLE))
+        assertEquals(VoiceState.IDLE, sm.state)
+        assertTrue(sm.isIdle)
     }
 
     @Test
-    fun `direct command listening from stopped is legal`() {
+    fun `direct listening from IDLE is legal`() {
         val sm = VoiceStateMachine()
-        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
-        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
+        assertTrue(sm.transition(VoiceState.LISTENING))
+        assertEquals(VoiceState.LISTENING, sm.state)
         assertTrue(sm.isListening)
     }
 
     @Test
     fun `illegal transitions are rejected`() {
         val sm = VoiceStateMachine()
-        assertFalse(sm.transition(VoiceState.SPEAKING)) // STOPPED -> SPEAKING
-        sm.transition(VoiceState.STARTING)
-        assertFalse(sm.transition(VoiceState.SPEAKING)) // STARTING -> SPEAKING
-        sm.transition(VoiceState.COMMAND_LISTENING)
-        assertTrue(sm.transition(VoiceState.STOPPED)) // legal stop
+        assertFalse(sm.transition(VoiceState.SPEAKING)) // IDLE -> SPEAKING is illegal
+        sm.transition(VoiceState.LISTENING)
+        assertFalse(sm.transition(VoiceState.SPEAKING)) // LISTENING -> SPEAKING without processing is illegal
+        assertTrue(sm.transition(VoiceState.IDLE))      // LISTENING -> IDLE cancellation is legal
     }
 
     @Test
-    fun `error recovers to stopped`() {
+    fun `error recovers to IDLE`() {
         val sm = VoiceStateMachine()
-        sm.transition(VoiceState.COMMAND_LISTENING)
+        sm.transition(VoiceState.LISTENING)
         assertTrue(sm.transition(VoiceState.ERROR))
         assertEquals(VoiceState.ERROR, sm.state)
         assertTrue(sm.recoverFromError())
-        assertEquals(VoiceState.STOPPED, sm.state)
+        assertEquals(VoiceState.IDLE, sm.state)
     }
 
     @Test
-    fun `any state can stop`() {
+    fun `any state can return to IDLE`() {
         val sm = VoiceStateMachine()
-        sm.transition(VoiceState.STARTING)
-        sm.transition(VoiceState.COMMAND_LISTENING)
+        sm.transition(VoiceState.LISTENING)
         sm.transition(VoiceState.PROCESSING)
-        assertTrue(sm.transition(VoiceState.STOPPED))
+        assertTrue(sm.transition(VoiceState.IDLE))
+    }
+
+    @Test
+    fun `speaking can transition to listening directly on user barge-in`() {
+        val sm = VoiceStateMachine()
+        sm.transition(VoiceState.LISTENING)
+        sm.transition(VoiceState.PROCESSING)
+        sm.transition(VoiceState.SPEAKING)
+        assertTrue(sm.transition(VoiceState.LISTENING))
+        assertEquals(VoiceState.LISTENING, sm.state)
     }
 }

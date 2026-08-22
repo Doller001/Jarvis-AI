@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class JarvisUiState(
-    val voiceState: VoiceState = VoiceState.STOPPED,
+    val voiceState: VoiceState = VoiceState.IDLE,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val runtimeState: RuntimeState = RuntimeState.OFFLINE,
     val permissionState: PermissionState = PermissionState(),
@@ -108,7 +108,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         JarvisForegroundService.onResponseDone = {
-            _uiState.update { it.copy(voiceState = VoiceState.STOPPED) }
+            _uiState.update { it.copy(voiceState = VoiceState.IDLE) }
         }
         JarvisForegroundService.onStateChanged = { state ->
             _uiState.update { it.copy(voiceState = state) }

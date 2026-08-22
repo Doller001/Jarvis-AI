@@ -100,8 +100,8 @@ class JarvisForegroundService : Service() {
 
     private fun updateNotification(state: VoiceState) {
         val text = when (state) {
-            VoiceState.STOPPED, VoiceState.STARTING -> "JARVIS Assistant Active"
-            VoiceState.COMMAND_LISTENING -> "Listening for command…"
+            VoiceState.IDLE -> "JARVIS Assistant Active"
+            VoiceState.LISTENING -> "Listening for command…"
             VoiceState.PROCESSING -> "Processing…"
             VoiceState.SPEAKING -> "Speaking…"
             VoiceState.ERROR -> "Recovering…"

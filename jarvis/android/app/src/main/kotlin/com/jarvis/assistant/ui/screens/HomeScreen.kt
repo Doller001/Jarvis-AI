@@ -82,12 +82,11 @@ fun HomeScreen(
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {
-                VoiceState.COMMAND_LISTENING -> "LISTENING..."
+                VoiceState.LISTENING -> "LISTENING..."
                 VoiceState.PROCESSING -> "THINKING..."
                 VoiceState.SPEAKING -> "SPEAKING..."
-                VoiceState.STARTING -> "STARTING..."
                 VoiceState.ERROR -> "RECOVERING..."
-                else -> "TAP MIC TO SPEAK"
+                VoiceState.IDLE -> "TAP MIC TO SPEAK"
             }
 
             Text(
@@ -141,10 +140,10 @@ fun HomeScreen(
 
 @Composable
 fun GlowingMicOrb(
-    voiceState: VoiceState = VoiceState.STOPPED,
+    voiceState: VoiceState = VoiceState.IDLE,
     onClick: () -> Unit = {}
 ) {
-    val isListening = voiceState == VoiceState.COMMAND_LISTENING
+    val isListening = voiceState == VoiceState.LISTENING
 
     // Do not keep a 60fps infinite animation running while idle.
     val scale by animateFloatAsState(

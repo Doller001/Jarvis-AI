@@ -1,27 +1,40 @@
 package com.jarvis.assistant.voice
 
 enum class VoiceState {
-    STOPPED, STARTING, COMMAND_LISTENING, PROCESSING, SPEAKING, ERROR
+    IDLE,
+    LISTENING,
+    PROCESSING,
+    SPEAKING,
+    ERROR
 }
 
 /**
- * Pure state machine for the voice pipeline. No Android imports — JVM-testable.
+ * Pure state machine for the Jarvis voice pipeline (Phase 1 & 2 architecture).
  *
- * Legal transitions:
- *   STOPPED -> STARTING -> COMMAND_LISTENING -> PROCESSING -> SPEAKING -> STOPPED
- *   COMMAND_LISTENING -> STOPPED / ERROR
- *   PROCESSING -> SPEAKING -> STOPPED
- *   SPEAKING -> COMMAND_LISTENING / STOPPED
- *   Any state -> ERROR; ERROR -> STOPPED or COMMAND_LISTENING (recovery).
+ * Normal Flow:
+ *   IDLE -> LISTENING -> PROCESSING -> SPEAKING -> IDLE
+ *
+ * Error & Recovery:
+ *   LISTENING -> ERROR -> IDLE
+ *   PROCESSING -> ERROR -> IDLE
+ *
+ * Cancellation:
+ *   LISTENING -> IDLE
+ *   SPEAKING -> IDLE
  */
-class VoiceStateMachine(initial: VoiceState = VoiceState.STOPPED) {
+class VoiceStateMachine(initial: VoiceState = VoiceState.IDLE) {
     var state: VoiceState = initial
         private set
 
     val isListening: Boolean
-        get() = state == VoiceState.COMMAND_LISTENING
+        get() = state == VoiceState.LISTENING
 
-    /** Returns true if the transition was applied, false if it was illegal. */
+    val isIdle: Boolean
+        get() = state == VoiceState.IDLE
+
+    /**
+     * Returns true if the transition was applied, false if it was illegal.
+     */
     fun transition(to: VoiceState): Boolean {
         if (to == state) return true
         if (!isLegal(state, to)) return false
@@ -29,15 +42,17 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.STOPPED) {
         return true
     }
 
+    /**
+     * Recovers from error back to IDLE resting state.
+     */
     fun recoverFromError(): Boolean =
-        transition(VoiceState.STOPPED) || state == VoiceState.STOPPED
+        transition(VoiceState.IDLE) || state == VoiceState.IDLE
 
     private fun isLegal(from: VoiceState, to: VoiceState): Boolean = when (from) {
-        VoiceState.STOPPED -> to == VoiceState.STARTING || to == VoiceState.COMMAND_LISTENING || to == VoiceState.ERROR
-        VoiceState.STARTING -> to == VoiceState.COMMAND_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.COMMAND_LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.SPEAKING -> to == VoiceState.COMMAND_LISTENING || to == VoiceState.STOPPED || to == VoiceState.ERROR
-        VoiceState.ERROR -> to == VoiceState.STOPPED || to == VoiceState.COMMAND_LISTENING || to == VoiceState.ERROR
+        VoiceState.IDLE -> to == VoiceState.LISTENING || to == VoiceState.PROCESSING || to == VoiceState.ERROR
+        VoiceState.LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.IDLE || to == VoiceState.ERROR
+        VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.IDLE || to == VoiceState.ERROR
+        VoiceState.SPEAKING -> to == VoiceState.IDLE || to == VoiceState.LISTENING || to == VoiceState.ERROR
+        VoiceState.ERROR -> to == VoiceState.IDLE || to == VoiceState.LISTENING || to == VoiceState.ERROR
     }
 }

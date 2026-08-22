@@ -31,7 +31,7 @@ fun ConversationScreen(
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING
+    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.LISTENING
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
