@@ -83,14 +83,15 @@ The two frozen front-end models are reused; only the classifier
 pip install -r https://raw.githubusercontent.com/livekit/livekit-wakeword/main/requirements.txt \
   || pip install -e "git+https://github.com/livekit/livekit-wakeword.git#egg=livekit-wakeword"
 bash download_models.sh           # pulls frozen models + sample/negative audio
-bash train.sh                     # trains + exports models/exported/hey_jarvis.onnx
+bash train.sh                     # trains + exports output/hey_jarvis/hey_jarvis.onnx
 ```
 
-Then drop the trained file into the app assets:
+Then drop the trained file into the app assets (or just run `bash download_models.sh`,
+which copies `output/hey_jarvis/hey_jarvis.onnx` into the assets automatically):
 
 ```bash
-cp models/exported/hey_jarvis.onnx \
-   jarvis/android/app/src/main/assets/wakeword/hey_jarvis.onnx
+cp output/hey_jarvis/hey_jarvis.onnx \
+   ../android/app/src/main/assets/wakeword/hey_jarvis.onnx
 ```
 
 Rebuild & install. Tune `settings -> Wake Word Sensitivity` (Low/Balanced/High)
