@@ -41,16 +41,24 @@
 -keep class com.jarvis.assistant.actionengine.** { *; }
 -keep class com.jarvis.assistant.ui.JarvisUiState { *; }
 
-# 5. SQLite & Android Services
+# 5. SQLite & Android Services & Voice Pipeline
 -keep class com.jarvis.assistant.memory.JarvisMemoryDatabase { *; }
 -keep class com.jarvis.assistant.services.JarvisForegroundService { *; }
 -keep class com.jarvis.assistant.services.JarvisQuickTileService { *; }
 -keep class com.jarvis.assistant.services.JarvisNotificationListenerService { *; }
+-keep class com.jarvis.assistant.services.BootRecoveryReceiver { *; }
 -keep class com.jarvis.assistant.accessibility.JarvisAccessibilityService { *; }
+-keep class com.jarvis.assistant.voice.** { *; }
 
 
 
-# 7. Strip verbose/debug logs in optimized release build
+# 6. ONNX Runtime Mobile (offline wake-word detector)
+-keep class ai.onnxruntime.** { *; }
+-keep interface ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**
+# Keep the bundled .onnx model assets uncompressed so they load from the APK
+# without zlib inflation overhead and stay 16KB-page aligned.
+-keepresources string/**/*.onnx
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(...);

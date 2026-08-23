@@ -1,0 +1,71 @@
+# ============================================================
+#  "Hey Jarvis" wake-word training config  (livekit-wakeword 0.2.1)
+#  Trained CPU-side; classifier exported to ONNX for the Android app.
+#  Run:  python -m livekit.wakeword run hey_jarvis.yaml
+# ============================================================
+
+model_name: hey_jarvis
+target_phrases:
+  - "hey jarvis"
+  - "hey javis"
+  - "hey jarvis assistant"
+
+# --- Data generation (synthetic via bundled Piper VITS) ---
+# Trimmed for CPU training: full defaults are 10k samples + 16GB ACAV negatives.
+n_samples: 500
+n_samples_val: 100
+n_background_samples: 200
+n_background_samples_val: 40
+tts_batch_size: 32
+tts_backend: piper_vits          # bundled; weights auto-download on first run
+
+# --- TTS voice diversification (SLERP speaker blending) ---
+noise_scales: [0.98]
+noise_scale_ws: [0.98]
+length_scales: [0.75, 1.0, 1.25]
+splerp_weights: [0.2, 0.35, 0.5, 0.65, 0.8]
+
+# Extra hard-negative phrases (phonetically close to "hey jarvis")
+custom_negative_phrases:
+  - "hey jerry"
+  - "hey charlie"
+  - "hey garrison"
+  - "jarvis"
+  - "hey siri"
+  - "ok google"
+  - "hey alexa"
+  - "hey sam"
+  - "hey carlos"
+
+# --- Paths (relative to where you run the CLI) ---
+data_dir: ./data
+output_dir: ./output
+
+# --- Augmentation ---
+augmentation:
+  clip_duration: 2.0
+  batch_size: 16
+  rounds: 1
+  background_paths: ["./data/backgrounds"]
+  rir_paths: ["./data/rirs"]
+
+# --- Model ---
+model:
+  model_type: conv_attention
+  model_size: small          # (32, 1) — tiny enough for mobile + CPU training
+
+# --- Training ---
+steps: 8000
+learning_rate: 1.0e-4
+weight_decay: 1.0e-2
+label_smoothing: 0.05
+max_negative_weight: 1500.0
+target_fp_per_hour: 0.2
+
+# ACAV100M (~16GB) omitted for local CPU runs; background_noise + adversarial
+# negatives carry the false-accept rejection instead.
+batch_n_per_class:
+  positive: 24
+  adversarial_negative: 24
+  ACAV100M_sample: 0
+  background_noise: 24

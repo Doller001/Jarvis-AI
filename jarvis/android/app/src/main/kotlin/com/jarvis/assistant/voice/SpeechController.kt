@@ -18,7 +18,7 @@ import java.util.Locale
 /**
  * High-reliability speech recognition controller.
  * Enforces Single Mic Owner architecture, provides full callback diagnostics,
- * and manages audio focus and recognition lifecycle.
+ * and manages audio focus and recognition lifecycle with on-device fallback.
  */
 class SpeechController(
     private val context: Context? = null,
@@ -45,7 +45,7 @@ class SpeechController(
                     .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
-                val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                     .setAudioAttributes(playbackAttributes)
                     .setAcceptsDelayedFocusGain(false)
                     .build()
@@ -53,7 +53,7 @@ class SpeechController(
                 am.requestAudioFocus(request)
             } else {
                 @Suppress("DEPRECATION")
-                am.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Audio focus request failed", e)
@@ -96,12 +96,19 @@ class SpeechController(
             return
         }
 
-        // 2. Recognition Availability Gate
-        if (!AndroidSpeechRecognizer.isRecognitionAvailable(ctx)) {
+        // 2. Recognition Availability Gate (check standard or on-device)
+        val isStandardAvailable = AndroidSpeechRecognizer.isRecognitionAvailable(ctx)
+        val isOnDeviceAvailable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            AndroidSpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)
+        } else {
+            false
+        }
+
+        if (!isStandardAvailable && !isOnDeviceAvailable) {
             VoiceDiagnostics.logError(AndroidSpeechRecognizer.ERROR_CLIENT)
             onError(
                 AndroidSpeechRecognizer.ERROR_CLIENT,
-                "Google Speech Recognition service is not available on this device."
+                "Speech Recognition service is not available on this device."
             )
             return
         }
@@ -129,22 +136,32 @@ class SpeechController(
                     speechRecognizer?.destroy()
                 } catch (_: Exception) {}
 
-                speechRecognizer = AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
+                // Prefer On-Device recognizer when available (ultra-low latency, works offline)
+                speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isOnDeviceAvailable) {
+                    try {
+                        AndroidSpeechRecognizer.createOnDeviceSpeechRecognizer(ctx)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed creating on-device recognizer, falling back to standard", e)
+                        AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
+                    }
+                } else {
+                    AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
+                }
 
                 val defaultLocale = Locale.getDefault()
                 val langTag = if (defaultLocale.language.isNotBlank()) defaultLocale.toLanguageTag() else "en-US"
-                VoiceDiagnostics.logStart(langTag, preferOffline = false)
+                VoiceDiagnostics.logStart(langTag, preferOffline = isOnDeviceAvailable)
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, langTag)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
-                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false)
+                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2500L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000L)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {

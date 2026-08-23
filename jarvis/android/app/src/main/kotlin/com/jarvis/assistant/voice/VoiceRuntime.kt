@@ -6,6 +6,8 @@ import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.jarvis.assistant.voice.wakeword.LiveKitWakeWordEngine
+import com.jarvis.assistant.voice.wakeword.WakeWordConfig
 
 /**
  * Central voice coordinator for Jarvis (Phase 1 & 2 Clean Architecture).
@@ -24,7 +26,8 @@ class VoiceRuntime(
     private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context),
     private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context),
     private val audioProcessor: NearFieldAudioProcessor = NearFieldAudioProcessor(sampleRate = 16000),
-    private val audioCapture: LowLatencyAudioCapture = LowLatencyAudioCapture(context, audioProcessor, micController)
+    private val audioCapture: LowLatencyAudioCapture = LowLatencyAudioCapture(context, audioProcessor, micController),
+    private val wakeEngine: LiveKitWakeWordEngine = LiveKitWakeWordEngine(context, WakeWordConfig())
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
@@ -57,6 +60,55 @@ class VoiceRuntime(
         audioCapture.onEnvironmentChanged = { env -> onEnvironmentChanged?.invoke(env) }
         audioCapture.onFrameProcessed = { res -> onAudioMetrics?.invoke(res) }
         VoiceDiagnostics.logMicState("VoiceRuntime initialized in IDLE state")
+
+        // Start always-listening wake-word detection (offline). If the ONNX
+        // models are missing, the engine logs a warning and does nothing —
+        // push-to-talk still works via startListeningForCommand().
+        startWakeMonitoring()
+    }
+
+    private fun startWakeMonitoring() {
+        wakeEngine.setOnWakeListener { _ ->
+            Log.i(TAG, "Wake word event -> entering command listening")
+            if (stateMachine.transition(VoiceState.WAKE)) notifyState()
+            // Hand the mic to the command recognizer.
+            wakeEngine.pause()
+            startListeningForCommand()
+        }
+        wakeEngine.setOnErrorListener { error ->
+            Log.w(TAG, "Wake-word engine unavailable: ${error.message}")
+        }
+        wakeEngine.startMonitoring()
+    }
+
+    /**
+     * Maps a sensitivity label to a 0..1 value and applies it live to the engine.
+     * "Low" = 0.5f, "Balanced" = 0.8f, "High" = 1.0f.
+     */
+    fun setWakeSensitivity(label: String) {
+        val value = when (label.lowercase()) {
+            "low" -> 0.5f
+            "high" -> 1.0f
+            else -> 0.8f
+        }
+        wakeEngine.setSensitivity(value)
+    }
+    fun toggleMonitoring(): Boolean {
+        if (wakeEngine.isMonitoringNow) {
+            wakeEngine.stopMonitoring()
+            if (stateMachine.state == VoiceState.WAKE) {
+                if (stateMachine.transition(VoiceState.IDLE)) notifyState()
+            }
+            Log.i(TAG, "Wake-word monitoring toggled OFF")
+            return false
+        }
+        if (!wakeEngine.isAvailable) {
+            Log.w(TAG, "Cannot start wake-word monitoring — ONNX models unavailable")
+            return false
+        }
+        startWakeMonitoring()
+        Log.i(TAG, "Wake-word monitoring toggled ON")
+        return true
     }
 
     /**
@@ -74,15 +126,23 @@ class VoiceRuntime(
             audioCapture.stop()
         }
 
-        playBeep()
-
         if (!stateMachine.transition(VoiceState.LISTENING)) {
             Log.w(TAG, "Cannot transition to LISTENING from $state")
             return
         }
         notifyState()
 
-        startRecognition()
+        // Activate voice routing only for the duration of active listening
+        audioRouteManager.activateVoiceRouting()
+
+        playBeep()
+
+        // Wait 160ms for beep to finish before acquiring mic to avoid speaker->mic feedback loop
+        mainHandler.postDelayed({
+            if (state == VoiceState.LISTENING) {
+                startRecognition()
+            }
+        }, 160L)
     }
 
     private fun startRecognition() {
@@ -93,15 +153,23 @@ class VoiceRuntime(
             onResult = { utterance -> onCommandReceived(utterance) },
             onError = { errorCode, errorMessage ->
                 Log.w(TAG, "Speech recognition error ($errorCode): $errorMessage")
-                handleError(errorMessage)
+                handleError(errorCode, errorMessage)
             },
-            onRmsChanged = { rms -> onRmsChanged?.invoke(rms) }
+            onRmsChanged = { rms ->
+                if (rms > 2f) {
+                    // Reset command timeout when active speech / sound is being captured
+                    mainHandler.removeCallbacks(commandTimeoutRunnable)
+                    mainHandler.postDelayed(commandTimeoutRunnable, COMMAND_TIMEOUT_MS)
+                }
+                onRmsChanged?.invoke(rms)
+            }
         )
     }
 
     private fun onCommandReceived(command: String) {
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechController.destroy()
+        audioRouteManager.deactivateVoiceRouting()
 
         if (command.isBlank()) {
             Log.i(TAG, "Empty utterance captured — returning to IDLE")
@@ -121,19 +189,24 @@ class VoiceRuntime(
     private fun onCommandTimeout() {
         Log.w(TAG, "Voice command timeout — no speech detected within ${COMMAND_TIMEOUT_MS}ms")
         speechController.destroy()
-        handleError("Speech timeout")
+        audioRouteManager.deactivateVoiceRouting()
+        handleError(android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT, "Speech timeout")
     }
 
-    private fun handleError(reason: String) {
-        Log.w(TAG, "Voice error occurred: $reason")
-        VoiceDiagnostics.logError(android.speech.SpeechRecognizer.ERROR_CLIENT)
+    private fun handleError(errorCode: Int = android.speech.SpeechRecognizer.ERROR_CLIENT, reason: String) {
+        Log.w(TAG, "Voice error occurred ($errorCode): $reason")
+        VoiceDiagnostics.logError(errorCode)
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechController.destroy()
+        audioRouteManager.deactivateVoiceRouting()
 
         if (stateMachine.transition(VoiceState.ERROR)) notifyState()
 
         mainHandler.postDelayed({
-            if (stateMachine.recoverFromError()) notifyState()
+            if (stateMachine.recoverFromError()) {
+                notifyState()
+                resumeWakeAfterCommand()
+            }
         }, ERROR_RECOVERY_MS)
     }
 
@@ -141,6 +214,7 @@ class VoiceRuntime(
      * Speaks assistant response via TTS and returns state to IDLE upon completion.
      */
     fun speakResponse(text: String, onComplete: () -> Unit = {}) {
+        audioRouteManager.deactivateVoiceRouting()
         if (text.isBlank()) {
             if (stateMachine.transition(VoiceState.IDLE)) notifyState()
             onComplete()
@@ -158,6 +232,9 @@ class VoiceRuntime(
             Log.i(TAG, "TTS completed speaking — returning to IDLE")
             mainHandler.postDelayed({
                 if (stateMachine.transition(VoiceState.IDLE)) notifyState()
+                audioRouteManager.ensureNormalAudioMode()
+                // Return the microphone to the wake-word detector.
+                resumeWakeAfterCommand()
                 onComplete()
             }, 200L)
         }
@@ -167,10 +244,22 @@ class VoiceRuntime(
         ttsEngine.setSpeechRate(rate)
     }
 
+    /**
+     * After a command cycle finishes (TTS done / error / timeout) hand the mic
+     * back to the wake-word detector if it was active.
+     */
+    private fun resumeWakeAfterCommand() {
+        if (wakeEngine.isMonitoringNow) {
+            wakeEngine.resume()
+        }
+    }
+
     fun stopRuntime() {
         mainHandler.removeCallbacksAndMessages(null)
         audioCapture.stop()
         speechController.destroy()
+        wakeEngine.stopMonitoring()
+        audioRouteManager.deactivateVoiceRouting()
         ttsEngine.stop()
         if (stateMachine.transition(VoiceState.IDLE)) notifyState()
         Log.i(TAG, "VoiceRuntime stopped — IDLE")
@@ -180,6 +269,7 @@ class VoiceRuntime(
         mainHandler.removeCallbacksAndMessages(null)
         audioCapture.stop()
         speechController.destroy()
+        wakeEngine.release()
         audioRouteManager.release()
         ttsEngine.shutdown()
         try {
@@ -193,10 +283,13 @@ class VoiceRuntime(
 
     private fun playBeep() {
         try {
-            if (tone == null) {
-                tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 85)
-            }
-            tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+            val beepTone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 60)
+            beepTone.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+            mainHandler.postDelayed({
+                try {
+                    beepTone.release()
+                } catch (_: Exception) {}
+            }, 250L)
         } catch (e: Exception) {
             Log.w(TAG, "Beep tone generation failed", e)
         }

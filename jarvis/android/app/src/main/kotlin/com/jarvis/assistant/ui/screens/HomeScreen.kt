@@ -3,6 +3,7 @@ package com.jarvis.assistant.ui.screens
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
 import com.jarvis.assistant.ui.JarvisUiState
 import com.jarvis.assistant.voice.VoiceState
 
@@ -41,8 +45,25 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenMemory: () -> Unit,
     onQuickAction: (String) -> Unit,
-    onStartListening: () -> Unit = {}
+    onStartListening: () -> Unit = {},
+    onToggleWakeListening: () -> Unit = {}
 ) {
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            onStartListening()
+        }
+    }
+
+    val handleMicClick = {
+        if (uiState.permissionState.isMicrophoneGranted) {
+            onStartListening()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
     Scaffold(
         containerColor = BgColor,
         bottomBar = {
@@ -82,11 +103,12 @@ fun HomeScreen(
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {
+                VoiceState.WAKE -> "SAY 'HEY JARVIS'"
                 VoiceState.LISTENING -> "LISTENING..."
                 VoiceState.PROCESSING -> "THINKING..."
                 VoiceState.SPEAKING -> "SPEAKING..."
                 VoiceState.ERROR -> "RECOVERING..."
-                VoiceState.IDLE -> "TAP MIC TO SPEAK"
+                VoiceState.IDLE -> if (uiState.wakeListening) "LISTENING FOR WAKE WORD" else "TAP MIC TO SPEAK"
             }
 
             Text(
@@ -100,8 +122,38 @@ fun HomeScreen(
 
             GlowingMicOrb(
                 voiceState = uiState.voiceState,
-                onClick = onStartListening
+                onClick = handleMicClick
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Wake-word toggle (offline "Hey Jarvis" detection)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = if (uiState.wakeListening) CyanGlow.copy(alpha = 0.2f) else DarkCardBg,
+                border = BorderStroke(1.dp, if (uiState.wakeListening) CyanGlow else TextGray),
+                onClick = onToggleWakeListening,
+                modifier = Modifier.height(36.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Mic,
+                        contentDescription = null,
+                        tint = if (uiState.wakeListening) CyanGlow else TextGray,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        if (uiState.wakeListening) "Wake word ON" else "Wake word OFF",
+                        color = if (uiState.wakeListening) CyanGlow else TextGray,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -143,7 +195,7 @@ fun GlowingMicOrb(
     voiceState: VoiceState = VoiceState.IDLE,
     onClick: () -> Unit = {}
 ) {
-    val isListening = voiceState == VoiceState.LISTENING
+    val isListening = voiceState == VoiceState.LISTENING || voiceState == VoiceState.WAKE
 
     // Do not keep a 60fps infinite animation running while idle.
     val scale by animateFloatAsState(

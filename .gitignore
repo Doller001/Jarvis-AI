@@ -53,3 +53,6 @@ planning/
 # Local databases
 *.db
 
+# Agent scratch / temp working dirs (restored files, downloaded models, venvs)
+.tmp_*/
+

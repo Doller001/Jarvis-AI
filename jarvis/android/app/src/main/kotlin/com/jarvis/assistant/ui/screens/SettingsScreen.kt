@@ -35,6 +35,7 @@ fun SettingsScreen(
     onPingBackend: (String) -> Unit,
     onToggleTts: (Boolean) -> Unit,
     onSelectSpeechRate: (Float) -> Unit,
+    onSelectWakeSensitivity: (String) -> Unit,
     onClearHistory: () -> Unit
 ) {
     var urlInput by remember(uiState.backendUrl) { mutableStateOf(uiState.backendUrl) }
@@ -292,6 +293,36 @@ fun SettingsScreen(
                                 Box(contentAlignment = Alignment.Center) {
                                     Text(
                                         label,
+                                        color = if (isSelected) JarvisCyan else JarvisTextSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    Text("Wake Word Sensitivity:", color = JarvisTextSecondary, fontSize = 12.sp)
+                    Spacer(Modifier.height(6.dp))
+                    val sensitivities = listOf("Low", "Balanced", "High")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        sensitivities.forEach { sensitivity ->
+                            val isSelected = uiState.wakeSensitivity == sensitivity
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) JarvisBlue.copy(alpha = 0.25f) else JarvisDark,
+                                border = BorderStroke(1.dp, if (isSelected) JarvisCyan else JarvisGlow),
+                                onClick = { onSelectWakeSensitivity(sensitivity) },
+                                modifier = Modifier.weight(1f).height(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        sensitivity,
                                         color = if (isSelected) JarvisCyan else JarvisTextSecondary,
                                         fontSize = 13.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal

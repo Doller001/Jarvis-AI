@@ -22,10 +22,13 @@ class JarvisForegroundService : Service() {
             private set
         var onUtterance: ((String) -> Unit)? = null
         var onResponseDone: (() -> Unit)? = null
+        var onWakeToggled: ((Boolean) -> Unit)? = null
         var onStateChanged: ((VoiceState) -> Unit)? = null
         var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
         var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
+        var toggleWakeListening: (() -> Boolean)? = null
+        var setWakeSensitivity: ((String) -> Unit)? = null
         var startCommandListening: (() -> Unit)? = null
         var setSpeechRate: ((Float) -> Unit)? = null
 
@@ -40,6 +43,14 @@ class JarvisForegroundService : Service() {
         speak = { text ->
             voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
         }
+        toggleWakeListening = {
+            val active = voiceRuntime.toggleMonitoring()
+            onWakeToggled?.invoke(active)
+            active
+        }
+        setWakeSensitivity = { label ->
+            voiceRuntime.setWakeSensitivity(label)
+        }
         startCommandListening = {
             voiceRuntime.startListeningForCommand()
         }
@@ -52,42 +63,63 @@ class JarvisForegroundService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopForeground(true)
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             isRunning = false
             return START_NOT_STICKY
         }
 
+        val wasRunning = isRunning
         isRunning = true
-        val notification = buildForegroundNotification().build()
-        startForeground(1001, notification)
 
-        voiceRuntime.setStateListener { state ->
-            onStateChanged?.invoke(state)
-            updateNotification(state)
-        }
-        voiceRuntime.onEnvironmentChanged = { env ->
-            onEnvironmentChanged?.invoke(env)
-        }
-        voiceRuntime.onAudioMetrics = { metrics ->
-            onAudioMetrics?.invoke(metrics)
-        }
-        voiceRuntime.startRuntime { userUtterance ->
-            Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
-            val uiHandler = onUtterance
-            if (uiHandler != null) {
-                uiHandler(userUtterance)
+        val notification = buildForegroundNotification().build()
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                startForeground(
+                    1001,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
             } else {
-                // The service can outlive the activity.  Keep local commands
-                // working in that state, while never executing a risky action
-                // without the UI's confirmation flow.
-                val plan = brain.processCommand(userUtterance)
-                val response = if (plan.requiresConfirmation) {
-                    "Please open Jarvis to confirm this action."
+                startForeground(1001, notification)
+            }
+        } catch (e: Exception) {
+            Log.e("JarvisService", "Failed to start foreground service with microphone type", e)
+            try {
+                startForeground(1001, notification)
+            } catch (ex: Exception) {
+                Log.e("JarvisService", "Fallback startForeground also failed", ex)
+            }
+        }
+
+        if (!wasRunning) {
+            voiceRuntime.setStateListener { state ->
+                onStateChanged?.invoke(state)
+                updateNotification(state)
+            }
+            voiceRuntime.onEnvironmentChanged = { env ->
+                onEnvironmentChanged?.invoke(env)
+            }
+            voiceRuntime.onAudioMetrics = { metrics ->
+                onAudioMetrics?.invoke(metrics)
+            }
+            voiceRuntime.startRuntime { userUtterance ->
+                Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
+                val uiHandler = onUtterance
+                if (uiHandler != null) {
+                    uiHandler(userUtterance)
                 } else {
-                    commandExecutor.execute(plan.intent)
+                    // The service can outlive the activity. Keep local commands
+                    // working in that state, while never executing a risky action
+                    // without the UI's confirmation flow.
+                    val plan = brain.processCommand(userUtterance)
+                    val response = if (plan.requiresConfirmation) {
+                        "Please open Jarvis to confirm this action."
+                    } else {
+                        commandExecutor.execute(plan.intent)
+                    }
+                    voiceRuntime.speakResponse(response)
                 }
-                voiceRuntime.speakResponse(response)
             }
         }
 
@@ -101,6 +133,7 @@ class JarvisForegroundService : Service() {
     private fun updateNotification(state: VoiceState) {
         val text = when (state) {
             VoiceState.IDLE -> "JARVIS Assistant Active"
+            VoiceState.WAKE -> "Listening for 'Hey Jarvis'"
             VoiceState.LISTENING -> "Listening for command…"
             VoiceState.PROCESSING -> "Processing…"
             VoiceState.SPEAKING -> "Speaking…"
@@ -152,10 +185,13 @@ class JarvisForegroundService : Service() {
         }
         onUtterance = null
         onResponseDone = null
+        onWakeToggled = null
         onStateChanged = null
         onEnvironmentChanged = null
         onAudioMetrics = null
         speak = null
+        toggleWakeListening = null
+        setWakeSensitivity = null
         startCommandListening = null
         setSpeechRate = null
         super.onDestroy()

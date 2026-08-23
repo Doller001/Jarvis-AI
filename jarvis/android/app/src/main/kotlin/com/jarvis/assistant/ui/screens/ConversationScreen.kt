@@ -1,5 +1,8 @@
 package com.jarvis.assistant.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,25 +16,51 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
 import com.jarvis.assistant.ui.components.ChatBubble
 import com.jarvis.assistant.ui.components.ConnectionPill
-import com.jarvis.assistant.ui.theme.*
 import com.jarvis.assistant.ui.JarvisUiState
+
+private val ConvCyan = Color(0xFF00E5FF)
+private val ConvCardBg = Color(0xFF071B26)
+private val ConvTextGray = Color(0xFFA0B4C4)
+private val ConvDark = Color(0xFF040812)
 
 @Composable
 fun ConversationScreen(
     uiState: JarvisUiState,
     onBack: () -> Unit,
     onSend: (String) -> Unit,
-    onStartListening: () -> Unit = {}
+    onStartListening: () -> Unit = {},
+    onToggleWakeListening: () -> Unit = {}
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.LISTENING
+    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.LISTENING ||
+            uiState.voiceState == com.jarvis.assistant.voice.VoiceState.WAKE
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            onStartListening()
+        }
+    }
+
+    val handleMicClick = {
+        if (uiState.permissionState.isMicrophoneGranted) {
+            onStartListening()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -42,7 +71,11 @@ fun ConversationScreen(
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = JarvisCyan)
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = ConvCyan
+                )
             }
             Text("Conversation", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(Modifier.weight(1f))
@@ -54,8 +87,8 @@ fun ConversationScreen(
         if (uiState.messages.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    "Tap the mic to speak or type a command like\n\"open YouTube\" or \"turn on torch\".",
-                    color = JarvisTextSecondary,
+                    text = "Tap the mic to speak or type a command like\n\"open YouTube\" or \"turn on torch\".",
+                    color = ConvTextGray,
                     fontSize = 14.sp
                 )
             }
@@ -76,46 +109,74 @@ fun ConversationScreen(
                 onValueChange = { text = it },
                 placeholder = { 
                     Text(
-                        if (isListeningNow) "Listening to you… speak now" else "Type a command…",
-                        color = if (isListeningNow) JarvisCyan else JarvisTextSecondary
+                        text = if (isListeningNow) "Listening to you… speak now" else "Type a command…",
+                        color = if (isListeningNow) ConvCyan else ConvTextGray
                     ) 
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = JarvisBlue,
-                    unfocusedBorderColor = JarvisCard,
-                    cursorColor = JarvisBlue,
+                    focusedBorderColor = ConvCyan,
+                    unfocusedBorderColor = ConvCardBg,
+                    cursorColor = ConvCyan,
                     focusedTextColor = Color.White
                 ),
                 modifier = Modifier.weight(1f)
             )
             Spacer(Modifier.width(6.dp))
-            Surface(
-                onClick = onStartListening,
-                shape = RoundedCornerShape(12.dp),
-                color = if (isListeningNow) JarvisCyan else JarvisCard,
-                modifier = Modifier.size(48.dp)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isListeningNow) ConvCyan else ConvCardBg)
+                    .clickable { handleMicClick() }
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Filled.Mic,
-                        contentDescription = "Speak",
-                        tint = if (isListeningNow) JarvisDark else JarvisCyan
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Filled.Mic,
+                    contentDescription = "Speak",
+                    tint = if (isListeningNow) ConvDark else ConvCyan
+                )
             }
             Spacer(Modifier.width(6.dp))
-            Surface(
-                onClick = { if (text.isNotBlank()) { onSend(text); text = "" } },
-                shape = RoundedCornerShape(12.dp),
-                color = JarvisBlue,
-                modifier = Modifier.size(48.dp)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ConvCyan)
+                    .clickable { if (text.isNotBlank()) { onSend(text); text = "" } }
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Send, contentDescription = "Send", tint = JarvisDark)
-                }
+                Icon(
+                    imageVector = Icons.Filled.Send,
+                    contentDescription = "Send",
+                    tint = ConvDark
+                )
             }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onToggleWakeListening,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (uiState.wakeListening) ConvCyan else ConvTextGray),
+            border = BorderStroke(
+                1.dp,
+                if (uiState.wakeListening) ConvCyan else ConvTextGray
+            ),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Icon(
+                Icons.Filled.Mic,
+                contentDescription = null,
+                tint = if (uiState.wakeListening) ConvCyan else ConvTextGray
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (uiState.wakeListening) "Wake word on — say \"Hey Jarvis\"" else "Wake word paused",
+                fontSize = 14.sp
+            )
         }
     }
 }
+

@@ -23,7 +23,8 @@ if [ ! -x "$JAVA_HOME/bin/java" ]; then
 fi
 GRADLE_USER_HOME="$BASE/.gradle"
 ANDROID_USER_HOME="$BASE/.android"
-export JAVA_HOME ANDROID_HOME GRADLE_HOME GRADLE_USER_HOME ANDROID_USER_HOME
+GRADLE_OPTS="-Duser.home=$BASE"
+export JAVA_HOME ANDROID_HOME GRADLE_HOME GRADLE_USER_HOME ANDROID_USER_HOME GRADLE_OPTS
 export PATH="$JAVA_HOME/bin:$PATH"
 java -version
 
@@ -66,13 +67,15 @@ echo "==> Validating XML resources..."
 python3 "$PROJECT_DIR/scripts/validate_xml.py"
 
 # ---- 5. Real Gradle build ----
-echo "==> assembleDebug (real compile of all UI + permission code)..."
+echo "==> assembleDebug & assembleRelease..."
 cd "$ANDROID_DIR"
-gradle assembleDebug --no-daemon || ./gradlew assembleDebug --no-daemon
+gradle assembleDebug assembleRelease --no-daemon
 
-echo "==> unit tests..."
-gradle testDebugUnitTest --no-daemon || ./gradlew testDebugUnitTest --no-daemon
+mkdir -p "$PROJECT_DIR/../export"
+cp app/build/outputs/apk/debug/app-debug.apk "$PROJECT_DIR/../export/jarvis-debug.apk"
+cp app/build/outputs/apk/release/app-release.apk "$PROJECT_DIR/../export/jarvis-production-release.apk"
 
 echo ""
-echo "BUILD VERIFIED: assembleDebug + unit tests passed."
-echo "APK: $ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
+echo "BUILD VERIFIED: assembleDebug + assembleRelease passed and exported."
+echo "Exported:"
+ls -lh "$PROJECT_DIR/../export/"

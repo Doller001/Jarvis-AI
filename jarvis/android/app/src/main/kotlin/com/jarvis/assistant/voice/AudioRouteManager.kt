@@ -10,11 +10,14 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 /**
- * Automatically detects connected Bluetooth audio devices (headsets, earbuds, microphones)
- * and routes voice capture to the Bluetooth mic when connected, falling back to
- * the device microphone when disconnected.
+ * Automatically detects connected Bluetooth audio devices and routes voice capture
+ * to the Bluetooth mic ONLY during active listening sessions, immediately restoring
+ * [AudioManager.MODE_NORMAL] and clearing communication devices when idle or in background.
+ *
+ * This prevents background music/media from being ducked or degraded into narrow-band VoIP mode.
  */
 class AudioRouteManager(private val context: Context?) {
 
@@ -25,6 +28,7 @@ class AudioRouteManager(private val context: Context?) {
     private val audioManager: AudioManager? = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var isBluetoothScoActive = false
     private var isRegistered = false
+    private var isVoiceRoutingActive = false
 
     private val bluetoothReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
@@ -34,21 +38,19 @@ class AudioRouteManager(private val context: Context?) {
                 BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothProfile.EXTRA_STATE, BluetoothProfile.STATE_DISCONNECTED)
                     if (state == BluetoothProfile.STATE_CONNECTED) {
-                        Log.i(TAG, "Bluetooth headset connected — enabling Bluetooth mic routing")
-                        enableBluetoothMic()
+                        Log.i(TAG, "Bluetooth headset connected (available for listening)")
+                        if (isVoiceRoutingActive) {
+                            enableBluetoothMic()
+                        }
                     } else if (state == BluetoothProfile.STATE_DISCONNECTED) {
-                        Log.i(TAG, "Bluetooth headset disconnected — reverting to built-in mic")
+                        Log.i(TAG, "Bluetooth headset disconnected")
                         disableBluetoothMic()
                     }
                 }
                 AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED -> {
                     val scoState = intent.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, AudioManager.SCO_AUDIO_STATE_DISCONNECTED)
                     Log.i(TAG, "SCO audio state: $scoState")
-                    if (scoState == AudioManager.SCO_AUDIO_STATE_CONNECTED) {
-                        isBluetoothScoActive = true
-                    } else if (scoState == AudioManager.SCO_AUDIO_STATE_DISCONNECTED) {
-                        isBluetoothScoActive = false
-                    }
+                    isBluetoothScoActive = (scoState == AudioManager.SCO_AUDIO_STATE_CONNECTED)
                 }
             }
         }
@@ -62,14 +64,15 @@ class AudioRouteManager(private val context: Context?) {
                 addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED)
                 addAction(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED)
             }
-            ctx.registerReceiver(bluetoothReceiver, filter)
+            ContextCompat.registerReceiver(
+                ctx,
+                bluetoothReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             isRegistered = true
-
-            // Check if already connected
-            if (isBluetoothHeadsetConnected()) {
-                Log.i(TAG, "Bluetooth audio device already connected on startup — activating Bluetooth mic")
-                enableBluetoothMic()
-            }
+            // Ensure audio mode starts strictly normal so background media is never attenuated
+            ensureNormalAudioMode()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register audio route receiver", e)
         }
@@ -81,16 +84,39 @@ class AudioRouteManager(private val context: Context?) {
             val devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS)
             return devices.any {
                 it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
             }
         }
         @Suppress("DEPRECATION")
-        return am.isBluetoothScoAvailableOffCall || am.isBluetoothA2dpOn
+        return am.isBluetoothScoAvailableOffCall
     }
 
-    fun enableBluetoothMic() {
+    /**
+     * Called when VoiceRuntime enters LISTENING state.
+     */
+    fun activateVoiceRouting() {
+        isVoiceRoutingActive = true
+        if (isBluetoothHeadsetConnected()) {
+            enableBluetoothMic()
+        }
+    }
+
+    /**
+     * Called when VoiceRuntime exits LISTENING state (to IDLE, PROCESSING, SPEAKING, ERROR).
+     * Immediately restores MODE_NORMAL and releases communication devices.
+     */
+    fun deactivateVoiceRouting() {
+        isVoiceRoutingActive = false
+        disableBluetoothMic()
+        ensureNormalAudioMode()
+    }
+
+    private fun enableBluetoothMic() {
         val am = audioManager ?: return
+        if (!isBluetoothHeadsetConnected()) {
+            Log.d(TAG, "No Bluetooth microphone device present — skipping SCO enable")
+            return
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val inputDevices = am.availableCommunicationDevices
@@ -118,17 +144,16 @@ class AudioRouteManager(private val context: Context?) {
         }
     }
 
-    fun disableBluetoothMic() {
+    private fun disableBluetoothMic() {
         val am = audioManager ?: return
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 am.clearCommunicationDevice()
             }
             @Suppress("DEPRECATION")
-            if (isBluetoothScoActive) {
+            if (isBluetoothScoActive || am.isBluetoothScoOn) {
                 am.isBluetoothScoOn = false
                 am.stopBluetoothSco()
-                am.mode = AudioManager.MODE_NORMAL
                 isBluetoothScoActive = false
             }
         } catch (e: Exception) {
@@ -136,8 +161,20 @@ class AudioRouteManager(private val context: Context?) {
         }
     }
 
+    fun ensureNormalAudioMode() {
+        val am = audioManager ?: return
+        try {
+            if (am.mode != AudioManager.MODE_NORMAL) {
+                am.mode = AudioManager.MODE_NORMAL
+                Log.d(TAG, "Restored AudioManager mode to MODE_NORMAL")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed resetting audio mode to MODE_NORMAL", e)
+        }
+    }
+
     fun release() {
-        disableBluetoothMic()
+        deactivateVoiceRouting()
         if (isRegistered) {
             try {
                 context?.unregisterReceiver(bluetoothReceiver)

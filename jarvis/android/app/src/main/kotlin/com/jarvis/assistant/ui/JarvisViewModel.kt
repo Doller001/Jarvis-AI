@@ -45,6 +45,8 @@ data class JarvisUiState(
     val providersLoading: Boolean = false,
     val isTtsEnabled: Boolean = true,
     val speechRate: Float = 1.0f,
+    val wakeListening: Boolean = false,
+    val wakeSensitivity: String = "Balanced",
     val pingResult: String? = null,
     val isPinging: Boolean = false,
     val environmentProfile: String = "Indoor (Quiet)",
@@ -113,6 +115,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         JarvisForegroundService.onStateChanged = { state ->
             _uiState.update { it.copy(voiceState = state) }
         }
+        JarvisForegroundService.onWakeToggled = { active ->
+            _uiState.update { it.copy(wakeListening = active) }
+        }
         JarvisForegroundService.onEnvironmentChanged = { env ->
             _uiState.update { it.copy(environmentProfile = env.displayName) }
         }
@@ -131,11 +136,19 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun startListening() {
-        ContextCompat.startForegroundService(
-            getApplication(), Intent(getApplication(), JarvisForegroundService::class.java).apply {
-                action = JarvisForegroundService.ACTION_LISTEN_FOR_COMMAND
+        if (JarvisForegroundService.isRunning && JarvisForegroundService.startCommandListening != null) {
+            JarvisForegroundService.startCommandListening?.invoke()
+        } else {
+            try {
+                ContextCompat.startForegroundService(
+                    getApplication(), Intent(getApplication(), JarvisForegroundService::class.java).apply {
+                        action = JarvisForegroundService.ACTION_LISTEN_FOR_COMMAND
+                    }
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("JarvisViewModel", "Failed to start JarvisForegroundService", e)
             }
-        )
+        }
     }
 
     fun refreshProviders() {
@@ -199,6 +212,18 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         settingsManager.speechRate = rate
         JarvisForegroundService.setSpeechRate?.invoke(rate)
         _uiState.update { it.copy(speechRate = rate) }
+    }
+
+    fun toggleWakeListening() {
+        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: false
+        settingsManager.wakeWordEnabled = active
+        _uiState.update { it.copy(wakeListening = active) }
+    }
+
+    fun setWakeSensitivity(sensitivity: String) {
+        settingsManager.wakeSensitivity = sensitivity
+        JarvisForegroundService.setWakeSensitivity?.invoke(sensitivity)
+        _uiState.update { it.copy(wakeSensitivity = sensitivity) }
     }
 
     fun clearHistory() {

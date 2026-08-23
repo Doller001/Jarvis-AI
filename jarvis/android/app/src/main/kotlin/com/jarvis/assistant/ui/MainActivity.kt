@@ -57,7 +57,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenMemory = { navController.navigate("memory") },
                 onQuickAction = { viewModel.executeQuickAction(it) },
-                onStartListening = viewModel::startListening
+                onStartListening = viewModel::startListening,
+                onToggleWakeListening = viewModel::toggleWakeListening
             )
         }
         composable("conversation") {
@@ -65,7 +66,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 uiState = uiState,
                 onBack = { navController.popBackStack() },
                 onSend = viewModel::sendUtterance,
-                onStartListening = viewModel::startListening
+                onStartListening = viewModel::startListening,
+                onToggleWakeListening = viewModel::toggleWakeListening
             )
         }
         composable("providers") {
@@ -95,6 +97,7 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onPingBackend = viewModel::pingBackend,
                 onToggleTts = viewModel::setTtsEnabled,
                 onSelectSpeechRate = viewModel::setSpeechRate,
+                onSelectWakeSensitivity = viewModel::setWakeSensitivity,
                 onClearHistory = viewModel::clearHistory
             )
         }

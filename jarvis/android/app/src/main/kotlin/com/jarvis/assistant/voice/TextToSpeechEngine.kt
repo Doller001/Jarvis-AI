@@ -18,6 +18,15 @@ class TextToSpeechEngine(private val context: Context? = null) {
                     if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                         Log.w("TextToSpeechEngine", "Language US is not supported or missing data")
                     }
+                    try {
+                        val audioAttributes = android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                        tts?.setAudioAttributes(audioAttributes)
+                    } catch (e: Exception) {
+                        Log.w("TextToSpeechEngine", "Could not set audio attributes on TTS", e)
+                    }
                     isInitialized = true
                     Log.i("TextToSpeechEngine", "TTS initialized successfully")
                 } else {

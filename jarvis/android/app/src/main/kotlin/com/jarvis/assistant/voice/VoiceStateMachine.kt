@@ -2,7 +2,8 @@ package com.jarvis.assistant.voice
 
 enum class VoiceState {
     IDLE,
-    LISTENING,
+    WAKE,        // always-listening for the wake word ("Hey Jarvis")
+    LISTENING,   // active command recognition after a wake event
     PROCESSING,
     SPEAKING,
     ERROR
@@ -11,15 +12,17 @@ enum class VoiceState {
 /**
  * Pure state machine for the Jarvis voice pipeline (Phase 1 & 2 architecture).
  *
- * Normal Flow:
+ * Normal Flow (wake-word enabled):
+ *   IDLE -> WAKE -> LISTENING -> PROCESSING -> SPEAKING -> WAKE/IDLE
+ *
+ * Push-to-talk / no wake-word Flow:
  *   IDLE -> LISTENING -> PROCESSING -> SPEAKING -> IDLE
  *
  * Error & Recovery:
- *   LISTENING -> ERROR -> IDLE
- *   PROCESSING -> ERROR -> IDLE
+ *   WAKE / LISTENING / PROCESSING -> ERROR -> IDLE
  *
  * Cancellation:
- *   LISTENING -> IDLE
+ *   WAKE / LISTENING -> IDLE
  *   SPEAKING -> IDLE
  */
 class VoiceStateMachine(initial: VoiceState = VoiceState.IDLE) {
@@ -49,10 +52,11 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.IDLE) {
         transition(VoiceState.IDLE) || state == VoiceState.IDLE
 
     private fun isLegal(from: VoiceState, to: VoiceState): Boolean = when (from) {
-        VoiceState.IDLE -> to == VoiceState.LISTENING || to == VoiceState.PROCESSING || to == VoiceState.ERROR
+        VoiceState.IDLE -> to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.PROCESSING || to == VoiceState.ERROR
+        VoiceState.WAKE -> to == VoiceState.LISTENING || to == VoiceState.IDLE || to == VoiceState.ERROR
         VoiceState.LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.IDLE || to == VoiceState.ERROR
         VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.IDLE || to == VoiceState.ERROR
-        VoiceState.SPEAKING -> to == VoiceState.IDLE || to == VoiceState.LISTENING || to == VoiceState.ERROR
-        VoiceState.ERROR -> to == VoiceState.IDLE || to == VoiceState.LISTENING || to == VoiceState.ERROR
+        VoiceState.SPEAKING -> to == VoiceState.IDLE || to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.ERROR
+        VoiceState.ERROR -> to == VoiceState.IDLE || to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.ERROR
     }
 }

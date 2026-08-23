@@ -87,6 +87,13 @@ android {
         buildConfig = true
     }
 
+    // .onnx model files must NOT be compressed in the APK — the wake-word
+    // detector reads them via AssetManager.open().readBytes() and ONNX Runtime
+    // memory-maps them. Compressing would force a full copy into RAM.
+    aaptOptions {
+        noCompress("onnx")
+    }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
     }
@@ -117,7 +124,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // Testing
+    // ONNX Runtime Mobile — runs the offline wake-word models (melspectrogram,
+    // embedding_model, hey_jarvis) entirely on-device. No cloud / Porcupine key.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     testImplementation("org.mockito:mockito-core:5.10.0")
