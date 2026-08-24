@@ -8,7 +8,10 @@ import java.util.Locale
 
 class TextToSpeechEngine(private val context: Context? = null) {
     private var tts: TextToSpeech? = null
+    @Volatile
     private var isInitialized = false
+    private var pendingSpeechRate: Float = 1.0f
+    private val pendingQueue = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, () -> Unit>>()
 
     init {
         context?.let { ctx ->
@@ -24,14 +27,28 @@ class TextToSpeechEngine(private val context: Context? = null) {
                             .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build()
                         tts?.setAudioAttributes(audioAttributes)
+                        tts?.setSpeechRate(pendingSpeechRate)
                     } catch (e: Exception) {
                         Log.w("TextToSpeechEngine", "Could not set audio attributes on TTS", e)
                     }
                     isInitialized = true
                     Log.i("TextToSpeechEngine", "TTS initialized successfully")
+                    flushPendingQueue()
                 } else {
                     Log.e("TextToSpeechEngine", "TTS initialization failed with status $status")
+                    flushPendingQueue(error = true)
                 }
+            }
+        }
+    }
+
+    private fun flushPendingQueue(error: Boolean = false) {
+        while (!pendingQueue.isEmpty()) {
+            val item = pendingQueue.poll() ?: break
+            if (error) {
+                item.second()
+            } else {
+                speak(item.first, item.second)
             }
         }
     }
@@ -41,29 +58,42 @@ class TextToSpeechEngine(private val context: Context? = null) {
             onComplete()
             return
         }
-        Log.i("TextToSpeechEngine", "Jarvis speaking: '$text'")
         val ttsEngine = tts
-        if (ttsEngine != null && isInitialized) {
-            val utteranceId = "JARVIS_TTS_${System.currentTimeMillis()}"
-            ttsEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(uttId: String?) {}
-                override fun onDone(uttId: String?) {
-                    if (uttId == utteranceId) onComplete()
-                }
-
-                @Deprecated("Deprecated in Java")
-                override fun onError(uttId: String?) {
-                    if (uttId == utteranceId) onComplete()
-                }
-            })
-            ttsEngine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-        } else {
-            // Fallback if TTS not initialized or context missing
+        if (ttsEngine == null) {
             onComplete()
+            return
         }
+
+        if (!isInitialized) {
+            Log.d("TextToSpeechEngine", "TTS still initializing — queuing utterance: '${text.take(30)}...'")
+            pendingQueue.add(Pair(text, onComplete))
+            return
+        }
+
+        Log.i("TextToSpeechEngine", "Jarvis speaking: '$text'")
+        val utteranceId = "JARVIS_TTS_${System.currentTimeMillis()}"
+        ttsEngine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(uttId: String?) {}
+
+            override fun onDone(uttId: String?) {
+                if (uttId == utteranceId) onComplete()
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onError(uttId: String?) {
+                if (uttId == utteranceId) onComplete()
+            }
+
+            override fun onError(uttId: String?, errorCode: Int) {
+                Log.w("TextToSpeechEngine", "TTS error ($errorCode) on utterance $uttId")
+                if (uttId == utteranceId) onComplete()
+            }
+        })
+        ttsEngine.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     fun setSpeechRate(rate: Float) {
+        pendingSpeechRate = rate
         try {
             tts?.setSpeechRate(rate)
         } catch (e: Exception) {
@@ -72,6 +102,7 @@ class TextToSpeechEngine(private val context: Context? = null) {
     }
 
     fun stop() {
+        pendingQueue.clear()
         try {
             tts?.stop()
         } catch (e: Exception) {
@@ -80,6 +111,7 @@ class TextToSpeechEngine(private val context: Context? = null) {
     }
 
     fun shutdown() {
+        pendingQueue.clear()
         try {
             tts?.shutdown()
             tts = null

@@ -220,6 +220,9 @@ class JarvisMemoryDatabase(context: Context) : SQLiteOpenHelper(
 
     fun writeMetaJson() {
         try {
+            if (!memoryFolder.exists()) {
+                memoryFolder.mkdirs()
+            }
             val metaFile = File(memoryFolder, "meta.json")
             val json = JSONObject().apply {
                 put("schema_version", DATABASE_VERSION)

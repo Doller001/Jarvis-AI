@@ -17,13 +17,23 @@ class YouTubeAdapter(private val context: Context?) {
         return try {
             val encoded = Uri.encode(query)
             val uri = Uri.parse("https://www.youtube.com/results?search_query=$encoded")
-            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                setPackage(PACKAGE_YOUTUBE)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage(PACKAGE_YOUTUBE)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(intent)
+                Log.i(TAG, "Opened YouTube search for query: $query")
+                true
+            } catch (_: Exception) {
+                // Fallback to web browser if YouTube native app is not installed
+                val browserIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(browserIntent)
+                Log.i(TAG, "Opened YouTube web search in browser: $query")
+                true
             }
-            ctx.startActivity(intent)
-            Log.i(TAG, "Opened YouTube search for query: $query")
-            true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to search YouTube", e)
             false

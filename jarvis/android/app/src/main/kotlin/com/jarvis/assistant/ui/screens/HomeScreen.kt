@@ -98,8 +98,55 @@ fun HomeScreen(
                 text = "Personal AI Assistant",
                 color = TextGray,
                 fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 28.dp)
+                modifier = Modifier.padding(bottom = 16.dp)
             )
+
+            // Setup Required Banner if permissions are missing
+            if (!uiState.permissionState.allRequiredGranted) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF261907),
+                    border = BorderStroke(1.dp, Color(0xFFFFB020)),
+                    onClick = onOpenPermissions,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFFFB020),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Setup Required",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "Tap to grant permissions (${uiState.permissionState.grantedCount}/9 active)",
+                                color = TextGray,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Color(0xFFFFB020),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {

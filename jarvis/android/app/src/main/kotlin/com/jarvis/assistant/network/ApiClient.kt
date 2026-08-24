@@ -85,11 +85,39 @@ class ApiClient(var baseUrl: String = "https://and9-1.onrender.com") {
             try {
                 sharedClient.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {
-                        val body = response.body?.string().orEmpty()
-                        val array = JSONArray(body)
+                        val body = response.body?.string().orEmpty().trim()
                         val list = mutableListOf<String>()
-                        for (i in 0 until array.length()) {
-                            list.add(array.getJSONObject(i).getString("provider"))
+                        try {
+                            if (body.startsWith("[")) {
+                                val array = JSONArray(body)
+                                for (i in 0 until array.length()) {
+                                    val item = array.get(i)
+                                    when (item) {
+                                        is JSONObject -> {
+                                            val p = item.optString("provider").ifBlank { item.optString("name") }
+                                            if (p.isNotBlank()) list.add(p)
+                                        }
+                                        is String -> if (item.isNotBlank()) list.add(item)
+                                    }
+                                }
+                            } else if (body.startsWith("{")) {
+                                val json = JSONObject(body)
+                                val provArray = json.optJSONArray("providers")
+                                if (provArray != null) {
+                                    for (i in 0 until provArray.length()) {
+                                        val item = provArray.get(i)
+                                        when (item) {
+                                            is JSONObject -> {
+                                                val p = item.optString("provider").ifBlank { item.optString("name") }
+                                                if (p.isNotBlank()) list.add(p)
+                                            }
+                                            is String -> if (item.isNotBlank()) list.add(item)
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error parsing providers payload: ${e.message}")
                         }
                         val result = if (list.isNotEmpty()) list else defaultProviders()
                         launch(Dispatchers.Main) { onResult(result) }

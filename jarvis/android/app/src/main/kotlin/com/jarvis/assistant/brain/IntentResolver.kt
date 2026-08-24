@@ -34,6 +34,7 @@ class IntentResolver {
 
     fun resolve(rawText: String): JarvisIntent {
         val t = rawText.lowercase().trim()
+        val clean = t.replace(Regex("^(hey\\s+jarvis|jarvis|hay\\s+jarvis|ok\\s+jarvis|please|bhai)\\s+"), "").trim()
 
         // Multi-Step Task Plan Decomposer
         val plannedTask = taskPlanner.plan(rawText)
@@ -42,91 +43,105 @@ class IntentResolver {
         }
 
         // Systems Check & Diagnostics
-        if (t.contains("systems check") || t.contains("system check") || t.contains("diagnostics") || t == "check status" || t == "status check") {
+        if (clean.contains("systems check") || clean.contains("system check") || clean.contains("diagnostics") || clean == "check status" || clean == "status check") {
             return JarvisIntent.SystemsCheck(rawText)
         }
 
         // Analyze Data & Memory telemetry
-        if (t.contains("analyze data") || t.contains("data analysis") || t.contains("analyze memory") || t == "analytics") {
+        if (clean.contains("analyze data") || clean.contains("data analysis") || clean.contains("analyze memory") || clean == "analytics") {
             return JarvisIntent.AnalyzeData(rawText)
         }
 
         // Home Control
-        if (t.contains("home control") || t.contains("smart home") || t.contains("device control")) {
+        if (clean.contains("home control") || clean.contains("smart home") || clean.contains("device control")) {
             return JarvisIntent.HomeControl(rawText)
         }
 
         // Schedule
-        if (t.contains("schedule") || t.contains("calendar") || t.contains("my schedule") || t.contains("agenda")) {
+        if (clean.contains("schedule") || clean.contains("calendar") || clean.contains("my schedule") || clean.contains("agenda")) {
             return JarvisIntent.ScheduleCheck(rawText)
         }
 
         // Conversational & Assistant Basics (Minaty JARVIS AGI Persona)
-        if (t in listOf("hello", "hi", "hey", "hey jarvis", "namaste", "suno", "hello jarvis", "suno jarvis", "ji jarvis")) {
+        if (clean in listOf("hello", "hi", "hey", "hey jarvis", "namaste", "suno", "hello jarvis", "suno jarvis", "ji jarvis") || t in listOf("hello", "hi", "hey", "hey jarvis", "namaste", "suno", "hello jarvis", "suno jarvis", "ji jarvis")) {
             return JarvisIntent.LocalConversational("JARVIS online. Good to see you, Minaty. What shall we build today?")
         }
-        if (t.contains("who are you") || t.contains("kaun ho") || t.contains("what is your name") || t.contains("tumhara naam")) {
+        if (clean.contains("who are you") || clean.contains("kaun ho") || clean.contains("what is your name") || clean.contains("tumhara naam")) {
             return JarvisIntent.LocalConversational("I am JARVIS, an AGI-class cognitive assistant created by Minaty. I anticipate, I protect, I execute.")
         }
-        if (t.contains("who made you") || t.contains("who created you") || t.contains("kisne banaya") || t.contains("creator")) {
+        if (clean.contains("who made you") || clean.contains("who created you") || clean.contains("kisne banaya") || clean.contains("creator")) {
             return JarvisIntent.LocalConversational("I was created by Minaty as a trusted AGI personal cognitive assistant.")
         }
-        if (t.contains("how are you") || t.contains("kaise ho") || t.contains("kya haal")) {
+        if (clean.contains("how are you") || clean.contains("kaise ho") || clean.contains("kya haal")) {
             return JarvisIntent.LocalConversational("All systems are operating at peak efficiency, Minaty! Ready for your command.")
         }
-        if (t.contains("what can you do") || t.contains("kya kar sakte ho") || t.contains("help") || t == "commands") {
+        if (clean.contains("what can you do") || clean.contains("kya kar sakte ho") || clean.contains("help") || clean == "commands") {
             return JarvisIntent.LocalConversational("I can control device hardware (Torch, Wi-Fi, Bluetooth), launch or close apps, check battery & storage, read screen, manage WhatsApp & calls, and reason across complex workflows.")
         }
-        if (t.contains("thank you") || t.contains("thanks") || t.contains("dhanyawad") || t.contains("shukriya")) {
+        if (clean.contains("thank you") || clean.contains("thanks") || clean.contains("dhanyawad") || clean.contains("shukriya")) {
             return JarvisIntent.LocalConversational("Always at your service, Minaty.")
         }
-        if (t.contains("bye") || t.contains("alvida") || t.contains("good night") || t.contains("shubh ratri")) {
+        if (clean.contains("bye") || clean.contains("alvida") || clean.contains("good night") || clean.contains("shubh ratri")) {
             return JarvisIntent.LocalConversational("Goodbye, Minaty. Standing by in low-power background monitoring.")
         }
 
-        if (t.contains("time") || t.contains("samay") || t.contains("kitne baje")) return JarvisIntent.GetTime(rawText)
-        if (t.contains("battery") || t.contains("charge") || t.contains("charging")) return JarvisIntent.GetBattery(rawText)
-        if (t.contains("storage") || t.contains("disk space") || t.contains("phone memory")) return JarvisIntent.GetStorage(rawText)
-        if (t.contains("call log") || t.contains("recent calls") || t.contains("call history") || t.contains("kiski call aayi")) return JarvisIntent.GetCallLog(rawText)
+        if (clean.contains("time") || clean.contains("samay") || clean.contains("kitne baje")) return JarvisIntent.GetTime(rawText)
+        if (clean.contains("battery") || clean.contains("charge") || clean.contains("charging")) return JarvisIntent.GetBattery(rawText)
+        if (clean.contains("storage") || clean.contains("disk space") || clean.contains("phone memory")) return JarvisIntent.GetStorage(rawText)
+        if (clean.contains("call log") || clean.contains("recent calls") || clean.contains("call history") || clean.contains("kiski call aayi")) return JarvisIntent.GetCallLog(rawText)
+
+        // Photo / Camera Capturing
+        if (clean.contains("take photo") || clean.contains("take a photo") || clean.contains("click photo") ||
+            clean.contains("photo khincho") || clean.contains("photo lo") || clean.contains("capture photo")) {
+            return JarvisIntent.OpenApp("camera")
+        }
 
         // Gallery
-        if (t.contains("open gallery") || t.contains("gallery kholo") || t.contains("show photos") || t.contains("photo dikhao")) return JarvisIntent.OpenGallery(rawText)
+        if (clean.contains("open gallery") || clean.contains("gallery kholo") || clean.contains("show photos") || clean.contains("photo dikhao")) return JarvisIntent.OpenGallery(rawText)
 
         // App Discovery / Listing
-        if (t.contains("music apps")) return JarvisIntent.ListApps("music")
-        if (t.contains("social apps")) return JarvisIntent.ListApps("social")
-        if (t.contains("ai apps") || t.contains("assistant apps")) return JarvisIntent.ListApps("ai")
-        if (t.contains("game apps") || t.contains("games list")) return JarvisIntent.ListApps("games")
-        if (t.contains("apps list") || t.contains("all apps") || t.contains("list apps") || t.contains("installed apps")) return JarvisIntent.ListApps()
+        if (clean.contains("music apps")) return JarvisIntent.ListApps("music")
+        if (clean.contains("social apps")) return JarvisIntent.ListApps("social")
+        if (clean.contains("ai apps") || clean.contains("assistant apps")) return JarvisIntent.ListApps("ai")
+        if (clean.contains("game apps") || clean.contains("games list")) return JarvisIntent.ListApps("games")
+        if (clean.contains("apps list") || clean.contains("all apps") || clean.contains("list apps") || clean.contains("installed apps")) return JarvisIntent.ListApps()
 
         // Torch / Flashlight
-        if (t.contains("torch on") || t.contains("flashlight on") || t.contains("torch chalo") || t.contains("light on") || t.contains("torch jalao")) return JarvisIntent.ToggleTorch("on")
-        if (t.contains("torch off") || t.contains("flashlight off") || t.contains("torch band") || t.contains("light off") || t.contains("torch bujhao")) return JarvisIntent.ToggleTorch("off")
+        if (clean.contains("torch on") || clean.contains("flashlight on") || clean.contains("torch chalo") || clean.contains("light on") || clean.contains("torch jalao") || clean.contains("turn on torch") || clean.contains("turn on flashlight")) return JarvisIntent.ToggleTorch("on")
+        if (clean.contains("torch off") || clean.contains("flashlight off") || clean.contains("torch band") || clean.contains("light off") || clean.contains("torch bujhao") || clean.contains("turn off torch") || clean.contains("turn off flashlight")) return JarvisIntent.ToggleTorch("off")
 
         // WiFi
-        if (t.contains("wifi on") || t.contains("turn on wifi") || t.contains("wifi chalo") || t.contains("wifi chalu")) return JarvisIntent.ToggleWifi("on")
-        if (t.contains("wifi off") || t.contains("turn off wifi") || t.contains("wifi band")) return JarvisIntent.ToggleWifi("off")
+        if (clean.contains("wifi on") || clean.contains("turn on wifi") || clean.contains("wifi chalo") || clean.contains("wifi chalu")) return JarvisIntent.ToggleWifi("on")
+        if (clean.contains("wifi off") || clean.contains("turn off wifi") || clean.contains("wifi band")) return JarvisIntent.ToggleWifi("off")
 
         // Bluetooth
-        if (t.contains("bluetooth on") || t.contains("bluetooth chalo") || t.contains("bluetooth chalu")) return JarvisIntent.ToggleBluetooth("on")
-        if (t.contains("bluetooth off") || t.contains("bluetooth band")) return JarvisIntent.ToggleBluetooth("off")
+        if (clean.contains("bluetooth on") || clean.contains("turn on bluetooth") || clean.contains("bluetooth chalo") || clean.contains("bluetooth chalu")) return JarvisIntent.ToggleBluetooth("on")
+        if (clean.contains("bluetooth off") || clean.contains("turn off bluetooth") || clean.contains("bluetooth band")) return JarvisIntent.ToggleBluetooth("off")
 
         // Media / Music
-        if (t.contains("play music") || t.contains("music play") || t.contains("gaana bajao") || t.contains("gana bajao") || t.contains("song play")) return JarvisIntent.MediaControl("play")
-        if (t.contains("pause music") || t.contains("music pause") || t.contains("gaana roko") || t.contains("gana roko") || t.contains("song pause") || t.contains("stop music")) return JarvisIntent.MediaControl("pause")
-        if (t.contains("next song") || t.contains("next track") || t.contains("agla gaana") || t.contains("music next")) return JarvisIntent.MediaControl("next")
-        if (t.contains("previous song") || t.contains("prev song") || t.contains("pichhla gaana") || t.contains("music prev")) return JarvisIntent.MediaControl("prev")
+        if (clean.contains("play music") || clean.contains("music play") || clean.contains("gaana bajao") || clean.contains("gana bajao") || clean.contains("song play")) return JarvisIntent.MediaControl("play")
+        if (clean.contains("pause music") || clean.contains("music pause") || clean.contains("gaana roko") || clean.contains("gana roko") || clean.contains("song pause") || clean.contains("stop music")) return JarvisIntent.MediaControl("pause")
+        if (clean.contains("next song") || clean.contains("next track") || clean.contains("agla gaana") || clean.contains("music next")) return JarvisIntent.MediaControl("next")
+        if (clean.contains("previous song") || clean.contains("prev song") || clean.contains("pichhla gaana") || clean.contains("music prev")) return JarvisIntent.MediaControl("prev")
 
         // Volume
-        if (t.contains("volume up") || t.contains("volume badhao") || t.contains("awaz badhao") || t.contains("volume tez")) return JarvisIntent.SetVolume(80)
-        if (t.contains("volume down") || t.contains("volume kam") || t.contains("awaz kam") || t.contains("volume dheere")) return JarvisIntent.SetVolume(30)
-        if (t.contains("mute") || t.contains("silent") || t.contains("chup")) return JarvisIntent.SetVolume(0)
+        val volRegex = Regex("(?:volume|awaz|sound)\\s+(\\d+)(?:%|\\s*percent)?")
+        val volMatch = volRegex.find(clean)
+        if (volMatch != null) {
+            val level = volMatch.groupValues[1].toIntOrNull()
+            if (level != null) return JarvisIntent.SetVolume(level.coerceIn(0, 100))
+        }
+        if (clean.contains("volume max") || clean.contains("max volume") || clean.contains("volume full") || clean.contains("full volume")) return JarvisIntent.SetVolume(100)
+        if (clean.contains("volume zero") || clean.contains("volume min") || clean.contains("min volume")) return JarvisIntent.SetVolume(0)
+        if (clean.contains("volume up") || clean.contains("volume badhao") || clean.contains("awaz badhao") || clean.contains("volume tez")) return JarvisIntent.SetVolume(80)
+        if (clean.contains("volume down") || clean.contains("volume kam") || clean.contains("awaz kam") || clean.contains("volume dheere")) return JarvisIntent.SetVolume(30)
+        if (clean.contains("mute") || clean.contains("silent") || clean.contains("chup")) return JarvisIntent.SetVolume(0)
 
         // Settings
-        if (t.contains("open settings") || t.contains("settings kholo") || t == "settings") return JarvisIntent.OpenSettings()
+        if (clean.contains("open settings") || clean.contains("settings kholo") || clean == "settings") return JarvisIntent.OpenSettings()
 
         // WhatsApp
-        if (t.contains("whatsapp")) {
+        if (clean.contains("whatsapp")) {
             val targetRaw = rawText.substring(t.indexOf("whatsapp") + "whatsapp".length)
             var words = targetRaw.trim().split(" ").filter { it.isNotBlank() }
             if (words.firstOrNull()?.equals("to", ignoreCase = true) == true) {
@@ -138,44 +153,49 @@ class IntentResolver {
         }
 
         // SMS
-        if (t.startsWith("sms ") || t.contains("send sms")) {
-            val msg = t.replace("send sms", "").replace("sms", "").trim()
+        if (clean.startsWith("sms ") || clean.contains("send sms")) {
+            val msg = clean.replace("send sms", "").replace("sms", "").trim()
             return JarvisIntent.SendSms("contact", msg)
         }
 
         // Close App & Go Home
-        if (t.contains("close app") || t.contains("app close") || t.contains("band karo") ||
-            t.contains("close this") || t.contains("close current") || t.contains("go home") ||
-            t.contains("home screen") || t == "exit" || t == "quit" || t == "minimize" ||
-            t.startsWith("close ")) {
-            val app = if (t.startsWith("close ")) t.replace("close ", "").replace("app", "").trim() else null
+        if (clean.contains("close app") || clean.contains("app close") || clean.contains("band karo") ||
+            clean.contains("close this") || clean.contains("close current") || clean.contains("go home") ||
+            clean.contains("home screen") || clean == "exit" || clean == "quit" || clean == "minimize" ||
+            clean.startsWith("close ")) {
+            val app = if (clean.startsWith("close ")) clean.replace("close ", "").replace("app", "").trim() else null
             return JarvisIntent.CloseApp(if (app.isNullOrBlank()) null else app)
         }
 
         // Open App
-        if (t.startsWith("open ") || t.endsWith(" kholo") || t.startsWith("kholo ") || t.contains("launch ") || t.startsWith("start ")) {
-            val app = t.replace("open ", "").replace(" kholo", "").replace("kholo ", "").replace("launch ", "").replace("start ", "").trim()
+        if (clean.startsWith("open ") || clean.endsWith(" kholo") || clean.startsWith("kholo ") || clean.contains("launch ") || clean.startsWith("start ")) {
+            val app = clean.replace("open ", "").replace(" kholo", "").replace("kholo ", "").replace("launch ", "").replace("start ", "").trim()
             return JarvisIntent.OpenApp(app)
         }
 
         // Direct App Name Detection (0ms trigger)
-        val directApps = listOf("youtube", "whatsapp", "camera", "gallery", "photos", "chrome", "browser", "calculator", "spotify", "instagram", "telegram", "settings", "clock", "maps", "playstore", "play store", "netflix")
-        if (t in directApps) {
-            return JarvisIntent.OpenApp(t)
+        val directApps = listOf("youtube", "whatsapp", "camera", "gallery", "photos", "chrome", "browser", "calculator", "spotify", "instagram", "telegram", "settings", "clock", "maps", "playstore", "play store", "netflix", "zomato", "swiggy", "paytm", "phonepe", "amazon", "flipkart", "uber", "ola")
+        if (clean in directApps) {
+            return JarvisIntent.OpenApp(clean)
         }
 
         // Read Screen
-        if (t.contains("read screen") || t.contains("screen padho") || t.contains("screen dekho")) return JarvisIntent.ReadScreen()
+        if (clean.contains("read screen") || clean.contains("screen padho") || clean.contains("screen dekho")) return JarvisIntent.ReadScreen()
 
         // Read Notifications
-        if (t.contains("read notification") || t.contains("notification padho") || t.contains("last notification") || t.contains("message padho") || t.contains("notif")) {
+        if (clean.contains("read notification") || clean.contains("notification padho") || clean.contains("last notification") || clean.contains("message padho") || clean.contains("notif")) {
             return JarvisIntent.ReadNotification(rawText)
         }
 
         // Call
-        if (t.startsWith("call ") || t.startsWith("phone ") || t.contains("ko call karo")) {
-            val contact = rawText.trim().replace(Regex("(?i)^(call|phone)\\s+"), "").replace(Regex("(?i)\\s+ko call karo$"), "").trim()
-            return JarvisIntent.CallContact(contact)
+        if (clean.startsWith("call ") || clean.startsWith("phone ") || clean.contains("ko call karo")) {
+            val contact = clean.replace(Regex("^(call|phone)\\s+"), "").replace(Regex("\\s+ko call karo$"), "").trim()
+            val rawContact = if (contact.isNotBlank()) {
+                // Try preserving original casing if possible
+                val startIdx = rawText.indexOf(contact, ignoreCase = true)
+                if (startIdx >= 0) rawText.substring(startIdx, startIdx + contact.length) else contact
+            } else "contact"
+            return JarvisIntent.CallContact(rawContact)
         }
 
         return JarvisIntent.Unknown(rawText)

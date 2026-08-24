@@ -73,8 +73,13 @@ class JarvisForegroundService : Service() {
         isRunning = true
 
         val notification = buildForegroundNotification().build()
+        val hasMicPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && hasMicPermission) {
                 startForeground(
                     1001,
                     notification,

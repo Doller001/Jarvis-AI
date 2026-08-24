@@ -103,11 +103,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         connectionManager.onStateChanged = { state ->
             _uiState.update { it.copy(connectionState = state) }
         }
+        webSocketClient.onMessageReceived = { payload ->
+            handleWebSocketMessage(payload)
+        }
         JarvisForegroundService.onUtterance = { text ->
-            val ack = sendUtterance(text)
-            if (ack.isNotBlank() && _uiState.value.isTtsEnabled) {
-                JarvisForegroundService.speak?.invoke(ack)
-            }
+            sendUtterance(text)
         }
         JarvisForegroundService.onResponseDone = {
             _uiState.update { it.copy(voiceState = VoiceState.IDLE) }
@@ -127,6 +127,25 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         // Voice capture, network probing and WebSocket setup are deliberately
         // demand-loaded. Starting all three during composition was the main
         // cold-start contention source on lower-end phones.
+    }
+
+    private fun handleWebSocketMessage(payload: String) {
+        try {
+            val json = org.json.JSONObject(payload)
+            val responseText = json.optString("response_text")
+                .ifBlank { json.optString("result") }
+                .ifBlank { json.optString("message") }
+                .ifBlank { json.optString("prompt") }
+            if (responseText.isNotBlank()) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    val engine = memoryRouter.getEngine()
+                    engine.recordEpisode("assistant", responseText)
+                    updateCompletedResponse(_uiState.value.lastUtterance, responseText, RuntimeState.IDLE, engine)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("JarvisViewModel", "Error parsing WebSocket message: ${e.message}")
+        }
     }
 
     override fun onCleared() {
@@ -163,9 +182,10 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectProvider(provider: String, model: String = "") {
-        providerManager.selectProviderAndModel(provider, model)
-        apiClient.selectProviderOnBackend(provider, model)
-        _uiState.update { it.copy(activeProvider = provider, activeModel = model) }
+        val resolvedModel = if (model.isNotBlank()) model else providerManager.getModelsForProvider(provider).firstOrNull().orEmpty()
+        providerManager.selectProviderAndModel(provider, resolvedModel)
+        apiClient.selectProviderOnBackend(provider, resolvedModel)
+        _uiState.update { it.copy(activeProvider = provider, activeModel = resolvedModel) }
     }
 
     fun refreshPermissions() {
@@ -215,7 +235,18 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleWakeListening() {
-        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: false
+        if (!JarvisForegroundService.isRunning) {
+            try {
+                ContextCompat.startForegroundService(
+                    getApplication(), Intent(getApplication(), JarvisForegroundService::class.java).apply {
+                        action = JarvisForegroundService.ACTION_START
+                    }
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("JarvisViewModel", "Failed to start JarvisForegroundService for wake toggle", e)
+            }
+        }
+        val active = JarvisForegroundService.toggleWakeListening?.invoke() ?: (!settingsManager.wakeWordEnabled)
         settingsManager.wakeWordEnabled = active
         _uiState.update { it.copy(wakeListening = active) }
     }

@@ -309,12 +309,21 @@ class SmsController(private val context: Context? = null) {
             } else {
                 Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode(message)}")
             }
-            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                setPackage("com.whatsapp")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    setPackage("com.whatsapp")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                ctx.startActivity(intent)
+                true
+            } catch (_: Exception) {
+                // Fallback for WhatsApp Business (com.whatsapp.w4b) or browser
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                ctx.startActivity(fallbackIntent)
+                true
             }
-            ctx.startActivity(intent)
-            true
         } catch (e: Exception) {
             Log.e("SmsController", "Failed to send WhatsApp message", e)
             false

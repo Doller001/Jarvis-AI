@@ -17,7 +17,26 @@ class AccessibilityController(private val service: AccessibilityService? = null)
         for (node in nodes) {
             if (performClick(node)) return true
         }
+        val fallbackNode = findClickableByTextOrDesc(root, targetText)
+        if (fallbackNode != null && performClick(fallbackNode)) {
+            return true
+        }
         return false
+    }
+
+    private fun findClickableByTextOrDesc(node: AccessibilityNodeInfo?, target: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        val text = node.text?.toString().orEmpty()
+        val desc = node.contentDescription?.toString().orEmpty()
+        if (text.contains(target, ignoreCase = true) || desc.contains(target, ignoreCase = true)) {
+            return node
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findClickableByTextOrDesc(child, target)
+            if (found != null) return found
+        }
+        return null
     }
 
     fun tapById(viewId: String): Boolean {
@@ -71,11 +90,24 @@ class AccessibilityController(private val service: AccessibilityService? = null)
     fun typeText(text: String): Boolean {
         Log.i("AccessibilityController", "Typing text into active field: '$text'")
         val root = activeService?.rootInActiveWindow ?: return false
-        val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
+        val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            ?: findFocusedOrEditableNode(root)
+            ?: return false
         val arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    }
+
+    private fun findFocusedOrEditableNode(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isFocused || node.isEditable) return node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findFocusedOrEditableNode(child)
+            if (found != null) return found
+        }
+        return null
     }
 
     fun readScreen(): String {

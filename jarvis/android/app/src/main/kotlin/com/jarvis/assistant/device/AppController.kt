@@ -28,14 +28,14 @@ class AppController(private val context: Context? = null) {
             "yt" to listOf("com.google.android.youtube"),
             "whatsapp" to listOf("com.whatsapp", "com.whatsapp.w4b"),
             "chrome" to listOf("com.android.chrome", "org.chromium.chrome"),
-            "browser" to listOf("com.android.chrome", "com.sec.android.app.sbrowser", "org.mozilla.firefox"),
+            "browser" to listOf("com.android.chrome", "com.sec.android.app.sbrowser", "org.mozilla.firefox", "com.brave.browser", "com.opera.browser"),
             "camera" to listOf("com.sec.android.app.camera", "com.google.android.GoogleCamera", "com.android.camera"),
             "gallery" to listOf("com.sec.android.gallery3d", "com.google.android.apps.photos", "com.android.gallery3d"),
             "photos" to listOf("com.google.android.apps.photos", "com.sec.android.gallery3d"),
             "calculator" to listOf("com.sec.android.app.popupcalculator", "com.google.android.calculator", "com.android.calculator2"),
-            "spotify" to listOf("com.spotify.music"),
-            "instagram" to listOf("com.instagram.android"),
-            "telegram" to listOf("org.telegram.messenger", "org.telegram.messenger.web"),
+            "spotify" to listOf("com.spotify.music", "com.spotify.lite"),
+            "instagram" to listOf("com.instagram.android", "com.instagram.lite"),
+            "telegram" to listOf("org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram"),
             "settings" to listOf("com.android.settings"),
             "clock" to listOf("com.sec.android.app.clockpackage", "com.google.android.deskclock"),
             "alarm" to listOf("com.sec.android.app.clockpackage", "com.google.android.deskclock"),
@@ -56,7 +56,19 @@ class AppController(private val context: Context? = null) {
             "my files" to listOf("com.sec.android.app.myfiles", "com.google.android.apps.nbu.files"),
             "calendar" to listOf("com.samsung.android.calendar", "com.google.android.calendar", "com.bbk.calendar"),
             "weather" to listOf("com.sec.android.daemonapp", "com.google.android.googlequicksearchbox", "com.vivo.weather"),
-            "video" to listOf("com.sec.android.app.videoplayer", "org.videolan.vlc", "com.vivo.video")
+            "video" to listOf("com.sec.android.app.videoplayer", "org.videolan.vlc", "com.vivo.video"),
+            "zomato" to listOf("com.application.zomato"),
+            "swiggy" to listOf("in.swiggy.android"),
+            "paytm" to listOf("net.one97.paytm"),
+            "phonepe" to listOf("com.phonepe.app"),
+            "gpay" to listOf("com.google.android.apps.nbu.paisa.user"),
+            "google pay" to listOf("com.google.android.apps.nbu.paisa.user"),
+            "amazon" to listOf("in.amazon.mShop.android.shopping", "com.amazon.mShop.android.shopping"),
+            "flipkart" to listOf("com.flipkart.android"),
+            "uber" to listOf("com.ubercab"),
+            "ola" to listOf("com.olacabs.customer"),
+            "chatgpt" to listOf("com.openai.chatgpt"),
+            "claude" to listOf("com.anthropic.claude")
         )
     }
 
@@ -214,7 +226,7 @@ class AppController(private val context: Context? = null) {
             } catch (_: Exception) {}
         }
 
-        return accessibilityHome || killedProcess || true
+        return accessibilityHome || killedProcess || (ctx != null)
     }
 
     fun getAppCategory(packageName: String): String {

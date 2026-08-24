@@ -20,15 +20,25 @@ class ChromeAdapter(private val context: Context?) {
             } else {
                 "https://www.google.com/search?q=" + Uri.encode(query)
             }
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                setPackage(PACKAGE_CHROME)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    setPackage(PACKAGE_CHROME)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(intent)
+                Log.i(TAG, "Opened Chrome URL/Search: $url")
+                true
+            } catch (_: Exception) {
+                // Fallback to default browser if Chrome is not installed
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(fallbackIntent)
+                Log.i(TAG, "Opened default browser URL/Search: $url")
+                true
             }
-            ctx.startActivity(intent)
-            Log.i(TAG, "Opened Chrome URL/Search: $url")
-            true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to open in Chrome", e)
+            Log.e(TAG, "Failed to open URL/Search in browser", e)
             false
         }
     }
