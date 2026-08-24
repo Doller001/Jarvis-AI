@@ -31,33 +31,22 @@ class SpeechController(
 
     @Volatile
     private var isListening = false
+    @Volatile
+    private var errorDelivered = false
     private var speechRecognizer: AndroidSpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastRecognizedText = ""
     private val audioManager: AudioManager? = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    // NOTE: Audio focus is intentionally NOT requested here. On several OEM
+    // ROMs (notably Samsung OneUI) acquiring AUDIOFOCUS with a speech/guidance
+    // usage silently mutes or re-routes the capture stream, so the
+    // SpeechRecognizer receives ~0 audio energy and always returns
+    // ERROR_NO_MATCH. The standard Android recognizer manages its own audio
+    // session; leaving focus alone makes listening work out of the box.
     private fun requestAudioFocus() {
-        try {
-            val am = audioManager ?: return
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val playbackAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-                val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-                    .setAudioAttributes(playbackAttributes)
-                    .setAcceptsDelayedFocusGain(false)
-                    .build()
-                audioFocusRequest = request
-                am.requestAudioFocus(request)
-            } else {
-                @Suppress("DEPRECATION")
-                am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Audio focus request failed", e)
-        }
+        // No-op by design (see note above).
     }
 
     private fun abandonAudioFocus() {
@@ -126,6 +115,7 @@ class SpeechController(
         mainHandler.post {
             try {
                 isListening = true
+                errorDelivered = false
                 lastRecognizedText = ""
 
                 requestAudioFocus()
@@ -136,21 +126,17 @@ class SpeechController(
                     speechRecognizer?.destroy()
                 } catch (_: Exception) {}
 
-                // Prefer On-Device recognizer when available (ultra-low latency, works offline)
-                speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && isOnDeviceAvailable) {
-                    try {
-                        AndroidSpeechRecognizer.createOnDeviceSpeechRecognizer(ctx)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Failed creating on-device recognizer, falling back to standard", e)
-                        AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
-                    }
-                } else {
-                    AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
-                }
+                // Always use the standard (cloud/Google) SpeechRecognizer.
+                // On several OEM ROMs (notably Samsung OneUI / Android 13) the
+                // on-device recognizer reports isOnDeviceRecognitionAvailable()
+                // == true but the actual model is NOT installed, so it captures
+                // zero audio and always returns ERROR_NO_MATCH. The standard
+                // recognizer is the reliable path that actually delivers audio.
+                speechRecognizer = AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
 
                 val defaultLocale = Locale.getDefault()
                 val langTag = if (defaultLocale.language.isNotBlank()) defaultLocale.toLanguageTag() else "en-US"
-                VoiceDiagnostics.logStart(langTag, preferOffline = isOnDeviceAvailable)
+                VoiceDiagnostics.logStart(langTag, preferOffline = false)
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -159,9 +145,10 @@ class SpeechController(
                     putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2500)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500)
+                    // Sane end-of-speech timing so the recognizer returns a
+                    // result quickly once the user stops talking (turant output).
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800)
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
@@ -185,32 +172,42 @@ class SpeechController(
                     }
 
                     override fun onError(error: Int) {
-                        isListening = false
-                        abandonAudioFocus()
-                        micController.releaseMic(OWNER_TAG)
-                        VoiceDiagnostics.logError(error)
-
-                        val (_, detailedMessage) = VoiceDiagnostics.getErrorDetails(error)
-
-                        // If user spoke and partial results were captured before error/silence, recover it
-                        if (lastRecognizedText.isNotBlank() && (
-                                error == AndroidSpeechRecognizer.ERROR_NO_MATCH ||
-                                error == AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
-                                error == AndroidSpeechRecognizer.ERROR_CLIENT
-                            )) {
-                            VoiceDiagnostics.logResult("$lastRecognizedText (recovered from partial)")
-                            val text = lastRecognizedText
-                            lastRecognizedText = ""
-                            onResult(text)
-                        } else {
-                            onError(error, detailedMessage)
-                        }
+                    // Guard against duplicate delivery: a subsequent
+                    // cancel()/destroy() after an already-reported error can
+                    // fire ERROR_CLIENT again — suppress it.
+                    if (errorDelivered) {
+                        Log.d(TAG, "onError($error) ignored — already delivered")
+                        return
                     }
+                    isListening = false
+                    errorDelivered = true
+                    abandonAudioFocus()
+                    micController.releaseMic(OWNER_TAG)
+                    VoiceDiagnostics.logError(error)
 
-                    override fun onResults(results: Bundle?) {
-                        isListening = false
-                        abandonAudioFocus()
-                        micController.releaseMic(OWNER_TAG)
+                    val (_, detailedMessage) = VoiceDiagnostics.getErrorDetails(error)
+
+                    // If user spoke and partial results were captured before error/silence, recover it
+                    if (lastRecognizedText.isNotBlank() && (
+                            error == AndroidSpeechRecognizer.ERROR_NO_MATCH ||
+                            error == AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
+                            error == AndroidSpeechRecognizer.ERROR_CLIENT
+                        )) {
+                        VoiceDiagnostics.logResult("$lastRecognizedText (recovered from partial)")
+                        val text = lastRecognizedText
+                        lastRecognizedText = ""
+                        onResult(text)
+                    } else {
+                        onError(error, detailedMessage)
+                    }
+                }
+
+                override fun onResults(results: Bundle?) {
+                    if (errorDelivered) return
+                    isListening = false
+                    errorDelivered = true
+                    abandonAudioFocus()
+                    micController.releaseMic(OWNER_TAG)
 
                         val matches = results?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
                         val text = matches?.firstOrNull { it.isNotBlank() } ?: lastRecognizedText

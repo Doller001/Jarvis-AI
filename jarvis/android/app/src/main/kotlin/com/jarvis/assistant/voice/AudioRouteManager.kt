@@ -93,6 +93,12 @@ class AudioRouteManager(private val context: Context?) {
 
     /**
      * Called when VoiceRuntime enters LISTENING state.
+     *
+     * Only touch audio routing when a Bluetooth headset is present. On
+     * phones without BT audio we deliberately leave the AudioManager mode
+     * alone — forcing MODE_NORMAL here was observed to interfere with the
+     * SpeechRecognizer capture stream on some OEM ROMs (Samsung OneUI),
+     * causing it to receive ~0 audio energy.
      */
     fun activateVoiceRouting() {
         isVoiceRoutingActive = true

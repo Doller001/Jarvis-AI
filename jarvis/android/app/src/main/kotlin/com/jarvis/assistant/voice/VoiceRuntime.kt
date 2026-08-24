@@ -27,7 +27,13 @@ class VoiceRuntime(
     private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context),
     private val audioProcessor: NearFieldAudioProcessor = NearFieldAudioProcessor(sampleRate = 16000),
     private val audioCapture: LowLatencyAudioCapture = LowLatencyAudioCapture(context, audioProcessor, micController),
-    private val wakeEngine: LiveKitWakeWordEngine = LiveKitWakeWordEngine(context, WakeWordConfig())
+    // All voice components must share the same lock; otherwise each component
+    // can believe it owns the microphone while another component is recording.
+    private val wakeEngine: LiveKitWakeWordEngine = LiveKitWakeWordEngine(
+        context = context,
+        config = WakeWordConfig(),
+        micController = micController
+    )
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
@@ -62,8 +68,8 @@ class VoiceRuntime(
         VoiceDiagnostics.logMicState("VoiceRuntime initialized in IDLE state")
 
         // Start always-listening wake-word detection (offline). If the ONNX
-        // models are missing, the engine logs a warning and does nothing —
-        // push-to-talk still works via startListeningForCommand().
+        // models are missing, the engine falls back to STT text matching when
+        // enabled; otherwise it reports the failure and stays idle.
         startWakeMonitoring()
     }
 
@@ -102,13 +108,13 @@ class VoiceRuntime(
             Log.i(TAG, "Wake-word monitoring toggled OFF")
             return false
         }
-        if (!wakeEngine.isAvailable) {
-            Log.w(TAG, "Cannot start wake-word monitoring — ONNX models unavailable")
-            return false
+        val started = wakeEngine.startMonitoring()
+        if (started) {
+            Log.i(TAG, "Wake-word monitoring toggled ON")
+        } else {
+            Log.w(TAG, "Wake-word monitoring toggle failed to start")
         }
-        startWakeMonitoring()
-        Log.i(TAG, "Wake-word monitoring toggled ON")
-        return true
+        return started
     }
 
     /**

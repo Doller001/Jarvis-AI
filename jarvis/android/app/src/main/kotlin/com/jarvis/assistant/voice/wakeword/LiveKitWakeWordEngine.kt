@@ -1,10 +1,17 @@
 package com.jarvis.assistant.voice.wakeword
 
 import android.content.Context
+import android.content.Intent
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Process
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
 import android.util.Log
 import com.jarvis.assistant.voice.MicController
 
@@ -64,19 +71,39 @@ class LiveKitWakeWordEngine(
         onErrorCallback = onError
     }
 
-    fun startMonitoring() {
-        if (isMonitoring) return
-        if (!detector.isAvailable()) {
-            val msg = "Wake-word ONNX models missing — offline detection unavailable"
-            Log.w(TAG, msg)
-            onErrorCallback?.invoke(IllegalStateException(msg))
-            return
-        }
+    fun startMonitoring(): Boolean {
+        if (isMonitoring) return true
         if (!micController.hasPermission()) {
             val msg = "RECORD_AUDIO permission missing for wake-word listening"
             Log.w(TAG, msg)
             onErrorCallback?.invoke(IllegalStateException(msg))
-            return
+            return false
+        }
+        if (!micController.acquireMic(OWNER_TAG)) {
+            val holder = micController.getCurrentOwner()
+            val msg = "Microphone is busy${holder?.let { " (held by $it)" } ?: ""}"
+            Log.w(TAG, msg)
+            onErrorCallback?.invoke(IllegalStateException(msg))
+            return false
+        }
+        if (!detector.isAvailable()) {
+            // Offline ONNX models missing (e.g. hey_jarvis.onnx not bundled).
+            // Wire the documented fallback: a lightweight continuous STT loop
+            // that matches the transcribed phrase for "hey jarvis" / "jarvis".
+            val ctx = context
+            if (config.fallbackTextMatchingEnabled && ctx != null &&
+                AndroidSpeechRecognizer.isRecognitionAvailable(ctx)) {
+                Log.i(TAG, "ONNX models missing — using STT text-matching fallback")
+                isMonitoring = true
+                pausedForCommand = false
+                startFallbackLoop()
+                return true
+            }
+            val msg = "Wake-word ONNX models missing — offline detection unavailable"
+            Log.w(TAG, msg)
+            onErrorCallback?.invoke(IllegalStateException(msg))
+            micController.releaseMic(OWNER_TAG)
+            return false
         }
         detector.setListener(object : WakeWordListener {
             override fun onWakeWordDetected() {
@@ -95,6 +122,7 @@ class LiveKitWakeWordEngine(
         pausedForCommand = false
         startCaptureThread()
         Log.i(TAG, "Wake-word monitoring started (Hey Jarvis)")
+        return true
     }
 
     private fun startCaptureThread() {
@@ -144,6 +172,71 @@ class LiveKitWakeWordEngine(
         try { audioRecord?.stop() } catch (_: Exception) {}
         try { audioRecord?.release() } catch (_: Exception) {}
         audioRecord = null
+        micController.releaseMic(OWNER_TAG)
+    }
+
+    // ---- STT text-matching fallback (used when ONNX models are absent) ----
+    // A continuous SpeechRecognizer loop. Each utterance is checked for the
+    // wake phrase; on a match we fire onWakeWordDetected() exactly like the
+    // ONNX path. Battery-heavier than on-device ONNX, but keeps "Hey Jarvis"
+    // working out of the box.
+    private val fallbackHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var fallbackRecognizer: AndroidSpeechRecognizer? = null
+    @Volatile
+    private var fallbackActive = false
+
+    private fun startFallbackLoop() {
+        fallbackActive = true
+        fallbackHandler.post { runFallbackIteration() }
+    }
+
+    private fun runFallbackIteration() {
+        if (!fallbackActive || !isMonitoring || pausedForCommand) return
+        val ctx = context ?: return
+        try {
+            val recognizer = AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
+            fallbackRecognizer = recognizer
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onError(error: Int) {
+                    // Reschedule the next listen attempt shortly after any error.
+                    fallbackRecognizer = null
+                    recognizer.destroy()
+                    fallbackHandler.postDelayed({ runFallbackIteration() }, 600)
+                }
+                override fun onResults(results: Bundle?) {
+                    val text = results
+                        ?.getStringArrayList(AndroidSpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull().orEmpty()
+                        .lowercase()
+                    fallbackRecognizer = null
+                    recognizer.destroy()
+                    if (text.contains("hey jarvis") || text.contains("jarvis")) {
+                        if (isMonitoring && !pausedForCommand) {
+                            Log.i(TAG, "Wake phrase matched via STT fallback: '$text'")
+                            onWakeCallback?.invoke(null)
+                        }
+                    }
+                    fallbackHandler.postDelayed({ runFallbackIteration() }, 300)
+                }
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+            recognizer.startListening(intent)
+        } catch (e: Exception) {
+            Log.w(TAG, "Fallback STT iteration failed", e)
+            fallbackHandler.postDelayed({ runFallbackIteration() }, 800)
+        }
     }
 
     /** Hands the mic to the command recognizer. */
@@ -152,21 +245,39 @@ class LiveKitWakeWordEngine(
         pausedForCommand = true
         releaseAudioRecord()
         detector.pause()
+        // Stop the STT fallback loop while a command is being recognized.
+        fallbackActive = false
+        try { fallbackRecognizer?.stopListening() } catch (_: Exception) {}
+        try { fallbackRecognizer?.destroy() } catch (_: Exception) {}
+        fallbackRecognizer = null
         Log.i(TAG, "Wake-word paused — command mode owns the microphone")
     }
 
     /** Returns the mic to wake-word listening. */
     fun resume() {
         if (!isMonitoring || !pausedForCommand) return
+        if (!micController.acquireMic(OWNER_TAG)) {
+            val holder = micController.getCurrentOwner()
+            Log.w(TAG, "Wake-word resume deferred — microphone is busy${holder?.let { " (held by $it)" } ?: ""}")
+            return
+        }
         pausedForCommand = false
         detector.resume()
-        startCaptureThread()
+        if (detector.isAvailable()) {
+            startCaptureThread()
+        } else if (config.fallbackTextMatchingEnabled) {
+            // Resume the STT fallback loop.
+            startFallbackLoop()
+        }
         Log.i(TAG, "Wake-word resumed")
     }
 
     fun stopMonitoring() {
         isMonitoring = false
         pausedForCommand = false
+        fallbackActive = false
+        try { fallbackRecognizer?.destroy() } catch (_: Exception) {}
+        fallbackRecognizer = null
         captureThread?.interrupt()
         captureThread?.join(1000)
         captureThread = null

@@ -4,26 +4,24 @@
 #
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Check Java availability
-if ! command -v java >/dev/null 2>&1; then
-    if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
-        JAVACMD="$JAVA_HOME/bin/java"
-    else
-        echo "=================================================================================="
-        echo "[JARVIS BUILD ERROR] Java JDK 17 is not installed or not found in PATH / JAVA_HOME."
-        echo "=================================================================================="
-        echo "Required Setup Steps:"
-        echo "  1. Install OpenJDK 17:"
-        echo "     • Ubuntu/Debian: sudo apt-get update && sudo apt-get install openjdk-17-jdk -y"
-        echo "     • Fedora/RHEL:   sudo dnf install java-17-openjdk-devel -y"
-        echo "     • macOS:         brew install openjdk@17"
-        echo "     • Windows:       Install OpenJDK 17 or Eclipse Temurin 17"
-        echo "  2. Export JAVA_HOME (e.g., export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64)"
-        echo "=================================================================================="
-        exit 1
-    fi
-else
+# Check Java availability, preferring JAVA_HOME when explicitly configured.
+if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    JAVACMD="$JAVA_HOME/bin/java"
+elif command -v java >/dev/null 2>&1; then
     JAVACMD="java"
+else
+    echo "=================================================================================="
+    echo "[JARVIS BUILD ERROR] Java JDK 17 is not installed or not found in PATH / JAVA_HOME."
+    echo "=================================================================================="
+    echo "Required Setup Steps:"
+    echo "  1. Install OpenJDK 17:"
+    echo "     • Ubuntu/Debian: sudo apt-get update && sudo apt-get install openjdk-17-jdk -y"
+    echo "     • Fedora/RHEL:   sudo dnf install java-17-openjdk-devel -y"
+    echo "     • macOS:         brew install openjdk@17"
+    echo "     • Windows:       Install OpenJDK 17 or Eclipse Temurin 17"
+    echo "  2. Export JAVA_HOME (e.g., export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64)"
+    echo "=================================================================================="
+    exit 1
 fi
 
 # Check Android SDK
@@ -40,7 +38,9 @@ fi
 # gradle-wrapper.properties, e.g. 8.4) over any system `gradle` on PATH — a
 # system Gradle (often an old 4.x) cannot parse the Kotlin DSL build scripts.
 if [ -f "$DIR/gradle/wrapper/gradle-wrapper.jar" ]; then
-    exec "$JAVACMD" -jar "$DIR/gradle/wrapper/gradle-wrapper.jar" "$@"
+    # The wrapper JAR exposes GradleWrapperMain as a class; it is not an
+    # executable JAR and therefore must be launched through the classpath.
+    exec "$JAVACMD" -classpath "$DIR/gradle/wrapper/gradle-wrapper.jar" org.gradle.wrapper.GradleWrapperMain "$@"
 elif command -v gradle >/dev/null 2>&1; then
     exec gradle "$@"
 else

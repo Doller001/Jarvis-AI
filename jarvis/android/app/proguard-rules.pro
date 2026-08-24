@@ -56,9 +56,8 @@
 -keep class ai.onnxruntime.** { *; }
 -keep interface ai.onnxruntime.** { *; }
 -dontwarn ai.onnxruntime.**
-# Keep the bundled .onnx model assets uncompressed so they load from the APK
-# without zlib inflation overhead and stay 16KB-page aligned.
--keepresources string/**/*.onnx
+# The bundled .onnx model assets are packaged into the APK by default
+# (assets are never stripped by R8), so no extra -keepresources rule is needed.
 -assumenosideeffects class android.util.Log {
     public static boolean isLoggable(java.lang.String, int);
     public static int v(...);
