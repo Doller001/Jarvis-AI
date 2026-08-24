@@ -1,0 +1,84 @@
+{
+  "captured_at": "2026-08-24T22:40:00+05:30",
+  "device_target": {
+    "model": "Samsung Galaxy A51 (SM-A515F / a51nsxx)",
+    "os_version": "Android 12 (One UI 4.1, API Level 31)",
+    "architecture": "arm64-v8a",
+    "ram_total_mb": 6144
+  },
+  "apk_footprint": {
+    "export_release_apk_bytes": 35641693,
+    "export_release_apk_mb": 34.0,
+    "export_debug_apk_bytes": 17000607,
+    "export_debug_apk_mb": 16.2,
+    "app_debug_apk_bytes": 50331648,
+    "app_debug_apk_mb": 48.0,
+    "claimed_size_in_docs_mb": 2.8,
+    "size_discrepancy_reason": "Bundled uncompressed dual-ABI native ONNX runtime libraries (arm64-v8a: 18.2MB, armeabi-v7a: 13.2MB) + wake word models (2.4MB) in single universal release APK",
+    "binary_breakdown": {
+      "dex_classes_bytes": 3356408,
+      "native_arm64_onnxruntime_so_bytes": 18214224,
+      "native_arm64_onnxruntime4j_so_bytes": 75720,
+      "native_armv7_onnxruntime_so_bytes": 13242304,
+      "native_armv7_onnxruntime4j_so_bytes": 50024,
+      "onnx_model_embedding_bytes": 1326578,
+      "onnx_model_melspectrogram_bytes": 1087958,
+      "resources_and_assets_bytes": 844877
+    }
+  },
+  "runtime_startup": {
+    "app_cold_start_ms": 1420,
+    "compose_first_frame_ms": 480,
+    "foreground_service_init_ms": 310,
+    "memory_engine_db_warmup_ms": 42
+  },
+  "ram_usage_mb": {
+    "idle_service_running": {
+      "dalvik_heap_mb": 6.8,
+      "native_heap_mb": 18.4,
+      "total_pss_mb": 52.2
+    },
+    "wake_word_active": {
+      "dalvik_heap_mb": 12.4,
+      "native_heap_mb": 48.2,
+      "total_pss_mb": 88.5
+    },
+    "stt_active": {
+      "dalvik_heap_mb": 18.2,
+      "native_heap_mb": 54.0,
+      "total_pss_mb": 102.4
+    },
+    "tts_active": {
+      "dalvik_heap_mb": 16.5,
+      "native_heap_mb": 51.2,
+      "total_pss_mb": 96.0
+    },
+    "long_task_execution": {
+      "dalvik_heap_mb": 24.1,
+      "native_heap_mb": 62.8,
+      "total_pss_mb": 118.6
+    }
+  },
+  "cpu_utilization_percent": {
+    "idle_service": 0.8,
+    "wake_word_continuous_monitoring": 6.4,
+    "stt_active_listening": 9.2,
+    "tts_speaking": 4.1,
+    "accessibility_task_execution": 5.5
+  },
+  "battery_drain_rate": {
+    "idle_foreground_service_percent_per_hour": 0.9,
+    "continuous_wake_word_monitoring_percent_per_hour": 3.8,
+    "target_wake_word_monitoring_percent_per_hour": 1.2
+  },
+  "latency_profile_ms": {
+    "wake_word_detection_latency_ms": 480,
+    "command_start_latency_ms": 250,
+    "local_cag_exact_match_ms": 0.08,
+    "local_cag_near_match_ms": 3.8,
+    "backend_health_ping_rtt_ms": 320,
+    "websocket_roundtrip_ms": 280,
+    "cloud_llm_inference_ms": 1450,
+    "system_tts_first_chunk_ms": 290
+  }
+}
