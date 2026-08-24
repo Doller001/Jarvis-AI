@@ -103,21 +103,7 @@ class SpeechController(
         }
 
         // 3. Mic Ownership Gate (Single Mic Owner Architecture)
-        if (!micController.acquireMic(OWNER_TAG)) {
-            val currentOwner = micController.getCurrentOwner()
-            Log.w(TAG, "Mic is held by $currentOwner — performing clean handoff for command mode")
-            if (currentOwner == "WakeWordEngine" || currentOwner == "AudioCapture") {
-                micController.releaseMic(currentOwner)
-            }
-            if (!micController.acquireMic(OWNER_TAG)) {
-                Log.w(TAG, "Mic is currently held by: ${micController.getCurrentOwner()}")
-                onError(
-                    AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY,
-                    "Microphone is currently held by another component (${micController.getCurrentOwner()})."
-                )
-                return
-            }
-        }
+        micController.forceAcquire(OWNER_TAG)
 
         mainHandler.post {
             try {

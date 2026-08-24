@@ -62,6 +62,34 @@ class MicController(private val context: Context?) {
     }
 
     /**
+     * Forcefully acquires microphone ownership for high-priority command sessions.
+     */
+    fun forceAcquire(owner: String): Boolean {
+        synchronized(lock) {
+            val prev = currentOwner
+            if (prev != null && prev != owner) {
+                Log.w(TAG, "Force acquiring mic for '$owner' from '$prev'")
+            }
+            currentOwner = owner
+            VoiceDiagnostics.logMicState("FORCE ACQUIRED by '$owner'")
+            return true
+        }
+    }
+
+    /**
+     * Unconditionally releases mic lock.
+     */
+    fun releaseAny() {
+        synchronized(lock) {
+            val prev = currentOwner
+            currentOwner = null
+            if (prev != null) {
+                VoiceDiagnostics.logMicState("UNCONDITIONALLY RELEASED (was '$prev')")
+            }
+        }
+    }
+
+    /**
      * Checks if the microphone is currently free to be acquired.
      */
     fun isMicAvailable(): Boolean {

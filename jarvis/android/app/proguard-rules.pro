@@ -56,15 +56,4 @@
 -keep class ai.onnxruntime.** { *; }
 -keep interface ai.onnxruntime.** { *; }
 -dontwarn ai.onnxruntime.**
-# The bundled .onnx model assets are packaged into the APK by default
-# (assets are never stripped by R8), so no extra -keepresources rule is needed.
--assumenosideeffects class android.util.Log {
-    public static boolean isLoggable(java.lang.String, int);
-    public static int v(...);
-    public static int d(...);
-}
-
-# 8. R8 Access Modifications & Optimizations
--allowaccessmodification
--repackageclasses 'com.jarvis.assistant.optimized'
 

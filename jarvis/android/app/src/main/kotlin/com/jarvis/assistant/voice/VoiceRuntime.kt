@@ -150,12 +150,12 @@ class VoiceRuntime(
 
         playBeep()
 
-        // Wait 250ms for beep to finish before acquiring mic to avoid speaker->mic feedback loop
+        // Immediate recognition startup (50ms) to avoid clipping user speech
         mainHandler.postDelayed({
             if (state == VoiceState.LISTENING) {
                 startRecognition()
             }
-        }, 250L)
+        }, 50L)
     }
 
     private fun startRecognition() {
@@ -235,9 +235,9 @@ class VoiceRuntime(
         }
 
         if (!stateMachine.transition(VoiceState.SPEAKING)) {
-            Log.w(TAG, "TTS requested but cannot transition to SPEAKING from $state")
-            onComplete()
-            return
+            Log.d(TAG, "Forcing state transition to SPEAKING from $state for response delivery")
+            stateMachine.recoverFromError()
+            stateMachine.transition(VoiceState.SPEAKING)
         }
         notifyState()
 
@@ -249,7 +249,7 @@ class VoiceRuntime(
                 // Return the microphone to the wake-word detector.
                 resumeWakeAfterCommand()
                 onComplete()
-            }, 200L)
+            }, 100L)
         }
     }
 
@@ -296,13 +296,13 @@ class VoiceRuntime(
 
     private fun playBeep() {
         try {
-            val beepTone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 60)
-            beepTone.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
+            val beepTone = ToneGenerator(AudioManager.STREAM_SYSTEM, 50)
+            beepTone.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
             mainHandler.postDelayed({
                 try {
                     beepTone.release()
                 } catch (_: Exception) {}
-            }, 250L)
+            }, 100L)
         } catch (e: Exception) {
             Log.w(TAG, "Beep tone generation failed", e)
         }

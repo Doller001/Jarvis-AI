@@ -169,17 +169,21 @@ class LiveKitWakeWordEngine(
     }
 
     private fun releaseAudioRecord() {
-        try { audioRecord?.stop() } catch (_: Exception) {}
-        try { audioRecord?.release() } catch (_: Exception) {}
-        audioRecord = null
+        synchronized(stateLock) {
+            try {
+                if (audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord?.stop()
+                }
+            } catch (_: Exception) {}
+            try {
+                audioRecord?.release()
+            } catch (_: Exception) {}
+            audioRecord = null
+        }
         micController.releaseMic(OWNER_TAG)
     }
 
     // ---- STT text-matching fallback (used when ONNX models are absent) ----
-    // A continuous SpeechRecognizer loop. Each utterance is checked for the
-    // wake phrase; on a match we fire onWakeWordDetected() exactly like the
-    // ONNX path. Battery-heavier than on-device ONNX, but keeps "Hey Jarvis"
-    // working out of the box.
     private val fallbackHandler = Handler(Looper.getMainLooper())
     @Volatile
     private var fallbackRecognizer: AndroidSpeechRecognizer? = null
@@ -209,10 +213,11 @@ class LiveKitWakeWordEngine(
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
                 override fun onError(error: Int) {
-                    // Reschedule the next listen attempt shortly after any error.
                     fallbackRecognizer = null
-                    recognizer.destroy()
-                    fallbackHandler.postDelayed({ runFallbackIteration() }, 600)
+                    try { recognizer.destroy() } catch (_: Exception) {}
+                    if (fallbackActive && isMonitoring && !pausedForCommand) {
+                        fallbackHandler.postDelayed({ runFallbackIteration() }, 600)
+                    }
                 }
                 override fun onResults(results: Bundle?) {
                     val text = results
@@ -220,14 +225,16 @@ class LiveKitWakeWordEngine(
                         ?.firstOrNull().orEmpty()
                         .lowercase()
                     fallbackRecognizer = null
-                    recognizer.destroy()
+                    try { recognizer.destroy() } catch (_: Exception) {}
                     if (text.contains("hey jarvis") || text.contains("jarvis")) {
                         if (isMonitoring && !pausedForCommand) {
                             Log.i(TAG, "Wake phrase matched via STT fallback: '$text'")
                             onWakeCallback?.invoke(null)
                         }
                     }
-                    fallbackHandler.postDelayed({ runFallbackIteration() }, 300)
+                    if (fallbackActive && isMonitoring && !pausedForCommand) {
+                        fallbackHandler.postDelayed({ runFallbackIteration() }, 300)
+                    }
                 }
                 override fun onPartialResults(partialResults: Bundle?) {}
                 override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -243,13 +250,23 @@ class LiveKitWakeWordEngine(
     fun pause() {
         if (!isMonitoring) return
         pausedForCommand = true
-        releaseAudioRecord()
-        detector.pause()
-        // Stop the STT fallback loop while a command is being recognized.
         fallbackActive = false
         try { fallbackRecognizer?.stopListening() } catch (_: Exception) {}
         try { fallbackRecognizer?.destroy() } catch (_: Exception) {}
         fallbackRecognizer = null
+
+        releaseAudioRecord()
+        detector.pause()
+
+        val threadToJoin = captureThread
+        captureThread = null
+        if (threadToJoin != null && threadToJoin.isAlive) {
+            try {
+                threadToJoin.interrupt()
+                threadToJoin.join(150)
+            } catch (_: Exception) {}
+        }
+
         micController.releaseMic(OWNER_TAG)
         Log.i(TAG, "Wake-word paused — microphone released for command mode")
     }
@@ -267,7 +284,6 @@ class LiveKitWakeWordEngine(
         if (detector.isAvailable()) {
             startCaptureThread()
         } else if (config.fallbackTextMatchingEnabled) {
-            // Resume the STT fallback loop.
             startFallbackLoop()
         }
         Log.i(TAG, "Wake-word resumed")
