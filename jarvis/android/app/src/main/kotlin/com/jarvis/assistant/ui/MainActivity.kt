@@ -73,7 +73,6 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
         composable("providers") {
             LaunchedEffect(Unit) {
                 viewModel.refreshProviders()
-                viewModel.connectBackend()
             }
             ProvidersScreen(
                 uiState = uiState,

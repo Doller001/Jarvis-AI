@@ -75,11 +75,15 @@ class VoiceRuntime(
 
     private fun startWakeMonitoring() {
         wakeEngine.setOnWakeListener { _ ->
-            Log.i(TAG, "Wake word event -> entering command listening")
+            Log.i(TAG, "Wake word event -> acknowledging wake word before command listening")
             if (stateMachine.transition(VoiceState.WAKE)) notifyState()
-            // Hand the mic to the command recognizer.
             wakeEngine.pause()
-            startListeningForCommand()
+            // Give the user a deterministic hand-off cue. Starting speech
+            // recognition only after TTS completes prevents the acknowledgement
+            // from being captured as part of the command.
+            speakResponse("Yes boss") {
+                startListeningForCommand()
+            }
         }
         wakeEngine.setOnErrorListener { error ->
             Log.w(TAG, "Wake-word engine unavailable: ${error.message}")
@@ -246,9 +250,11 @@ class VoiceRuntime(
             mainHandler.postDelayed({
                 if (stateMachine.transition(VoiceState.IDLE)) notifyState()
                 audioRouteManager.ensureNormalAudioMode()
-                // Return the microphone to the wake-word detector.
-                resumeWakeAfterCommand()
                 onComplete()
+                // A wake acknowledgement uses onComplete() to immediately
+                // acquire the command recognizer. Do not briefly resume the
+                // wake detector before that hand-off.
+                if (state == VoiceState.IDLE) resumeWakeAfterCommand()
             }, 100L)
         }
     }

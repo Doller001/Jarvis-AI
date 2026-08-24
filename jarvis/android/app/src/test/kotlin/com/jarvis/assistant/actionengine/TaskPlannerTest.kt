@@ -15,7 +15,7 @@ class TaskPlannerTest {
         val plan = planner.plan("YouTube kholo aur Arijit Singh ka gaana bajao")
         assertNotNull(plan)
         assertEquals("youtube_play_flow", plan?.intent)
-        assertEquals(3, plan?.steps?.size)
+        assertEquals(5, plan?.steps?.size)
 
         assertEquals(ActionType.OPEN_APP, plan?.steps?.get(0)?.action)
         assertEquals("youtube", plan?.steps?.get(0)?.parameters?.get("target"))
@@ -24,6 +24,7 @@ class TaskPlannerTest {
 
         assertEquals(ActionType.SEARCH_TEXT, plan?.steps?.get(2)?.action)
         assertEquals("arijit singh", plan?.steps?.get(2)?.parameters?.get("text"))
+        assertEquals(ActionType.CLICK_ELEMENT, plan?.steps?.get(4)?.action)
     }
 
     @Test
@@ -31,7 +32,7 @@ class TaskPlannerTest {
         val plan = planner.plan("YouTube kholo aur Believer gaana bajao")
         assertNotNull(plan)
         assertEquals("youtube_play_flow", plan?.intent)
-        assertEquals(3, plan?.steps?.size)
+        assertEquals(5, plan?.steps?.size)
         assertEquals("believer", plan?.steps?.get(2)?.parameters?.get("text"))
     }
 
@@ -104,5 +105,33 @@ class TaskPlannerTest {
         val plan = planner.plan("torch on")
         assertNull(plan) // Should be handled by single intent resolver
     }
-}
 
+    @Test
+    fun testYouTubeHeadlightsSearchAndPlayPlan() {
+        val plan = planner.plan("open youtube and play headlights song")
+        assertNotNull(plan)
+        assertEquals("headlights song", plan?.steps?.get(2)?.parameters?.get("text"))
+        assertEquals(ActionType.CLICK_ELEMENT, plan?.steps?.last()?.action)
+    }
+
+    @Test
+    fun testCameraSelfiePlan() {
+        val plan = planner.plan("open camera and take a selfie")
+        assertEquals("camera_selfie_flow", plan?.intent)
+        assertEquals(ActionType.TAKE_SELFIE, plan?.steps?.last()?.action)
+    }
+
+    @Test
+    fun testSamsungMusicPlan() {
+        val plan = planner.plan("music open karo or song play karo")
+        assertEquals("samsung_music_play_flow", plan?.intent)
+        assertEquals(ActionType.PLAY_MEDIA, plan?.steps?.last()?.action)
+    }
+
+    @Test
+    fun testWhatsAppUnreadPlan() {
+        val plan = planner.plan("open whatsapp and read unread messages")
+        assertEquals("whatsapp_read_flow", plan?.intent)
+        assertEquals(ActionType.READ_MESSAGES, plan?.steps?.last()?.action)
+    }
+}

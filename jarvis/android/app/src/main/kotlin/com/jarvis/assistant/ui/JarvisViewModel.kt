@@ -124,9 +124,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         JarvisForegroundService.onAudioMetrics = { metrics ->
             _uiState.update { it.copy(noiseFloorDb = metrics.noiseFloorDb, audioSnrDb = metrics.snrDb) }
         }
-        // Voice capture, network probing and WebSocket setup are deliberately
-        // demand-loaded. Starting all three during composition was the main
-        // cold-start contention source on lower-end phones.
+        // Connect independently of the Providers screen so Home and voice
+        // flows do not incorrectly show the backend as offline.
+        connectBackend()
     }
 
     private fun handleWebSocketMessage(payload: String) {
@@ -309,6 +309,10 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         val plan = brain.processCommand(text)
         if (plan.intent is JarvisIntent.Unknown) {
             routeToCloudBrain(text, routed, engine)
+        } else if (plan.requiresConfirmation) {
+            val response = "Confirmation required: ${plan.confirmationPrompt}"
+            engine.recordEpisode("assistant", response)
+            updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
         } else {
             val ack = commandExecutor.execute(plan.intent)
             engine.recordEpisode("assistant", ack)

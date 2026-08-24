@@ -3,6 +3,7 @@ Fast Level-1 Deterministic Intent Resolver for Jarvis.
 Resolves common device control commands without remote LLM overhead.
 """
 
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -20,10 +21,21 @@ class IntentResolver:
     def resolve(self, text: str) -> StructuredIntent | None:
         t = text.lower().strip()
 
-        # Strip optional wake phrase prefixes if passed to backend
-        for prefix in ["jarvis", "hey jarvis", "hay jarvis", "jarvis suno", "jarvis listen"]:
-            if t.startswith(prefix):
-                t = t[len(prefix):].strip()
+        # Strip optional wake phrase prefixes if passed to backend. Remove the
+        # longest forms first and repeat so "hey jarvis suno ..." works too.
+        wake_prefixes = ("hey jarvis", "hay jarvis", "ok jarvis", "jarvis suno", "jarvis listen", "jarvis")
+        changed = True
+        while changed:
+            changed = False
+            for prefix in wake_prefixes:
+                if t == prefix:
+                    t = ""
+                    changed = True
+                    break
+                if t.startswith(prefix + " "):
+                    t = t[len(prefix):].strip()
+                    changed = True
+                    break
 
         # Level 1 — Time & Battery
         if t in ["time", "what time is it", "get time", "time kya hai", "current time"]:
@@ -69,13 +81,40 @@ class IntentResolver:
             contact = t[5:].strip()
             return StructuredIntent(intent="call_contact", target=contact, confidence=0.95, entities={"contact_name": contact}, requires_confirmation=True)
 
-        if t.startswith("whatsapp ") or "send whatsapp" in t:
-            return StructuredIntent(intent="whatsapp_send", target="whatsapp", confidence=0.95, entities={"query": t}, requires_confirmation=True)
+        if t.startswith("whatsapp ") or t.startswith("send whatsapp"):
+            contact, message = self._parse_recipient_message(t, "whatsapp")
+            return StructuredIntent(
+                intent="whatsapp_send", target=contact, confidence=0.95,
+                entities={"contact_name": contact, "message": message},
+                requires_confirmation=True,
+            )
 
         if t.startswith("send sms") or t.startswith("sms "):
-            return StructuredIntent(intent="send_sms", target="sms", confidence=0.95, entities={"query": t}, requires_confirmation=True)
+            recipient, message = self._parse_recipient_message(t, "sms")
+            return StructuredIntent(
+                intent="send_sms", target=recipient, confidence=0.95,
+                entities={"recipient": recipient, "message": message},
+                requires_confirmation=True,
+            )
 
         return None
+
+    @staticmethod
+    def _parse_recipient_message(text: str, channel: str) -> tuple[str, str]:
+        """Extract a recipient and message from a short voice command."""
+        remainder = re.sub(rf"^(?:send\s+)?{channel}\b", "", text, count=1).strip()
+        remainder = re.sub(r"^to\s+", "", remainder, count=1).strip()
+        if not remainder:
+            return "contact", "Hello"
+
+        match = re.match(r"^(.+?)(?:\s+message\s+|:\s*)(.+)$", remainder)
+        if match:
+            recipient, message = match.groups()
+        else:
+            parts = remainder.split(maxsplit=1)
+            recipient = parts[0]
+            message = parts[1] if len(parts) == 2 else "Hello"
+        return recipient.strip() or "contact", message.strip() or "Hello"
 
 
 intent_resolver = IntentResolver()

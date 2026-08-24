@@ -10,10 +10,21 @@ class LocalTaskPlanner {
         val taskId = "task_${UUID.randomUUID().toString().take(8)}"
         val hasMultiActionMarker = lower.contains(" aur ") || lower.contains(" and ") || 
                                    lower.contains(" then ") || lower.contains("kholo aur") || 
-                                   lower.contains("open and") || lower.contains("karke ")
+                                   lower.contains("open and") || lower.contains("karke ") ||
+                                   lower.contains(" or ")
 
         if (!hasMultiActionMarker) {
             return null
+        }
+
+        // Multi-action: "camera kholo aur selfie lo"
+        if (lower.contains("camera") && (lower.contains("selfie") || lower.contains("front camera"))) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.OPEN_APP, mapOf("target" to "camera")),
+                ActionStep("step_2", ActionType.WAIT, mapOf("durationMs" to 800L), prerequisites = listOf("step_1")),
+                ActionStep("step_3", ActionType.TAKE_SELFIE, prerequisites = listOf("step_2"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "camera_selfie_flow", steps = steps)
         }
 
         // Multi-action: "YouTube kholo aur <query> search/chalao"
@@ -40,7 +51,6 @@ class LocalTaskPlanner {
                 .replace("play", "")
                 .replace("gaana", "")
                 .replace("gana", "")
-                .replace("song", "")
                 .replace(Regex("\\bka\\b"), "")
                 .replace(Regex("\\bpar\\b"), "")
                 .replace(Regex("\\bpe\\b"), "")
@@ -76,8 +86,35 @@ class LocalTaskPlanner {
                         prerequisites = listOf("step_2")
                     )
                 )
+                steps.add(
+                    ActionStep(
+                        actionId = "step_4",
+                        action = ActionType.WAIT,
+                        parameters = mapOf("durationMs" to 1500L),
+                        prerequisites = listOf("step_3")
+                    )
+                )
+                steps.add(
+                    ActionStep(
+                        actionId = "step_5",
+                        action = ActionType.CLICK_ELEMENT,
+                        parameters = mapOf("target" to "first_video_result"),
+                        prerequisites = listOf("step_4")
+                    )
+                )
             }
             return TaskPlan(taskId = taskId, command = command, intent = "youtube_play_flow", steps = steps)
+        }
+
+        // Multi-action: "Samsung Music kholo aur song play karo"
+        if ((lower.contains("music") || lower.contains("gaana") || lower.contains("gana")) &&
+            (lower.contains("play") || lower.contains("bajao") || lower.contains("chalao"))) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.OPEN_APP, mapOf("target" to "samsung music")),
+                ActionStep("step_2", ActionType.WAIT, mapOf("durationMs" to 1000L), prerequisites = listOf("step_1")),
+                ActionStep("step_3", ActionType.PLAY_MEDIA, prerequisites = listOf("step_2"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "samsung_music_play_flow", steps = steps)
         }
 
         // Multi-action: "Chrome kholo aur <query> search karo"
@@ -128,6 +165,18 @@ class LocalTaskPlanner {
                 )
             }
             return TaskPlan(taskId = taskId, command = command, intent = "chrome_search_flow", steps = steps)
+        }
+
+        // Multi-action: "WhatsApp kholo aur unread messages padho"
+        if (lower.contains("whatsapp") &&
+            (lower.contains("read") || lower.contains("unread") || lower.contains("padho") || lower.contains("message dekho")) &&
+            !(lower.contains("send") || lower.contains("bhejo") || lower.contains("kaho"))) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.OPEN_APP, mapOf("target" to "whatsapp")),
+                ActionStep("step_2", ActionType.WAIT, mapOf("durationMs" to 1200L), prerequisites = listOf("step_1")),
+                ActionStep("step_3", ActionType.READ_MESSAGES, mapOf("target" to "whatsapp"), prerequisites = listOf("step_2"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "whatsapp_read_flow", steps = steps)
         }
 
         // Multi-action: "WhatsApp kholo aur <contact> ko <message> bhejo"

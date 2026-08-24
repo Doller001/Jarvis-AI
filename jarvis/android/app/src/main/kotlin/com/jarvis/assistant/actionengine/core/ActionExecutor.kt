@@ -16,6 +16,8 @@ class ActionExecutor(private val context: Context? = null) {
     private val appController = AppController(context)
     private val systemController = SystemController(context)
     private val mediaController = MediaController(context)
+    private val cameraController = CameraController(context)
+    private val notificationController = NotificationController(context)
     private val smsController = SmsController(context)
     private val callController = CallController(context)
     private val accessibilityController = AccessibilityController()
@@ -34,6 +36,20 @@ class ActionExecutor(private val context: Context? = null) {
         Log.i(TAG, "Starting execution of task plan: ${plan.taskId} with ${plan.steps.size} steps")
 
         for (step in plan.steps) {
+            if (step.requiresConfirmation || step.action.requiresConfirmation) {
+                val failure = Failure(
+                    code = FailureCode.USER_CANCELLED,
+                    message = "Confirmation required before ${step.action.description.lowercase()}",
+                    stepId = step.actionId,
+                    recoverable = false,
+                    retryable = false
+                )
+                val result = ActionResult(step.actionId, false, false, TaskState.CANCELLED, failure = failure)
+                results.add(result)
+                plan.currentState = TaskState.CANCELLED
+                onStepUpdate?.invoke(step, result)
+                return results
+            }
             if (!step.isReady(completedStepIds)) {
                 Log.w(TAG, "Step ${step.actionId} prerequisites not met: ${step.prerequisites}")
                 val failure = Failure(
@@ -138,6 +154,15 @@ class ActionExecutor(private val context: Context? = null) {
                 }
                 Pair(ok, mapOf("query" to text, "target" to target))
             }
+            ActionType.CLICK_ELEMENT -> {
+                val target = step.parameters["target"] as? String ?: ""
+                val ok = if (target == "first_video_result") {
+                    accessibilityController.tapFirstVideoResult()
+                } else {
+                    accessibilityController.tap(target)
+                }
+                Pair(ok, mapOf("target" to target))
+            }
             ActionType.LAUNCH_INTENT -> {
                 val uri = step.parameters["uri"] as? String ?: ""
                 val ok = chromeAdapter.openUrlOrSearch(uri)
@@ -167,13 +192,22 @@ class ActionExecutor(private val context: Context? = null) {
                 val ok = mediaController.playMedia()
                 Pair(ok, null)
             }
+            ActionType.TAKE_SELFIE -> {
+                val opened = cameraController.takeSelfie()
+                if (opened) delay(1200L)
+                val captured = opened && accessibilityController.tapAny(
+                    listOf("Shutter", "Take picture", "Take photo", "Capture")
+                )
+                Pair(captured, mapOf("frontCameraOpened" to opened, "captured" to captured))
+            }
             ActionType.PAUSE_MEDIA -> {
                 val ok = mediaController.pauseMedia()
                 Pair(ok, null)
             }
             ActionType.RESOLVE_CONTACT -> {
                 val contact = step.parameters["contact"] as? String ?: ""
-                Pair(true, mapOf("contact" to contact))
+                val resolved = ContactsController(context).lookupPhoneNumber(contact)
+                Pair(resolved != null, mapOf("contact" to contact, "resolved" to (resolved ?: "")))
             }
             ActionType.SEND_MESSAGE -> {
                 val contact = step.parameters["contact"] as? String ?: ""
@@ -190,6 +224,19 @@ class ActionExecutor(private val context: Context? = null) {
                 val screen = accessibilityController.readScreen()
                 Pair(true, mapOf("screenText" to screen))
             }
+            ActionType.READ_MESSAGES -> {
+                val target = step.parameters["target"] as? String
+                val notifications = notificationController.readNotifications(
+                    if (target.equals("whatsapp", ignoreCase = true)) "whatsapp" else null
+                )
+                val screen = if (notifications.isEmpty()) {
+                    com.jarvis.assistant.services.JarvisNotificationListenerService.cleanForSpeech(
+                        accessibilityController.readScreen()
+                    )
+                } else ""
+                val messages = if (notifications.isNotEmpty()) notifications.joinToString("\n") else screen
+                Pair(messages.isNotBlank(), mapOf("messages" to messages))
+            }
             ActionType.READ_CALL_LOG -> {
                 val log = phoneAdapter.getRecentCalls()
                 Pair(true, mapOf("log" to log))
@@ -199,7 +246,7 @@ class ActionExecutor(private val context: Context? = null) {
                 val ok = phoneAdapter.makeCall(number)
                 Pair(ok, mapOf("calling" to number))
             }
-            else -> Pair(true, null)
+            else -> Pair(false, null)
         }
     }
 }

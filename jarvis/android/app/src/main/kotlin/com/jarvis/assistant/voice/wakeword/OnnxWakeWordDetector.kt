@@ -8,6 +8,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import java.nio.FloatBuffer
+import kotlin.math.sqrt
 import kotlin.math.min
 
 /**
@@ -58,10 +59,12 @@ class OnnxWakeWordDetector(
         const val PCM_BUFFER_SAMPLES = (SAMPLE_RATE * 2.5).toInt()
         // Classifier is evaluated on a 2.0 s slice (the canonical window).
         const val CLASSIFY_WINDOW_SAMPLES = SAMPLE_RATE * 2
+        private const val MIN_AUDIO_RMS = 0.01f
 
         const val MEL_INPUT = "input"
         const val EMB_INPUT = "input_1"
-        const val CLS_INPUT = "embeddings"
+        // The trained classifier export names its single input "input".
+        const val CLS_INPUT = "input"
         const val CLS_OUTPUT = "score"
 
         // Empty PCM sentinel so processAndDetect() can re-evaluate the buffer
@@ -159,6 +162,11 @@ class OnnxWakeWordDetector(
             val s = pcmRing[(startIdx + i) % PCM_BUFFER_SAMPLES]
             window[i] = s / 32768.0f
         }
+        // Do not run the classifier on silence/noise-floor windows. Besides
+        // wasting CPU, a saturated classifier can otherwise turn a quiet
+        // phone into a repeated false wake source.
+        val rms = sqrt(window.sumOf { (it * it).toDouble() } / window.size).toFloat()
+        if (rms < MIN_AUDIO_RMS) return null
 
         // 3. Mel spectrogram (1, samples) -> (1, F, 32).
         val mel = runMel(window) ?: return null
@@ -181,7 +189,7 @@ class OnnxWakeWordDetector(
         val shape = longArrayOf(1, audio.size.toLong())
         val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(audio), shape)
         return try {
-            session.run(emptyMap(), mapOf(MEL_INPUT to tensor)).use { result ->
+            session.run(mapOf(MEL_INPUT to tensor)).use { result ->
                 val flat = resultToFloatArray(result) ?: return null
                 // Output is row-major (1,1,F,32); the two leading 1-dims add
                 // nothing, so `flat` is already (F*32) in (F,32) layout.
@@ -235,7 +243,7 @@ class OnnxWakeWordDetector(
         val shape = longArrayOf(nWindows.toLong(), EMBEDDING_WINDOW.toLong(), N_MELS.toLong(), 1)
         val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(input), shape)
         return try {
-            session.run(emptyMap(), mapOf(EMB_INPUT to tensor)).use { result ->
+            session.run(mapOf(EMB_INPUT to tensor)).use { result ->
                 val flat = resultToFloatArray(result) ?: return null
                 // Output is row-major (N,1,1,96) -> already (N*96) with the
                 // 96-dim embedding contiguous per window.
@@ -258,7 +266,7 @@ class OnnxWakeWordDetector(
         val shape = longArrayOf(1, MIN_EMBEDDINGS.toLong(), EMBEDDING_DIM.toLong())
         val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(last16), shape)
         return try {
-            session.run(emptyMap(), mapOf(CLS_INPUT to tensor)).use { result ->
+            session.run(mapOf(CLS_INPUT to tensor)).use { result ->
                 val flat = resultToFloatArray(result)
                 flat?.firstOrNull() ?: 0f
             }

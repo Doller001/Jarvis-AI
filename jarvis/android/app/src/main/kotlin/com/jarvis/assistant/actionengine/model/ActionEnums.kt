@@ -35,6 +35,7 @@ enum class ActionType(
 
     // Media & System
     PLAY_MEDIA("Trigger media playback", RiskLevel.LOW),
+    TAKE_SELFIE("Open the front camera and capture a selfie", RiskLevel.LOW),
     PAUSE_MEDIA("Pause media playback", RiskLevel.LOW),
     VOLUME_SET("Set system volume percentage", RiskLevel.LOW),
     TOGGLE_TORCH("Toggle flashlight", RiskLevel.LOW),

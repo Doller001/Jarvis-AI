@@ -49,6 +49,29 @@ class AccessibilityController(private val service: AccessibilityService? = null)
         return false
     }
 
+    /** Best-effort click used after YouTube search results have loaded. */
+    fun tapFirstVideoResult(): Boolean {
+        val root = activeService?.rootInActiveWindow ?: return false
+        val candidate = findFirstVideoCandidate(root)
+        return candidate != null && performClick(candidate)
+    }
+
+    fun tapAny(labels: List<String>): Boolean {
+        return labels.any { label -> tap(label) }
+    }
+
+    private fun findFirstVideoCandidate(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null || !node.isVisibleToUser) return null
+        val value = (node.text?.toString() ?: node.contentDescription?.toString()).orEmpty().trim()
+        val ignored = setOf("home", "shorts", "subscriptions", "library", "search", "create")
+        if (node.isClickable && value.length >= 8 && value.lowercase() !in ignored) return node
+        for (i in 0 until node.childCount) {
+            val found = findFirstVideoCandidate(node.getChild(i))
+            if (found != null) return found
+        }
+        return null
+    }
+
     private fun performClick(node: AccessibilityNodeInfo?): Boolean {
         var current = node
         while (current != null) {

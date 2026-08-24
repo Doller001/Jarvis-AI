@@ -63,12 +63,22 @@ app.include_router(api_router)
 # Mount Desktop WebApp Static Directory
 import os
 
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 webapp_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "webapp"))
 if os.path.exists(webapp_dir):
-    app.mount("/webapp", StaticFiles(directory=webapp_dir, html=True), name="webapp")
+    webapp_index = os.path.join(webapp_dir, "index.html")
+
+    @app.get("/webapp/", include_in_schema=False)
+    async def webapp_index_page():
+        # Return the small shell directly.  This avoids the HTML-directory
+        # fallback in Starlette StaticFiles, which can leave ASGI test clients
+        # waiting indefinitely while resolving a directory URL.
+        with open(webapp_index, encoding="utf-8") as index_file:
+            return HTMLResponse(content=index_file.read())
+
+    app.mount("/webapp", StaticFiles(directory=webapp_dir), name="webapp")
 
 @app.get("/", tags=["System"])
 @app.head("/", tags=["System"])

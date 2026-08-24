@@ -91,7 +91,7 @@ class IntentResolver {
         if (clean.contains("call log") || clean.contains("recent calls") || clean.contains("call history") || clean.contains("kiski call aayi")) return JarvisIntent.GetCallLog(rawText)
 
         // Photo / Camera Capturing
-        if (clean.contains("take photo") || clean.contains("take a photo") || clean.contains("click photo") ||
+        if (clean.contains("selfie") || clean.contains("take photo") || clean.contains("take a photo") || clean.contains("click photo") ||
             clean.contains("photo khincho") || clean.contains("photo lo") || clean.contains("capture photo")) {
             return JarvisIntent.OpenApp("camera")
         }

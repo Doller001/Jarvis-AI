@@ -46,6 +46,36 @@ async def test_jarvis_brain_risky_action():
 
 
 @pytest.mark.asyncio
+async def test_jarvis_brain_risky_wake_phrase_and_message_entities():
+    res = await jarvis_brain.process_utterance(
+        "Hey Jarvis send SMS to Alice: Meet me at six",
+        session_id="s1",
+        request_id="r-sms",
+    )
+    assert res["type"] == "confirmation_request"
+    assert res["action"] == "send_sms"
+    assert res["parameters"] == {
+        "recipient": "alice",
+        "message": "meet me at six",
+    }
+
+
+@pytest.mark.asyncio
+async def test_jarvis_brain_risky_whatsapp_preserves_message():
+    res = await jarvis_brain.process_utterance(
+        "Jarvis suno WhatsApp to Bob message I am on my way",
+        session_id="s1",
+        request_id="r-whatsapp",
+    )
+    assert res["type"] == "confirmation_request"
+    assert res["action"] == "whatsapp_send"
+    assert res["parameters"] == {
+        "contact_name": "bob",
+        "message": "i am on my way",
+    }
+
+
+@pytest.mark.asyncio
 async def test_jarvis_brain_rejects_unregistered_llm_action(monkeypatch):
     async def fake_reasoning(**_kwargs):
         return LLMResponse(text='{"action":"delete_everything"}', action="delete_everything")

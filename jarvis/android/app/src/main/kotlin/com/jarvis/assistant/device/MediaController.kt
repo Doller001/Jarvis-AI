@@ -161,13 +161,30 @@ class CameraController(private val context: Context? = null) {
         Log.i("CameraController", "Taking photo via camera intent")
         return openCamera()
     }
+
+    fun takeSelfie(): Boolean {
+        Log.i("CameraController", "Opening front camera for selfie")
+        val ctx = context ?: return false
+        return try {
+            val intent = Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA).apply {
+                putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            ctx.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("CameraController", "Failed to open front camera", e)
+            false
+        }
+    }
 }
 
 class NotificationController(private val context: Context? = null) {
-    fun readNotifications(): List<String> {
+    fun readNotifications(packageFilter: String? = null): List<String> {
         Log.i("NotificationController", "Reading active notifications")
-        val ctx = context ?: return listOf("Jarvis Assistant is running in foreground.")
-        return com.jarvis.assistant.services.JarvisNotificationListenerService.getActiveNotificationsList(ctx)
+        val ctx = context ?: return emptyList()
+        return com.jarvis.assistant.services.JarvisNotificationListenerService
+            .getActiveNotificationsList(ctx, packageFilter)
     }
 }
 

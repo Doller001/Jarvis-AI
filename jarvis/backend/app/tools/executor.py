@@ -66,7 +66,7 @@ class ToolExecutor:
         elif tool_name == "toggle_bluetooth":
             result_msg = f"Turned Bluetooth {state or 'toggled'}."
         elif tool_name == "set_volume":
-            result_msg = f"Volume adjusted to {level or 50}%."
+            result_msg = f"Volume adjusted to {level if level is not None else 50}%."
         elif tool_name == "open_app":
             result_msg = f"Opening {app_name or 'app'}."
         elif tool_name == "read_screen":
