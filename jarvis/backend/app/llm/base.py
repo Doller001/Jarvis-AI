@@ -2,14 +2,16 @@
 Base interface for Jarvis LLM Provider Adapters.
 """
 
-import re
 import json
+import re
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, AsyncGenerator, Optional, Tuple
+from collections.abc import AsyncGenerator
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
-def extract_action_and_params(content: str) -> Tuple[Optional[str], Dict[str, Any], float]:
+def extract_action_and_params(content: str) -> tuple[str | None, dict[str, Any], float]:
     """
     Extracts action, parameters, and confidence from LLM response text,
     supporting raw JSON, markdown code fences (```json ... ```), and embedded JSON.
@@ -61,24 +63,24 @@ class ModelInfo(BaseModel):
 
 class LLMRequest(BaseModel):
     prompt: str
-    system_prompt: Optional[str] = None
-    model: Optional[str] = None
+    system_prompt: str | None = None
+    model: str | None = None
     temperature: float = 0.7
     max_tokens: int = 1024
 
 
 class LLMResponse(BaseModel):
     text: str
-    action: Optional[str] = None
-    parameters: Dict[str, Any] = Field(default_factory=dict)
+    action: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
     confidence: float = 1.0
     provider: str = "unknown"
     model: str = "unknown"
-    raw_response: Optional[Dict[str, Any]] = None
+    raw_response: dict[str, Any] | None = None
 
 
 class LLMProvider(ABC):
-    def __init__(self, provider_name: str, api_key: Optional[str] = None):
+    def __init__(self, provider_name: str, api_key: str | None = None):
         self.provider_name = provider_name
         self.api_key = api_key
 
@@ -87,7 +89,7 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    async def list_models(self) -> List[ModelInfo]:
+    async def list_models(self) -> list[ModelInfo]:
         pass
 
     @abstractmethod

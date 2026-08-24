@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class MusicIndex:
         self.model_name = model_name
         self._lock = threading.Lock()
         self._loaded = False
-        self._load_error: Optional[str] = None
+        self._load_error: str | None = None
         self._client = None
         self._ef = None
         self._songs = None
@@ -95,9 +95,9 @@ class MusicIndex:
     def available(self) -> bool:
         return self._load()
 
-    def status(self) -> Dict[str, Any]:
+    def status(self) -> dict[str, Any]:
         ok = self._load()
-        out: Dict[str, Any] = {
+        out: dict[str, Any] = {
             "available": ok,
             "db_path": self.db_path,
             "embed_model": self.model_name,
@@ -112,15 +112,15 @@ class MusicIndex:
 
     @staticmethod
     def _build_where(
-        language: Optional[str] = None,
-        mood: Optional[str] = None,
-        era: Optional[str] = None,
-        year_min: Optional[int] = None,
-        year_max: Optional[int] = None,
-    ) -> Optional[Dict[str, Any]]:
+        language: str | None = None,
+        mood: str | None = None,
+        era: str | None = None,
+        year_min: int | None = None,
+        year_max: int | None = None,
+    ) -> dict[str, Any] | None:
         """Chroma metadata filter. Mood is skipped here because moods are stored
         as a comma-joined string, not a list — it is post-filtered instead."""
-        clauses: List[Dict[str, Any]] = []
+        clauses: list[dict[str, Any]] = []
         if language:
             clauses.append({"language": language.strip().title()})
         if era:
@@ -139,12 +139,12 @@ class MusicIndex:
         self,
         query: str,
         limit: int = 5,
-        language: Optional[str] = None,
-        mood: Optional[str] = None,
-        era: Optional[str] = None,
-        year_min: Optional[int] = None,
-        year_max: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        language: str | None = None,
+        mood: str | None = None,
+        era: str | None = None,
+        year_min: int | None = None,
+        year_max: int | None = None,
+    ) -> dict[str, Any]:
         """Semantic song search. Always returns a dict (never raises)."""
         if not query or not query.strip():
             return {"status": "error", "error": "empty query", "results": []}
@@ -170,7 +170,7 @@ class MusicIndex:
             logger.warning("music search failed: %s", e)
             return {"status": "error", "error": str(e), "results": []}
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         ids = (res.get("ids") or [[]])[0]
         metas = (res.get("metadatas") or [[]])[0]
         dists = (res.get("distances") or [[]])[0]
@@ -217,7 +217,7 @@ class MusicIndex:
             "results": results,
         }
 
-    def speak_result(self, payload: Dict[str, Any]) -> str:
+    def speak_result(self, payload: dict[str, Any]) -> str:
         """Short natural-language line for the voice/TTS path."""
         if payload.get("status") != "success" or not payload.get("results"):
             return "I could not find a matching song right now."

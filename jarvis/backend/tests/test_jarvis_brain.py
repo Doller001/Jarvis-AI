@@ -3,9 +3,14 @@ Tests for JarvisBrain and Intent Resolver pipeline.
 """
 
 import pytest
-from app.agent.orchestrator import build_system_prompt, jarvis_brain, JARVIS_SYSTEM_PROMPT
-from app.memory.memory_manager import memory_manager
+
+from app.agent.orchestrator import (
+    JARVIS_SYSTEM_PROMPT,
+    build_system_prompt,
+    jarvis_brain,
+)
 from app.llm.base import LLMResponse
+from app.memory.memory_manager import memory_manager
 
 
 def test_build_system_prompt_injects_history():

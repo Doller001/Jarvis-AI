@@ -3,6 +3,7 @@ FastAPI WebSocket endpoint for Jarvis clients.
 """
 
 import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.realtime.connection_manager import connection_manager
@@ -15,7 +16,7 @@ ws_router = APIRouter()
 
 
 @ws_router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str = None, session_id: str = "default-session"):
+async def websocket_endpoint(websocket: WebSocket, token: str | None = None, session_id: str = "default-session"):
     if not validate_ws_token(token):
         await websocket.close(code=4008, reason="Unauthorized")
         return

@@ -2,28 +2,35 @@
 Real Google Gemini API Adapter for Jarvis.
 """
 
-import os
 import logging
-from typing import List, AsyncGenerator, Optional
+import os
+from collections.abc import AsyncGenerator
+
 import httpx
 
-from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse, extract_action_and_params
+from app.llm.base import (
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    ModelInfo,
+    extract_action_and_params,
+)
 
 logger = logging.getLogger(__name__)
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 
 class GeminiProvider(LLMProvider):
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: str | None = None):
         self._api_key = api_key
         super().__init__("gemini", api_key=api_key)
 
     @property
-    def api_key(self) -> Optional[str]:
+    def api_key(self) -> str | None:
         return getattr(self, "_api_key", None) or os.getenv("GEMINI_API_KEY")
 
     @api_key.setter
-    def api_key(self, value: Optional[str]):
+    def api_key(self, value: str | None):
         self._api_key = value
 
     async def validate_key(self) -> bool:
@@ -36,7 +43,7 @@ class GeminiProvider(LLMProvider):
         except Exception:
             return False
 
-    async def list_models(self) -> List[ModelInfo]:
+    async def list_models(self) -> list[ModelInfo]:
         if not self.api_key:
             return []
         try:

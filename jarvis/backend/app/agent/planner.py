@@ -2,7 +2,8 @@
 Task Planner and Risk Policy for Jarvis.
 """
 
-from typing import Dict, Any, List
+from typing import Any
+
 from app.tools.registry import tool_registry
 
 RISKY_ACTIONS = {
@@ -24,7 +25,7 @@ class RiskPolicy:
 
 
 class TaskPlanner:
-    def create_plan(self, action: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def create_plan(self, action: str, parameters: dict[str, Any]) -> dict[str, Any]:
         return {
             "plan_id": f"plan-{action}",
             "action": action,

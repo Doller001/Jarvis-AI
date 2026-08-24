@@ -124,8 +124,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
 
-    // ONNX Runtime Mobile — runs the offline wake-word models (melspectrogram,
-    // embedding_model, hey_jarvis) entirely on-device. No cloud / Porcupine key.
+    // Sherpa-ONNX / ONNX Runtime Mobile — runs the offline wake-word models (melspectrogram,
+    // embedding_model, hey_jarvis) entirely on-device with zero external cloud dependencies.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

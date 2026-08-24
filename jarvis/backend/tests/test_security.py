@@ -3,8 +3,9 @@ Tests for Jarvis Security Layer.
 """
 
 import logging
-from app.security.token_manager import ConfirmationTokenManager
+
 from app.security.redaction import RedactingFormatter
+from app.security.token_manager import ConfirmationTokenManager
 
 
 def test_token_randomness_and_replay_protection():

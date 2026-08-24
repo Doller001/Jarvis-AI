@@ -43,7 +43,7 @@
 | **End-to-end encrypted transcripts** | Privacy hardening | Med |
 | **Wear OS companion** | Watch control surface | High |
 | **iOS companion app** | Cross-ecosystem | Very High |
-| **On-device wake-word model** (Vosk/Porcupine) | Replace phrase-match with real hotword ML | Med |
+| **On-device wake-word model** (Sherpa-ONNX / KWS) | Real hotword ML with ONNX runtime mobile | Done |
 | **Personalized adaptive routines** | Learn from history | High |
 | **Image generation tool** | Creative surface | Low–Med |
 | **Localization / i18n** (Repo-arch: Hinglish already partially supported) | Multi-language UI + commands | Med |

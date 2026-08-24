@@ -2,14 +2,13 @@
 Authentication, CORS, and Security Utilities for Jarvis.
 """
 
-import os
 import logging
-from typing import List
+import os
 
 logger = logging.getLogger("jarvis.security")
 
 
-def get_allowed_origins() -> List[str]:
+def get_allowed_origins() -> list[str]:
     env_origins = os.getenv("ALLOWED_ORIGINS", "")
     if env_origins:
         origins = [o.strip() for o in env_origins.split(",") if o.strip()]

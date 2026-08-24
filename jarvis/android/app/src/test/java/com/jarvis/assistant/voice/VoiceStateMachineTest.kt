@@ -22,20 +22,19 @@ class VoiceStateMachineTest {
     }
 
     @Test
+    fun `direct speaking from IDLE is legal for typed or cloud responses`() {
+        val sm = VoiceStateMachine()
+        assertTrue(sm.transition(VoiceState.SPEAKING))
+        assertEquals(VoiceState.SPEAKING, sm.state)
+        assertTrue(sm.transition(VoiceState.IDLE))
+    }
+
+    @Test
     fun `direct listening from IDLE is legal`() {
         val sm = VoiceStateMachine()
         assertTrue(sm.transition(VoiceState.LISTENING))
         assertEquals(VoiceState.LISTENING, sm.state)
         assertTrue(sm.isListening)
-    }
-
-    @Test
-    fun `illegal transitions are rejected`() {
-        val sm = VoiceStateMachine()
-        assertFalse(sm.transition(VoiceState.SPEAKING)) // IDLE -> SPEAKING is illegal
-        sm.transition(VoiceState.LISTENING)
-        assertFalse(sm.transition(VoiceState.SPEAKING)) // LISTENING -> SPEAKING without processing is illegal
-        assertTrue(sm.transition(VoiceState.IDLE))      // LISTENING -> IDLE cancellation is legal
     }
 
     @Test

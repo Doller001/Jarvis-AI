@@ -2,8 +2,7 @@
 Realtime WebSocket protocol definitions for Jarvis.
 """
 
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class WireEventType:
@@ -35,6 +34,6 @@ class ClientConfirmationPayload(BaseModel):
 
 class ServerErrorPayload(BaseModel):
     type: str = WireEventType.ERROR
-    request_id: Optional[str] = None
+    request_id: str | None = None
     code: str
     message: str

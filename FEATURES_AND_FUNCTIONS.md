@@ -19,7 +19,7 @@
 | **V1.6** | **Low-Latency Background Audio Capture** | `LowLatencyAudioCapture.kt` | High-priority background worker using `VOICE_RECOGNITION` audio source capturing 16kHz mono PCM frames (10ms / 160 samples per chunk). |
 | **V1.7** | **Bluetooth SCO Mic Auto-Detection & Routing** | `AudioRouteManager.kt` | Listens for Bluetooth headset connections (`ACTION_CONNECTION_STATE_CHANGED`, `ACTION_SCO_AUDIO_STATE_UPDATED`), activates Bluetooth SCO mic, and falls back seamlessly to built-in mic. |
 | **V1.8** | **Native Speech Recognizer with Audio Focus** | `SpeechRecognizer.kt` | Native STT with `AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE` to pause background music/media, plus partial utterance recovery fallback. |
-| **V1.9** | **Wake Word Engine (Porcupine / Text Fallback)** | `PorcupineWakeEngine.kt` | Local wake word detection for "Hey Jarvis" / "Jarvis" with continuous monitoring. |
+| **V1.9** | **Wake Word Engine (Sherpa-ONNX / OnnxWakeWordDetector)** | `LiveKitWakeWordEngine.kt` / `OnnxWakeWordDetector.kt` | Local offline keyword spotting (KWS) for "Hey Jarvis" with Sherpa-ONNX runtime & VAD. |
 | **V1.10** | **Voice Runtime State Machine** | `VoiceRuntime.kt` | Manages transitions across `IDLE` -> `WAKE_LISTENING` -> `COMMAND_LISTENING` -> `PROCESSING` -> `SPEAKING` -> `ERROR`. |
 
 ---

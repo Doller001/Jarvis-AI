@@ -250,7 +250,8 @@ class LiveKitWakeWordEngine(
         try { fallbackRecognizer?.stopListening() } catch (_: Exception) {}
         try { fallbackRecognizer?.destroy() } catch (_: Exception) {}
         fallbackRecognizer = null
-        Log.i(TAG, "Wake-word paused — command mode owns the microphone")
+        micController.releaseMic(OWNER_TAG)
+        Log.i(TAG, "Wake-word paused — microphone released for command mode")
     }
 
     /** Returns the mic to wake-word listening. */
@@ -276,12 +277,14 @@ class LiveKitWakeWordEngine(
         isMonitoring = false
         pausedForCommand = false
         fallbackActive = false
+        try { fallbackRecognizer?.stopListening() } catch (_: Exception) {}
         try { fallbackRecognizer?.destroy() } catch (_: Exception) {}
         fallbackRecognizer = null
         captureThread?.interrupt()
-        captureThread?.join(1000)
+        try { captureThread?.join(1000) } catch (_: Exception) {}
         captureThread = null
         releaseAudioRecord()
+        micController.releaseMic(OWNER_TAG)
         detector.stop()
         Log.i(TAG, "Wake-word monitoring stopped")
     }

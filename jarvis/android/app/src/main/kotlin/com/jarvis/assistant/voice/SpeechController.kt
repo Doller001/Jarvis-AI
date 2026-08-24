@@ -104,12 +104,19 @@ class SpeechController(
 
         // 3. Mic Ownership Gate (Single Mic Owner Architecture)
         if (!micController.acquireMic(OWNER_TAG)) {
-            Log.w(TAG, "Mic is currently held by: ${micController.getCurrentOwner()}")
-            onError(
-                AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY,
-                "Microphone is currently held by another component (${micController.getCurrentOwner()})."
-            )
-            return
+            val currentOwner = micController.getCurrentOwner()
+            Log.w(TAG, "Mic is held by $currentOwner — performing clean handoff for command mode")
+            if (currentOwner == "WakeWordEngine" || currentOwner == "AudioCapture") {
+                micController.releaseMic(currentOwner)
+            }
+            if (!micController.acquireMic(OWNER_TAG)) {
+                Log.w(TAG, "Mic is currently held by: ${micController.getCurrentOwner()}")
+                onError(
+                    AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                    "Microphone is currently held by another component (${micController.getCurrentOwner()})."
+                )
+                return
+            }
         }
 
         mainHandler.post {
@@ -141,14 +148,14 @@ class SpeechController(
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, langTag)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
+                    putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-IN", "hi-IN", "en-US"))
                     putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    // Sane end-of-speech timing so the recognizer returns a
-                    // result quickly once the user stops talking (turant output).
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800)
+                    // Generous speech input thresholds to prevent premature silence cutoffs
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 3000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
                 }
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {

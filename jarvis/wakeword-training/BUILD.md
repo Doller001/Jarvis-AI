@@ -1,9 +1,6 @@
-# JARVIS Wake Word — Build, Verify & Train
-
 Offline "Hey Jarvis" wake-word detection added to JARVIS Android, powered by
-[livekit-wakeword](https://github.com/livekit/livekit-wakeword) ONNX models
-run locally via **ONNX Runtime Mobile**. No Porcupine key, no cloud, no heavy
-full-STT fallback for the common path.
+Sherpa-ONNX / LiveKit ONNX models run locally via **ONNX Runtime Mobile**.
+Zero cloud dependencies, no heavy full-STT fallback for the common path.
 
 ## What was added (verified)
 

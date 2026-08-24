@@ -5,17 +5,18 @@ Tool Executor for Jarvis.
 import asyncio
 import datetime
 import logging
-from typing import Dict, Any
+from typing import Any
+
 import httpx
 
-from app.tools.registry import tool_registry
 from app.security.exceptions import ToolExecutionError
+from app.tools.registry import tool_registry
 
 logger = logging.getLogger(__name__)
 
 
 class ToolExecutor:
-    async def execute_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_tool(self, tool_name: str, parameters: dict[str, Any]) -> dict[str, Any]:
         tool = tool_registry.get_tool(tool_name)
         if not tool:
             raise ToolExecutionError(tool_name, f"Tool '{tool_name}' is not registered.")
@@ -38,7 +39,7 @@ class ToolExecutor:
             }
 
         if tool_name == "get_time":
-            now = datetime.datetime.now().strftime("%I:%M %p, %A %d %B %Y")
+            now = datetime.datetime.now(datetime.timezone.utc).astimezone().strftime("%I:%M %p, %A %d %B %Y")
             return {
                 "status": "success",
                 "tool": tool_name,
@@ -90,7 +91,7 @@ class ToolExecutor:
             "dispatch_to_device": True,
         }
 
-    async def _execute_search_music(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    async def _execute_search_music(self, parameters: dict[str, Any]) -> dict[str, Any]:
         """Semantic music search against the local vector DB.
 
         Runs in a thread because embedding is CPU-bound and would otherwise
@@ -139,7 +140,7 @@ class ToolExecutor:
             "songs": payload.get("results", []),
         }
 
-    async def _execute_web_search(self, query: str) -> Dict[str, Any]:
+    async def _execute_web_search(self, query: str) -> dict[str, Any]:
         if not query:
             return {"status": "error", "tool": "web_search", "result": "Empty search query"}
 

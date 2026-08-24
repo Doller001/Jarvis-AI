@@ -2,7 +2,8 @@
 Jarvis Canonical Tool Registry.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -10,7 +11,7 @@ class ToolParameter(BaseModel):
     type: str
     description: str
     required: bool = True
-    enum: Optional[List[str]] = None
+    enum: list[str] | None = None
 
 
 class ToolDefinition(BaseModel):
@@ -20,25 +21,25 @@ class ToolDefinition(BaseModel):
     requires_confirmation: bool = False
     idempotent: bool = True
     platform: str = "android"
-    parameters: Dict[str, ToolParameter] = Field(default_factory=dict)
-    permissions: List[str] = Field(default_factory=list)
+    parameters: dict[str, ToolParameter] = Field(default_factory=dict)
+    permissions: list[str] = Field(default_factory=list)
 
 
 class ToolRegistry:
     def __init__(self) -> None:
-        self._tools: Dict[str, ToolDefinition] = {}
+        self._tools: dict[str, ToolDefinition] = {}
         self._register_default_tools()
 
     def register(self, tool: ToolDefinition) -> None:
         self._tools[tool.name] = tool
 
-    def get_tool(self, name: str) -> Optional[ToolDefinition]:
+    def get_tool(self, name: str) -> ToolDefinition | None:
         return self._tools.get(name)
 
-    def list_tools(self) -> List[ToolDefinition]:
+    def list_tools(self) -> list[ToolDefinition]:
         return list(self._tools.values())
 
-    def get_llm_schemas(self) -> List[Dict[str, Any]]:
+    def get_llm_schemas(self) -> list[dict[str, Any]]:
         schemas = []
         for tool in self._tools.values():
             properties = {}

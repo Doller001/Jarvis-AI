@@ -3,11 +3,9 @@ Jarvis Realtime Message Router linking transport directly to JarvisBrain.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
 from app.agent.orchestrator import jarvis_brain
-from app.tools.executor import tool_executor
-from app.security.token_manager import token_manager
 from app.memory.memory_manager import memory_manager
 from app.realtime.connection_manager import connection_manager
 from app.realtime.protocol import (
@@ -16,12 +14,14 @@ from app.realtime.protocol import (
     ServerErrorPayload,
     WireEventType,
 )
+from app.security.token_manager import token_manager
+from app.tools.executor import tool_executor
 
 logger = logging.getLogger(__name__)
 
 
 class MessageRouter:
-    async def route_message(self, session_id: str, raw_data: Dict[str, Any]) -> None:
+    async def route_message(self, session_id: str, raw_data: dict[str, Any]) -> None:
         if not isinstance(raw_data, dict):
             return
 

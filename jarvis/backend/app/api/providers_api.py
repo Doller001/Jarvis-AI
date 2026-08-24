@@ -2,21 +2,21 @@
 API endpoints for Jarvis LLM Provider & Model Discovery.
 """
 
-from typing import List, Optional
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.llm.registry import llm_registry, ProviderStatus
+from app.llm.registry import ProviderStatus, llm_registry
 
 providers_router = APIRouter(prefix="/api/v1", tags=["LLM Providers"])
 
 
 class SelectProviderRequest(BaseModel):
     provider: str
-    model: Optional[str] = None
+    model: str | None = None
 
 
-@providers_router.get("/providers", response_model=List[ProviderStatus])
+@providers_router.get("/providers", response_model=list[ProviderStatus])
 async def list_available_providers():
     return await llm_registry.discover_available_providers()
 

@@ -3,7 +3,9 @@ Provider Router for Jarvis multi-provider failover.
 """
 
 import logging
-from typing import Dict, Callable, Awaitable, Any
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 from app.llm.circuit_breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class ProviderRouter:
     def __init__(self) -> None:
-        self.circuit_breakers: Dict[str, CircuitBreaker] = {
+        self.circuit_breakers: dict[str, CircuitBreaker] = {
             "nvidia": CircuitBreaker(),
             "groq": CircuitBreaker(),
             "openrouter": CircuitBreaker(),

@@ -2,10 +2,11 @@
 Cryptographically secure single-use confirmation token manager.
 """
 
-import time
 import secrets
-from typing import Dict, Optional, Any
+import time
 from dataclasses import dataclass
+from typing import Any
+
 
 @dataclass
 class ConfirmationTokenPayload:
@@ -13,7 +14,7 @@ class ConfirmationTokenPayload:
     session_id: str
     request_id: str
     action: str
-    parameters: Dict[str, Any]
+    parameters: dict[str, Any]
     created_at: float
     expires_at: float
     used: bool = False
@@ -22,14 +23,14 @@ class ConfirmationTokenPayload:
 class ConfirmationTokenManager:
     def __init__(self, ttl_seconds: float = 300.0) -> None:
         self.ttl_seconds = ttl_seconds
-        self._tokens: Dict[str, ConfirmationTokenPayload] = {}
+        self._tokens: dict[str, ConfirmationTokenPayload] = {}
 
     def create_token(
         self,
         session_id: str,
         request_id: str,
         action: str,
-        parameters: Dict[str, Any]
+        parameters: dict[str, Any]
     ) -> ConfirmationTokenPayload:
         token_str = secrets.token_urlsafe(32)
         now = time.time()
@@ -50,9 +51,9 @@ class ConfirmationTokenManager:
         self,
         token_str: str,
         session_id: str,
-        request_id: Optional[str] = None,
-        expected_action: Optional[str] = None
-    ) -> Optional[ConfirmationTokenPayload]:
+        request_id: str | None = None,
+        expected_action: str | None = None
+    ) -> ConfirmationTokenPayload | None:
         self._purge_expired()
 
         payload = self._tokens.get(token_str)

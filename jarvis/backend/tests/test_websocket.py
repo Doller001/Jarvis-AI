@@ -3,6 +3,7 @@ Tests for Jarvis WebSocket endpoint.
 """
 
 from fastapi.testclient import TestClient
+
 from app.main import app
 from app.realtime.connection_manager import ConnectionManager
 

@@ -6,8 +6,8 @@ built on [livekit-wakeword](https://github.com/livekit/livekit-wakeword).
 ## Why this approach
 
 LiveKit wakeword has **no native Android runtime**, but its whole pipeline is
-ONNX. The on-device detector runs three ONNX models via **ONNX Runtime Mobile**
-(`onnxruntime-android`) — fully offline, no Porcupine key, no heavy STT
+ONNX. The on-device detector runs three ONNX models via **ONNX Runtime Mobile / Sherpa-ONNX**
+(`onnxruntime-android`) — fully offline, zero cloud keys, no heavy STT
 fallback:
 
 | Stage | Model | Input → Output |

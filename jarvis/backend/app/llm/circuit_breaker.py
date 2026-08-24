@@ -2,8 +2,8 @@
 Circuit Breaker pattern for fault-tolerant provider execution.
 """
 
-import time
 import logging
+import time
 from enum import Enum
 
 logger = logging.getLogger(__name__)

@@ -2,13 +2,13 @@
 API Routes for System Tools and Jarvis Status.
 """
 
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
 
-from app.tools.registry import tool_registry
 from app.agent.orchestrator import jarvis_brain
 from app.retrieval.music_index import music_index
+from app.tools.registry import tool_registry
 
 api_router = APIRouter(prefix="/api/v1", tags=["System API"])
 
@@ -22,11 +22,11 @@ class ChatRequest(BaseModel):
 class MusicSearchRequest(BaseModel):
     query: str
     limit: int = 5
-    language: Optional[str] = None
-    mood: Optional[str] = None
-    era: Optional[str] = None
-    year_min: Optional[int] = None
-    year_max: Optional[int] = None
+    language: str | None = None
+    mood: str | None = None
+    era: str | None = None
+    year_min: int | None = None
+    year_max: int | None = None
 
 
 @api_router.get("/music/status")

@@ -16,14 +16,14 @@ class AuthenticationError(JarvisBaseException):
 
 
 class ProviderUnavailableError(JarvisBaseException):
-    def __init__(self, provider: str, message: str = None):
+    def __init__(self, provider: str, message: str | None = None):
         msg = message or f"LLM Provider '{provider}' is currently unavailable."
         super().__init__(msg, code="PROVIDER_UNAVAILABLE")
         self.provider = provider
 
 
 class ModelUnavailableError(JarvisBaseException):
-    def __init__(self, model_id: str, message: str = None):
+    def __init__(self, model_id: str, message: str | None = None):
         msg = message or f"Requested model '{model_id}' is not available."
         super().__init__(msg, code="MODEL_UNAVAILABLE")
         self.model_id = model_id

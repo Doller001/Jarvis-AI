@@ -8,9 +8,8 @@ machine, but ALWAYS tests registration + graceful degradation.
 import pytest
 
 from app.retrieval.music_index import MusicIndex, music_index
-from app.tools.registry import tool_registry
 from app.tools.executor import tool_executor
-
+from app.tools.registry import tool_registry
 
 # ---------- always-on: wiring + graceful degradation ----------
 

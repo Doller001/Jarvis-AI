@@ -52,11 +52,11 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.IDLE) {
         transition(VoiceState.IDLE) || state == VoiceState.IDLE
 
     private fun isLegal(from: VoiceState, to: VoiceState): Boolean = when (from) {
-        VoiceState.IDLE -> to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.PROCESSING || to == VoiceState.ERROR
-        VoiceState.WAKE -> to == VoiceState.LISTENING || to == VoiceState.IDLE || to == VoiceState.ERROR
-        VoiceState.LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.IDLE || to == VoiceState.ERROR
-        VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.IDLE || to == VoiceState.ERROR
+        VoiceState.IDLE -> to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.PROCESSING || to == VoiceState.SPEAKING || to == VoiceState.ERROR
+        VoiceState.WAKE -> to == VoiceState.LISTENING || to == VoiceState.IDLE || to == VoiceState.SPEAKING || to == VoiceState.PROCESSING || to == VoiceState.ERROR
+        VoiceState.LISTENING -> to == VoiceState.PROCESSING || to == VoiceState.SPEAKING || to == VoiceState.IDLE || to == VoiceState.ERROR
+        VoiceState.PROCESSING -> to == VoiceState.SPEAKING || to == VoiceState.IDLE || to == VoiceState.WAKE || to == VoiceState.ERROR
         VoiceState.SPEAKING -> to == VoiceState.IDLE || to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.ERROR
-        VoiceState.ERROR -> to == VoiceState.IDLE || to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.ERROR
+        VoiceState.ERROR -> to == VoiceState.IDLE || to == VoiceState.WAKE || to == VoiceState.LISTENING || to == VoiceState.SPEAKING || to == VoiceState.ERROR
     }
 }

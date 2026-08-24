@@ -2,10 +2,10 @@
 Persistent Store for Jarvis supporting MongoDB Atlas, Supabase PostgreSQL, and SQLite.
 """
 
+import logging
 import os
 import time
-import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,7 @@ class PersistentStore:
         finally:
             conn.close()
 
-    def get_history(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_history(self, session_id: str, limit: int = 10) -> list[dict[str, Any]]:
         if self.is_mongodb and self.mongo_db is not None:
             try:
                 import pymongo

@@ -3,9 +3,10 @@ Tests for LLM Registry and Provider Discovery in Jarvis.
 """
 
 import pytest
-from app.llm.registry import llm_registry, LLMRegistry
-from app.llm.providers.ollama import OllamaProvider
+
 from app.llm.base import extract_action_and_params
+from app.llm.providers.ollama import OllamaProvider
+from app.llm.registry import LLMRegistry
 
 
 @pytest.mark.asyncio
@@ -35,11 +36,11 @@ def test_extract_action_and_params_markdown_and_raw():
 
     # Raw JSON
     text2 = '{"action": "open_app", "parameters": {"app_name": "YouTube"}}'
-    action2, params2, conf2 = extract_action_and_params(text2)
+    action2, params2, _ = extract_action_and_params(text2)
     assert action2 == "open_app"
     assert params2 == {"app_name": "YouTube"}
 
     # Conversational text without JSON action
     text3 = "The capital of France is Paris."
-    action3, params3, conf3 = extract_action_and_params(text3)
+    action3, _, _ = extract_action_and_params(text3)
     assert action3 is None

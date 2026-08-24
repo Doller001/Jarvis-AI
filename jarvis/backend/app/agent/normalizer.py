@@ -4,6 +4,7 @@ Utterance text normalizer for Jarvis.
 
 import re
 
+
 class IntentNormalizer:
     def normalize(self, text: str) -> str:
         if not text:

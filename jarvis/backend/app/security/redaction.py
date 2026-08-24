@@ -2,8 +2,8 @@
 Log redaction formatter to hide sensitive secrets in logs.
 """
 
-import re
 import logging
+import re
 
 KEY_VALUE_PATTERN = re.compile(r'(?i)(api[_-]?key|secret|password|bearer|auth[_-]?token)=["\']?([^"\'\s]+)["\']?')
 TOKEN_PATTERNS = [

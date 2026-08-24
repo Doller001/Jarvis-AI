@@ -3,7 +3,8 @@ Jarvis Connection Manager handling WebSocket sessions.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
+
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class ConnectionManager:
     def __init__(self) -> None:
-        self.active_connections: Dict[str, WebSocket] = {}
+        self.active_connections: dict[str, WebSocket] = {}
 
     async def connect(self, session_id: str, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -26,7 +27,7 @@ class ConnectionManager:
             del self.active_connections[session_id]
             logger.info(f"Jarvis WebSocket session disconnected: {session_id}")
 
-    async def send_json(self, session_id: str, data: Dict[str, Any]) -> None:
+    async def send_json(self, session_id: str, data: dict[str, Any]) -> None:
         websocket = self.active_connections.get(session_id)
         if websocket:
             try:

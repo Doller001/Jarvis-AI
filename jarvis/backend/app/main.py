@@ -2,9 +2,10 @@
 Main FastAPI Entrypoint for Jarvis AI Assistant Backend.
 """
 
-import uuid
-import time
 import logging
+import time
+import uuid
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -14,11 +15,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.security.auth import get_allowed_origins
-from app.security.exceptions import JarvisBaseException
-from app.realtime.ws import ws_router
 from app.api.providers_api import providers_router
 from app.api.routes import api_router
+from app.realtime.ws import ws_router
+from app.security.auth import get_allowed_origins
+from app.security.exceptions import JarvisBaseException
 
 logger = logging.getLogger("jarvis")
 logging.basicConfig(level=logging.INFO)
@@ -61,8 +62,9 @@ app.include_router(api_router)
 
 # Mount Desktop WebApp Static Directory
 import os
-from fastapi.staticfiles import StaticFiles
+
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 webapp_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "webapp"))
 if os.path.exists(webapp_dir):

@@ -3,12 +3,12 @@ LLM Gateway facade for Jarvis reasoning requests.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 
 from app.llm.base import LLMRequest, LLMResponse
 from app.llm.registry import llm_registry
-from app.llm.router import provider_router
 from app.llm.retry_policy import retry_policy
+from app.llm.router import provider_router
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +17,10 @@ class LLMGateway:
     async def generate_reasoning(
         self,
         prompt: str,
-        system_prompt: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None,
-        requested_provider: Optional[str] = None,
-        requested_model: Optional[str] = None,
+        system_prompt: str | None = None,
+        context: dict[str, Any] | None = None,
+        requested_provider: str | None = None,
+        requested_model: str | None = None,
     ) -> LLMResponse:
         req = LLMRequest(
             prompt=prompt,

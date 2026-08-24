@@ -3,7 +3,8 @@ Fast Level-1 Deterministic Intent Resolver for Jarvis.
 Resolves common device control commands without remote LLM overhead.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -11,12 +12,12 @@ class StructuredIntent(BaseModel):
     intent: str
     target: str = ""
     confidence: float = 1.0
-    entities: Dict[str, Any] = Field(default_factory=dict)
+    entities: dict[str, Any] = Field(default_factory=dict)
     requires_confirmation: bool = False
 
 
 class IntentResolver:
-    def resolve(self, text: str) -> Optional[StructuredIntent]:
+    def resolve(self, text: str) -> StructuredIntent | None:
         t = text.lower().strip()
 
         # Strip optional wake phrase prefixes if passed to backend

@@ -2,19 +2,26 @@
 Real Ollama Local API Adapter for Jarvis.
 """
 
-import os
 import logging
-from typing import List, AsyncGenerator, Optional
+import os
+from collections.abc import AsyncGenerator
+
 import httpx
 
-from app.llm.base import LLMProvider, ModelInfo, LLMRequest, LLMResponse, extract_action_and_params
+from app.llm.base import (
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    ModelInfo,
+    extract_action_and_params,
+)
 
 logger = logging.getLogger(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 
 class OllamaProvider(LLMProvider):
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: str | None = None):
         url = base_url or OLLAMA_BASE_URL
         super().__init__("ollama", api_key=None)
         self.base_url = url.rstrip("/")
@@ -30,7 +37,7 @@ class OllamaProvider(LLMProvider):
         except Exception:
             return False
 
-    async def list_models(self) -> List[ModelInfo]:
+    async def list_models(self) -> list[ModelInfo]:
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 resp = await client.get(f"{self.base_url}/api/tags")

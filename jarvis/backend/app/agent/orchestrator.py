@@ -3,16 +3,16 @@ JarvisBrain Canonical Orchestrator.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any
 
-from app.agent.normalizer import intent_normalizer
 from app.agent.intent_resolver import intent_resolver
-from app.agent.planner import risk_policy, task_planner
+from app.agent.normalizer import intent_normalizer
+from app.agent.planner import risk_policy
 from app.llm.gateway import llm_gateway
+from app.memory.memory_manager import memory_manager
+from app.security.token_manager import token_manager
 from app.tools.executor import tool_executor
 from app.tools.registry import tool_registry
-from app.security.token_manager import token_manager
-from app.memory.memory_manager import memory_manager
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class JarvisBrain:
         text: str,
         session_id: str = "default-session",
         request_id: str = "req-1"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         normalized = intent_normalizer.normalize(text)
         logger.info(f"JarvisBrain processing utterance: '{text}' (session: {session_id})")
 

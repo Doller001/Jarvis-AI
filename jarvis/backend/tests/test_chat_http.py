@@ -4,6 +4,7 @@ Tests for the HTTP chat endpoint.
 
 import pytest
 from fastapi.testclient import TestClient
+
 from app.main import app
 
 

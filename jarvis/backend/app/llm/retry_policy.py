@@ -4,7 +4,8 @@ Retry Policy for transient LLM errors.
 
 import asyncio
 import logging
-from typing import Callable, Awaitable, Any
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

@@ -132,9 +132,16 @@ class VoiceRuntime(
             audioCapture.stop()
         }
 
+        // 2. Unconditionally pause wake-word engine and release mic so SpeechController can acquire it
+        wakeEngine.pause()
+
         if (!stateMachine.transition(VoiceState.LISTENING)) {
-            Log.w(TAG, "Cannot transition to LISTENING from $state")
-            return
+            Log.w(TAG, "Cannot transition to LISTENING from $state — recovering state")
+            stateMachine.recoverFromError()
+            if (!stateMachine.transition(VoiceState.LISTENING)) {
+                Log.e(TAG, "Failed to transition to LISTENING state")
+                return
+            }
         }
         notifyState()
 
@@ -143,12 +150,12 @@ class VoiceRuntime(
 
         playBeep()
 
-        // Wait 160ms for beep to finish before acquiring mic to avoid speaker->mic feedback loop
+        // Wait 250ms for beep to finish before acquiring mic to avoid speaker->mic feedback loop
         mainHandler.postDelayed({
             if (state == VoiceState.LISTENING) {
                 startRecognition()
             }
-        }, 160L)
+        }, 250L)
     }
 
     private fun startRecognition() {

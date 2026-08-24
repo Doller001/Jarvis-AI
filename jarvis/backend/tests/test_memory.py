@@ -3,8 +3,8 @@ Tests for Memory Persistent Store (MongoDB Atlas, Supabase PostgreSQL, SQLite).
 """
 
 import sys
-import pytest
 from unittest.mock import MagicMock
+
 from app.memory.persistent_store import PersistentStore
 
 
