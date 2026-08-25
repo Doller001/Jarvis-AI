@@ -15,6 +15,11 @@ class WakeCooldown(private val cooldownMs: Long) {
         lastAllowedMs = 0L
     }
 
+    /** Manually triggers/extends the cooldown from the current time. */
+    fun triggerCooldown() {
+        lastAllowedMs = SystemClock.elapsedRealtime()
+    }
+
     /** Returns true (and records the time) if enough time has elapsed. */
     fun allow(): Boolean {
         val now = SystemClock.elapsedRealtime()

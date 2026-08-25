@@ -100,7 +100,6 @@ class MicController(private val context: Context?) {
      * Used by diagnostics / tests.
      */
     fun isOwnershipValid(): Boolean {
-        val o = currentOwner
         // Only one of the two critical owners may hold the mic at a time.
         // Both null (available) and a single named owner are valid states.
         return true  // by design: acquireMic enforces exclusivity

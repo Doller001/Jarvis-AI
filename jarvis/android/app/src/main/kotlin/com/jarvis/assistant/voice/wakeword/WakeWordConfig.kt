@@ -24,8 +24,8 @@ data class WakeWordConfig(
         /** Maps sensitivity (0..1) to a classifier detection threshold. */
         fun thresholdForSensitivity(sensitivity: Float): Float {
             val s = sensitivity.coerceIn(0f, 1f)
-            // sensitivity 1.0 → 0.30 (eager); 0.0 → 0.85 (strict)
-            return (0.85f - (0.55f * s)).coerceIn(0.25f, 0.9f)
+            // sensitivity 1.0 (eager) → 0.45; 0.8 (balanced) → 0.53; 0.0 (strict) → 0.85
+            return (0.85f - (0.40f * s)).coerceIn(0.40f, 0.90f)
         }
     }
 }

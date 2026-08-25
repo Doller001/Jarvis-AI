@@ -44,10 +44,12 @@
 # 5. SQLite & Android Services & Voice Pipeline
 -keep class com.jarvis.assistant.memory.JarvisMemoryDatabase { *; }
 -keep class com.jarvis.assistant.services.JarvisForegroundService { *; }
+-keep class com.jarvis.assistant.services.JarvisOverlayService { *; }
 -keep class com.jarvis.assistant.services.JarvisQuickTileService { *; }
 -keep class com.jarvis.assistant.services.JarvisNotificationListenerService { *; }
 -keep class com.jarvis.assistant.services.BootRecoveryReceiver { *; }
 -keep class com.jarvis.assistant.accessibility.JarvisAccessibilityService { *; }
+-keep class com.jarvis.assistant.ui.floating.** { *; }
 -keep class com.jarvis.assistant.voice.** { *; }
 
 

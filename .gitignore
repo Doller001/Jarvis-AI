@@ -29,6 +29,10 @@ package-lock.json
 *.swo
 *~
 
+# Logs
+*.log
+logcat_*.log
+
 # OS
 .DS_Store
 Thumbs.db

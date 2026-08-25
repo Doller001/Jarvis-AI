@@ -222,6 +222,8 @@ class JarvisOverlayService : Service(),
         isRunning = false
         hideOverlay()
         coroutineScope.cancel()
+        JarvisForegroundService.onStateChanged = null
+        JarvisForegroundService.onUtterance = null
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         viewModelStore.clear()
         Log.i(TAG, "JarvisOverlayService destroyed")

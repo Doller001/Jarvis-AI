@@ -107,7 +107,11 @@ class CommandExecutor(private val context: Context? = null) {
             }
             is JarvisIntent.CloseApp -> {
                 val ok = appController.closeApp(intent.appName)
-                if (intent.appName != null) "Closing ${intent.appName}" else "Closed active app"
+                if (ok) {
+                    if (intent.appName != null) "Closing ${intent.appName}" else "Closed active app"
+                } else {
+                    "Unable to close ${intent.appName ?: "app"}"
+                }
             }
             is JarvisIntent.CallContact -> {
                 val ok = callController.makeCall(intent.contactName)

@@ -237,8 +237,8 @@ class OnnxWakeWordDetector(
 
         if (decision == "ACCEPT") {
             Log.i(TAG, "Wake word ACCEPTED (score=${"%.3f".format(score)}, hits=$positiveCount/${config.temporalPositiveCount})")
-            // Reset temporal window after acceptance to prevent immediate re-trigger.
-            scoreWindow.fill(0f)
+            // Immediately flush rolling ring buffer and temporal gate so stale audio cannot trigger again
+            flushBuffers()
             listener?.onWakeWordDetected()
         }
 
@@ -326,15 +326,42 @@ class OnnxWakeWordDetector(
         }
     }
 
+    /**
+     * Flushes the rolling audio PCM ring buffer, temporal score window, and cooldown.
+     * Prevents stale audio from causing immediate false re-triggers on pause/resume/accept.
+     */
+    @Synchronized
+    fun flushBuffers() {
+        pcmRing.fill(0)
+        pcmWritePos = 0
+        pcmFilled = 0
+        scoreWindow.fill(0f)
+        scoreWindowIdx = 0
+        cooldown.triggerCooldown()
+    }
+
     override fun setListener(listener: WakeWordListener) { this.listener = listener }
 
-    override fun start() { if (!available) loadModels() }
-    override fun stop()  { /* capture driven by engine */ }
-    override fun pause() { /* capture paused by engine */ }
-    override fun resume(){ /* capture resumed by engine */ }
+    override fun start() {
+        if (!available) loadModels()
+        flushBuffers()
+    }
+
+    override fun stop() {
+        flushBuffers()
+    }
+
+    override fun pause() {
+        flushBuffers()
+    }
+
+    override fun resume() {
+        flushBuffers()
+    }
 
     override fun release() {
         listener = null
+        flushBuffers()
         try { melSession?.close() } catch (_: Exception) {}
         try { embSession?.close() } catch (_: Exception) {}
         try { clsSession?.close() } catch (_: Exception) {}

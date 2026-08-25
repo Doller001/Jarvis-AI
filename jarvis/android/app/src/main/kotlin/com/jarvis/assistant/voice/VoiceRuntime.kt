@@ -432,6 +432,7 @@ class VoiceRuntime(
      */
     private fun resumeWakeAfterCommand() {
         wakeSessionActive.set(false)
+        lastWakeAcceptedAtMs = SystemClock.elapsedRealtime()
         if (!wakeEnabled) {
             if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
             return

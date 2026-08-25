@@ -237,9 +237,9 @@ fun KnowledgeGraphCard(uiState: JarvisUiState) {
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 26.dp)
                 )
                 GraphNodeBadge(
-                    label = "Store: SQLite/Supabase",
-                    color = JarvisGreen,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 12.dp)
+                    label = "Store: Supabase/Local (${uiState.messages.size} nodes)",
+                    color = Color(0xFF34D399),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 24.dp, bottom = 16.dp)
                 )
                 GraphNodeBadge(
                     label = "Role: Cognitive Operator",

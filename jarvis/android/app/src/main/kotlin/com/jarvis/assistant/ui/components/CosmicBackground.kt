@@ -47,7 +47,7 @@ fun CosmicBackground(modifier: Modifier = Modifier) {
 
     val rng = remember { Random(42) }
     val nodes = remember {
-        List(24) { i ->
+        List(24) { _ ->
             Node(
                 x = rng.nextFloat(),
                 y = rng.nextFloat(),
