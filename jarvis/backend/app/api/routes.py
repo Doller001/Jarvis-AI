@@ -52,6 +52,15 @@ async def list_tools():
     return {"tools": [t.model_dump() for t in tool_registry.list_tools()]}
 
 
+@api_router.get("/supabase/status")
+@api_router.get("/db/status")
+async def supabase_db_status():
+    """Returns connectivity and health status of the configured Supabase / DB instance."""
+    import asyncio
+    from app.db.supabase_client import supabase_client
+    return await asyncio.to_thread(supabase_client.ping)
+
+
 @api_router.post("/chat")
 async def chat(req: ChatRequest):
     return await jarvis_brain.process_utterance(
@@ -59,3 +68,4 @@ async def chat(req: ChatRequest):
         session_id=req.session_id,
         request_id=req.request_id
     )
+

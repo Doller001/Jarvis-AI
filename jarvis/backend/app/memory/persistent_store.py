@@ -1,33 +1,41 @@
 """
-Persistent Store for Jarvis supporting MongoDB Atlas, Supabase PostgreSQL, and SQLite.
+Persistent Store for Jarvis supporting Supabase (REST & PostgreSQL), MongoDB Atlas, and SQLite.
 """
 
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, Optional
+
+from app.db.supabase_client import SupabaseClient, supabase_client
 
 logger = logging.getLogger(__name__)
 
 
 class PersistentStore:
-    def __init__(self) -> None:
+    def __init__(self, supabase: Optional[SupabaseClient] = None) -> None:
+        self.supabase = supabase or supabase_client
         self.db_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DATABASE_URL")
         self.db_path = os.getenv("JARVIS_DB_PATH", "jarvis_memory.db")
         self.mongodb_uri = os.getenv("MONGODB_URI") or os.getenv("MONGO_URI") or os.getenv("MONGODB_URL")
 
+        self.is_supabase = bool(self.supabase and self.supabase.is_active)
         self.is_mongodb = False
         self.is_postgres = False
         self.mongo_client = None
         self.mongo_db = None
 
-        if self.mongodb_uri and (self.mongodb_uri.startswith("mongodb://") or self.mongodb_uri.startswith("mongodb+srv://")):
+        if self.is_supabase:
+            logger.info("Initializing Jarvis Persistent Store with Supabase DB connectivity.")
+
+        if not self.is_supabase and self.mongodb_uri and (
+            self.mongodb_uri.startswith("mongodb://") or self.mongodb_uri.startswith("mongodb+srv://")
+        ):
             try:
                 import pymongo
                 self.mongo_client = pymongo.MongoClient(self.mongodb_uri, serverSelectionTimeoutMS=5000)
                 self.mongo_client.admin.command('ping')
                 
-                # Use database name from URI if specified, else default to 'jarvis'
                 db_name = "jarvis"
                 try:
                     parsed_db = self.mongo_client.get_default_database()
@@ -40,13 +48,15 @@ class PersistentStore:
                 self.is_mongodb = True
                 logger.info(f"Initializing Jarvis Persistent Store with MongoDB Atlas connection (db: '{db_name}').")
             except Exception as e:
-                logger.warning(f"MongoDB Atlas connection failed ({e}); checking PostgreSQL / SQLite fallback.")
+                logger.warning(f"MongoDB Atlas connection failed ({e}); checking SQLite fallback.")
                 self.is_mongodb = False
 
-        if not self.is_mongodb and self.db_url and (self.db_url.startswith("postgresql://") or self.db_url.startswith("postgres://")):
+        if not self.is_supabase and not self.is_mongodb and self.db_url and (
+            self.db_url.startswith("postgresql://") or self.db_url.startswith("postgres://")
+        ):
             self.is_postgres = True
-            logger.info("Initializing Jarvis Persistent Store with Supabase PostgreSQL connection.")
-        elif not self.is_mongodb:
+            logger.info("Initializing Jarvis Persistent Store with PostgreSQL connection.")
+        elif not self.is_supabase and not self.is_mongodb:
             logger.info(f"Initializing Jarvis Persistent Store with SQLite at '{self.db_path}'.")
 
         self._init_db()
@@ -72,6 +82,10 @@ class PersistentStore:
             return self._get_sqlite_connection()
 
     def _init_db(self) -> None:
+        if self.is_supabase:
+            # Supabase schema is verified via client or migrations
+            return
+
         if self.is_mongodb and self.mongo_db is not None:
             try:
                 import pymongo
@@ -103,7 +117,7 @@ class PersistentStore:
                 conn.close()
                 return
             except Exception as e:
-                logger.error(f"Error initializing Supabase PostgreSQL tables: {e}; falling back to SQLite.")
+                logger.error(f"Error initializing PostgreSQL tables: {e}; falling back to SQLite.")
                 self.is_postgres = False
 
         # SQLite fallback
@@ -129,6 +143,14 @@ class PersistentStore:
 
     def save_message(self, session_id: str, role: str, content: str) -> None:
         now = time.time()
+        
+        # 1. Supabase Priority
+        if self.is_supabase:
+            ok = self.supabase.save_conversation_message(session_id, role, content)
+            if ok:
+                return
+
+        # 2. MongoDB
         if self.is_mongodb and self.mongo_db is not None:
             try:
                 self.mongo_db.conversations.insert_one({
@@ -141,6 +163,7 @@ class PersistentStore:
             except Exception as e:
                 logger.error(f"MongoDB save_message error: {e}")
 
+        # 3. PostgreSQL Direct
         if self.is_postgres:
             try:
                 conn = self._get_postgres_connection()
@@ -155,6 +178,7 @@ class PersistentStore:
             except Exception as e:
                 logger.error(f"PostgreSQL save_message error: {e}")
 
+        # 4. SQLite Fallback
         conn = self._get_sqlite_connection()
         try:
             with conn:
@@ -166,6 +190,13 @@ class PersistentStore:
             conn.close()
 
     def get_history(self, session_id: str, limit: int = 10) -> list[dict[str, Any]]:
+        # 1. Supabase Priority
+        if self.is_supabase:
+            history = self.supabase.get_conversation_history(session_id, limit=limit)
+            if history is not None:
+                return history
+
+        # 2. MongoDB
         if self.is_mongodb and self.mongo_db is not None:
             try:
                 import pymongo
@@ -178,6 +209,7 @@ class PersistentStore:
             except Exception as e:
                 logger.error(f"MongoDB get_history error: {e}")
 
+        # 3. PostgreSQL Direct
         if self.is_postgres:
             try:
                 conn = self._get_postgres_connection()
@@ -192,6 +224,7 @@ class PersistentStore:
             except Exception as e:
                 logger.error(f"PostgreSQL get_history error: {e}")
 
+        # 4. SQLite Fallback
         conn = self._get_sqlite_connection()
         try:
             cur = conn.cursor()
