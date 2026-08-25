@@ -13,6 +13,7 @@ sealed class JarvisIntent {
     data class ToggleBluetooth(val state: String) : JarvisIntent()
     data class SetVolume(val level: Int) : JarvisIntent()
     data class MediaControl(val action: String) : JarvisIntent()
+    data class PlayMediaSearch(val query: String, val app: String = "youtube") : JarvisIntent()
     data class OpenApp(val appName: String) : JarvisIntent()
     data class CloseApp(val appName: String? = null) : JarvisIntent()
     data class ReadScreen(val target: String = "screen") : JarvisIntent()
@@ -118,11 +119,24 @@ class IntentResolver {
         if (clean.contains("bluetooth on") || clean.contains("turn on bluetooth") || clean.contains("bluetooth chalo") || clean.contains("bluetooth chalu")) return JarvisIntent.ToggleBluetooth("on")
         if (clean.contains("bluetooth off") || clean.contains("turn off bluetooth") || clean.contains("bluetooth band")) return JarvisIntent.ToggleBluetooth("off")
 
-        // Media / Music
-        if (clean.contains("play music") || clean.contains("music play") || clean.contains("gaana bajao") || clean.contains("gana bajao") || clean.contains("song play")) return JarvisIntent.MediaControl("play")
+        // Media / Music Controls & Search
+        if (clean == "play music" || clean == "music play" || clean == "gaana bajao" || clean == "gana bajao" || clean == "song play") return JarvisIntent.MediaControl("play")
         if (clean.contains("pause music") || clean.contains("music pause") || clean.contains("gaana roko") || clean.contains("gana roko") || clean.contains("song pause") || clean.contains("stop music")) return JarvisIntent.MediaControl("pause")
         if (clean.contains("next song") || clean.contains("next track") || clean.contains("agla gaana") || clean.contains("music next")) return JarvisIntent.MediaControl("next")
         if (clean.contains("previous song") || clean.contains("prev song") || clean.contains("pichhla gaana") || clean.contains("music prev")) return JarvisIntent.MediaControl("prev")
+
+        // Specific Song / Media Search (e.g., "play headlight song", "play believer", "open youtube and play ...")
+        if (clean.startsWith("play ") || clean.contains("gaana bajao") || clean.contains("gana bajao") || clean.contains("baja do") || (clean.startsWith("open youtube and play "))) {
+            val query = clean
+                .replace(Regex("^(?:open\\s+(?:youtube|spotify)\\s+and\\s+)?play\\s+"), "")
+                .replace(Regex("\\b(gaana bajao|gana bajao|baja do|song|video|track)\\b"), "")
+                .replace(Regex("\\b(on\\s+youtube|on\\s+spotify)\\b"), "")
+                .trim()
+            if (query.isNotBlank() && query != "music") {
+                val app = if (clean.contains("spotify")) "spotify" else "youtube"
+                return JarvisIntent.PlayMediaSearch(query, app)
+            }
+        }
 
         // Volume
         val volRegex = Regex("(?:volume|awaz|sound)\\s+(\\d+)(?:%|\\s*percent)?")

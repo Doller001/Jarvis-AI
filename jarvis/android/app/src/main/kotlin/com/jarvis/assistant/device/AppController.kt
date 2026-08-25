@@ -189,6 +189,42 @@ class AppController(private val context: Context? = null) {
         return false
     }
 
+    fun playMediaOnApp(query: String, targetApp: String = "youtube"): Boolean {
+        val q = query.trim()
+        Log.i(TAG, "Jarvis playMediaOnApp: '$q' on '$targetApp'")
+        val ctx = context ?: return false
+
+        try {
+            if (targetApp.contains("spotify")) {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:${Uri.encode(q)}")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(intent)
+                return true
+            } else {
+                // YouTube App Search & Play
+                val intent = Intent(Intent.ACTION_SEARCH).apply {
+                    setPackage("com.google.android.youtube")
+                    putExtra("query", q)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (ctx.packageManager.queryIntentActivities(intent, 0).isNotEmpty()) {
+                    ctx.startActivity(intent)
+                    return true
+                }
+                // Web YouTube fallback
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=${Uri.encode(q)}")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                ctx.startActivity(webIntent)
+                return true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to play media: '$q'", e)
+            return false
+        }
+    }
+
     fun closeApp(appName: String? = null): Boolean {
         Log.i(TAG, "Jarvis closing app: '${appName ?: "current"}'")
         val ctx = context

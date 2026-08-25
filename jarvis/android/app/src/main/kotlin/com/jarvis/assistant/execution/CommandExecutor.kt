@@ -68,6 +68,10 @@ class CommandExecutor(private val context: Context? = null) {
                     }
                 }
             }
+            is JarvisIntent.PlayMediaSearch -> {
+                val ok = appController.playMediaOnApp(intent.query, intent.app)
+                if (ok) "Playing ${intent.query} on ${intent.app.replaceFirstChar { it.uppercase() }}" else "Failed to play ${intent.query}"
+            }
             is JarvisIntent.GetTime -> "Current time: ${systemController.getTime()}"
             is JarvisIntent.GetBattery -> "Battery level: ${systemController.getBatteryLevel()}"
             is JarvisIntent.GetStorage -> systemController.getStorageInfo()

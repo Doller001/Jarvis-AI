@@ -256,11 +256,6 @@ class VoiceRuntime(
      * Phase 6: Mic ownership check — STT must not start if wake engine holds mic.
      */
     fun startListeningForCommand() {
-        // Guard: never allow STT while in WAKE_LISTENING (critical rule).
-        if (stateMachine.isWakeListening) {
-            Log.e(TAG, "FORBIDDEN: startListeningForCommand called during WAKE_LISTENING — ignoring")
-            return
-        }
         if (stateMachine.state == VoiceState.SPEAKING) {
             ttsEngine.stop()
         }
