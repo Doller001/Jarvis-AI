@@ -236,7 +236,7 @@ class OnnxWakeWordDetector(
         )
 
         if (decision == "ACCEPT") {
-            Log.i(TAG, "Wake word ACCEPTED (score=${"%".format(score)}, hits=$positiveCount/${config.temporalPositiveCount})")
+            Log.i(TAG, "Wake word ACCEPTED (score=${"%.3f".format(score)}, hits=$positiveCount/${config.temporalPositiveCount})")
             // Reset temporal window after acceptance to prevent immediate re-trigger.
             scoreWindow.fill(0f)
             listener?.onWakeWordDetected()

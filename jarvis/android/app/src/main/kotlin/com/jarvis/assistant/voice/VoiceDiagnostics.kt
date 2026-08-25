@@ -73,11 +73,11 @@ object VoiceDiagnostics {
     ) {
         val msg = buildString {
             append("[WAKE] ")
-            append("score=${"%".format(score)} ")
-            append("threshold=${"%".format(threshold)} ")
+            append("score=${"%.3f".format(score)} ")
+            append("threshold=${"%.3f".format(threshold)} ")
             append("hits=$positiveHits/$windowSize ")
-            append("rms=${"%".format(rms)} ")
-            append("noise=${"%".format(noiseFloor)} ")
+            append("rms=${"%.3f".format(rms)} ")
+            append("noise=${"%.3f".format(noiseFloor)} ")
             append("decision=$decision")
             if (rejectReason != null) append(" reason=$rejectReason")
         }
