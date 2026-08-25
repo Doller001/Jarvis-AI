@@ -33,6 +33,7 @@ class VoiceRuntime(
     private val speechController: SpeechController = SpeechController(context, micController),
     private val ttsEngine: TextToSpeechEngine = TextToSpeechEngine(context = context),
     private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context),
+    private val audioSessionManager: AudioSessionManager = AudioSessionManager(context, audioRouteManager),
     private val audioProcessor: NearFieldAudioProcessor = NearFieldAudioProcessor(sampleRate = 16000),
     private val audioCapture: LowLatencyAudioCapture = LowLatencyAudioCapture(context, audioProcessor, micController),
     private val wakeEngine: LiveKitWakeWordEngine = LiveKitWakeWordEngine(
@@ -281,7 +282,7 @@ class VoiceRuntime(
         }
         notifyState()
 
-        audioRouteManager.activateVoiceRouting()
+        audioSessionManager.beginSession()
         playBeep()
 
         mainHandler.postDelayed({
@@ -314,7 +315,7 @@ class VoiceRuntime(
     private fun onCommandReceived(command: String) {
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechController.destroy()
-        audioRouteManager.deactivateVoiceRouting()
+        audioSessionManager.endSession()
 
         if (command.isBlank()) {
             Log.i(TAG, "Empty utterance — returning to wake mode")
@@ -335,7 +336,7 @@ class VoiceRuntime(
     private fun onCommandTimeout() {
         Log.w(TAG, "Command timeout after ${COMMAND_TIMEOUT_MS}ms")
         speechController.destroy()
-        audioRouteManager.deactivateVoiceRouting()
+        audioSessionManager.endSession()
         handleError(android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT, "Speech timeout")
     }
 
@@ -347,7 +348,7 @@ class VoiceRuntime(
         VoiceDiagnostics.logError(errorCode)
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechController.destroy()
-        audioRouteManager.deactivateVoiceRouting()
+        audioSessionManager.endSession()
 
         // Phase 12: RECOVERING state — no infinite restart loops.
         if (stateMachine.transition(VoiceState.RECOVERING)) notifyState()
@@ -451,7 +452,7 @@ class VoiceRuntime(
         audioCapture.stop()
         speechController.destroy()
         wakeEngine.stopMonitoring()
-        audioRouteManager.deactivateVoiceRouting()
+        audioSessionManager.endSession()
         ttsEngine.stop()
         if (stateMachine.transition(VoiceState.IDLE)) notifyState()
         Log.i(TAG, "VoiceRuntime stopped")
@@ -463,7 +464,7 @@ class VoiceRuntime(
         audioCapture.stop()
         speechController.destroy()
         wakeEngine.release()
-        audioRouteManager.release()
+        audioSessionManager.release()
         ttsEngine.shutdown()
         try { tone?.release() } catch (_: Exception) {}
         tone = null

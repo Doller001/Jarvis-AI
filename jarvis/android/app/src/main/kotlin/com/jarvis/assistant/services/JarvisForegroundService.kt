@@ -7,26 +7,34 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.util.Log
-import com.jarvis.assistant.brain.JarvisBrain
-import com.jarvis.assistant.execution.CommandExecutor
+import com.jarvis.assistant.execution.ExecutionOutcome
+import com.jarvis.assistant.execution.TaskExecutionCoordinator
 import com.jarvis.assistant.settings.SettingsManager
+import com.jarvis.assistant.telemetry.DiagnosticEventBus
+import com.jarvis.assistant.telemetry.TelemetryEventType
 import com.jarvis.assistant.voice.VoiceRuntime
 import com.jarvis.assistant.voice.VoiceState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /**
- * Foreground service that owns VoiceRuntime.
+ * Foreground service that owns VoiceRuntime and TaskExecutionCoordinator.
  *
- * Phase 2 fix: Reads SettingsManager.wakeWordEnabled AFTER startRuntime() and
- * calls voiceRuntime.setWakeEnabled() as the SINGLE wake authority.
- * UI must call setWakeEnabled() via the service — never touch WakeEngine directly.
+ * Phase 2 fix: Authoritative lifecycle and wake controller.
+ * On ACTION_STOP, completely stops runtime, releases microphone, removes notification, and exits.
  */
 class JarvisForegroundService : Service() {
     private lateinit var voiceRuntime: VoiceRuntime
     private lateinit var settingsManager: SettingsManager
-    private val brain by lazy { JarvisBrain() }
-    private val commandExecutor by lazy { CommandExecutor(applicationContext) }
+    private val coordinator by lazy { TaskExecutionCoordinator(applicationContext) }
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
+        private const val TAG = "JarvisForegroundService"
+
         var isRunning: Boolean = false
             private set
         var onUtterance: ((String) -> Unit)? = null
@@ -36,7 +44,6 @@ class JarvisForegroundService : Service() {
         var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
         var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
-        /** Phase 2: single authority toggle — delegates to voiceRuntime.setWakeEnabled(). */
         var toggleWakeListening: (() -> Boolean)? = null
         var setWakeSensitivity: ((String) -> Unit)? = null
         var startCommandListening: (() -> Unit)? = null
@@ -55,8 +62,6 @@ class JarvisForegroundService : Service() {
         speak = { text ->
             voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
         }
-        // Phase 2: toggleWakeListening → voiceRuntime.toggleMonitoring()
-        // which internally calls setWakeEnabled(). No direct engine access from UI.
         toggleWakeListening = {
             val active = voiceRuntime.toggleMonitoring()
             settingsManager.wakeWordEnabled = active
@@ -73,15 +78,18 @@ class JarvisForegroundService : Service() {
         setSpeechRate = { rate ->
             voiceRuntime.setSpeechRate(rate)
         }
-        Log.i("JarvisService", "JarvisForegroundService created")
+
+        DiagnosticEventBus.emit(
+            type = TelemetryEventType.SERVICE_CREATED,
+            component = TAG
+        )
+        Log.i(TAG, "JarvisForegroundService created")
         createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            isRunning = false
+            shutdownRuntime("ACTION_STOP requested")
             return START_NOT_STICKY
         }
 
@@ -103,10 +111,14 @@ class JarvisForegroundService : Service() {
             } else {
                 startForeground(1001, notification)
             }
+            DiagnosticEventBus.emit(
+                type = TelemetryEventType.FOREGROUND_STARTED,
+                component = TAG
+            )
         } catch (e: Exception) {
-            Log.e("JarvisService", "startForeground with mic type failed", e)
+            Log.e(TAG, "startForeground with mic type failed", e)
             try { startForeground(1001, notification) } catch (ex: Exception) {
-                Log.e("JarvisService", "Fallback startForeground also failed", ex)
+                Log.e(TAG, "Fallback startForeground also failed", ex)
             }
         }
 
@@ -119,28 +131,30 @@ class JarvisForegroundService : Service() {
             voiceRuntime.onAudioMetrics = { metrics -> onAudioMetrics?.invoke(metrics) }
 
             voiceRuntime.startRuntime { userUtterance ->
-                Log.i("JarvisService", "Utterance: '$userUtterance'")
+                Log.i(TAG, "Utterance received in service: '$userUtterance'")
                 val uiHandler = onUtterance
                 if (uiHandler != null) {
                     uiHandler(userUtterance)
                 } else {
-                    val plan = brain.processCommand(userUtterance)
-                    val response = if (plan.requiresConfirmation) {
-                        "Please open Jarvis to confirm this action."
-                    } else {
-                        commandExecutor.execute(plan.intent)
+                    // Headless background execution via TaskExecutionCoordinator
+                    serviceScope.launch {
+                        val outcome = coordinator.coordinate(userUtterance)
+                        val responseText = when (outcome) {
+                            is ExecutionOutcome.Success -> outcome.spokenResponse
+                            is ExecutionOutcome.ConfirmationRequired -> outcome.prompt
+                            is ExecutionOutcome.Failure -> outcome.spokenResponse
+                            is ExecutionOutcome.RouteToCloud -> "Command received. Connecting to cloud intelligence."
+                        }
+                        voiceRuntime.speakResponse(responseText)
                     }
-                    voiceRuntime.speakResponse(response)
                 }
             }
 
-            // Phase 2: Apply wake setting AFTER startRuntime() — this is the
-            // authoritative moment when the detector is allowed to start.
             val wakeEnabled = settingsManager.wakeWordEnabled
             val sensitivity = settingsManager.wakeSensitivity
             voiceRuntime.setWakeSensitivity(sensitivity)
             voiceRuntime.setWakeEnabled(wakeEnabled)
-            Log.i("JarvisService", "Wake word enabled=$wakeEnabled, sensitivity=$sensitivity")
+            Log.i(TAG, "Wake word initialized: enabled=$wakeEnabled, sensitivity=$sensitivity")
         }
 
         if (intent?.action == ACTION_LISTEN_FOR_COMMAND) {
@@ -148,6 +162,22 @@ class JarvisForegroundService : Service() {
         }
 
         return START_STICKY
+    }
+
+    private fun shutdownRuntime(reason: String) {
+        Log.i(TAG, "Shutting down JarvisForegroundService: reason='$reason'")
+        DiagnosticEventBus.emit(
+            type = TelemetryEventType.RUNTIME_STOP_REQUESTED,
+            component = TAG,
+            details = mapOf("reason" to reason)
+        )
+        if (::voiceRuntime.isInitialized) {
+            voiceRuntime.setWakeEnabled(false)
+            voiceRuntime.release()
+        }
+        isRunning = false
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun updateNotification(state: VoiceState) {
@@ -166,7 +196,7 @@ class JarvisForegroundService : Service() {
     }
 
     fun speakResponse(text: String) {
-        Log.i("JarvisService", "Speaking: '$text'")
+        Log.i(TAG, "Speaking: '$text'")
         if (::voiceRuntime.isInitialized) {
             voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
         }
@@ -198,7 +228,12 @@ class JarvisForegroundService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        DiagnosticEventBus.emit(
+            type = TelemetryEventType.SERVICE_DESTROYED,
+            component = TAG
+        )
         if (::voiceRuntime.isInitialized) voiceRuntime.release()
+        serviceScope.cancel()
         onUtterance          = null
         onResponseDone       = null
         onWakeToggled        = null

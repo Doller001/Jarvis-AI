@@ -68,5 +68,8 @@ class LLMGateway:
 
         return await provider_router.execute_with_failover(chain, _local_fallback)
 
+    def list_available_providers(self) -> list[str]:
+        return list(llm_registry._providers.keys())
+
 
 llm_gateway = LLMGateway()

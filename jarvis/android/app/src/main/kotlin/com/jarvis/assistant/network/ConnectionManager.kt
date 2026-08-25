@@ -8,6 +8,9 @@ class ConnectionManager {
     var state: ConnectionState = ConnectionState.DISCONNECTED
         private set
 
+    val isConnected: Boolean
+        get() = state == ConnectionState.CONNECTED
+
     fun setConnectionState(newState: ConnectionState) {
         state = newState
         Log.i("ConnectionManager", "Jarvis network state: $newState")

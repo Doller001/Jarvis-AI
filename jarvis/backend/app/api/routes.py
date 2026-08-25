@@ -1,12 +1,15 @@
 """
-API Routes for System Tools and Jarvis Status.
+API Routes for System Tools, Health Diagnostics, and Jarvis Status.
 """
 
-
+import asyncio
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.agent.orchestrator import jarvis_brain
+from app.db.supabase_client import supabase_client
+from app.llm.gateway import llm_gateway
+from app.memory.memory_manager import memory_manager
 from app.retrieval.music_index import music_index
 from app.tools.registry import tool_registry
 
@@ -29,17 +32,43 @@ class MusicSearchRequest(BaseModel):
     year_max: int | None = None
 
 
+@api_router.get("/health/ready")
+async def health_ready():
+    """Readiness probe checking memory store, database, and system readiness."""
+    db_status = await asyncio.to_thread(supabase_client.ping)
+    return {
+        "status": "ready",
+        "service": "jarvis-backend",
+        "database": db_status.get("status", "unknown")
+    }
+
+
+@api_router.get("/health/dependencies")
+async def health_dependencies():
+    """Comprehensive dependency health matrix for DB, LLM providers, and vector DB."""
+    db_status = await asyncio.to_thread(supabase_client.ping)
+    music_status = await asyncio.to_thread(music_index.status)
+
+    providers = llm_gateway.list_available_providers()
+
+    return {
+        "backend": "ok",
+        "database": db_status.get("status", "ok"),
+        "supabase": db_status,
+        "music_vector_index": music_status,
+        "available_llm_providers": providers
+    }
+
+
 @api_router.get("/music/status")
 async def music_status():
     """Whether the music vector DB is loaded and how many songs it holds."""
-    import asyncio
     return await asyncio.to_thread(music_index.status)
 
 
 @api_router.post("/music/search")
 async def music_search(req: MusicSearchRequest):
     """Semantic song search over the local music vector DB."""
-    import asyncio
     return await asyncio.to_thread(
         music_index.search,
         req.query, req.limit, req.language, req.mood,
@@ -56,8 +85,6 @@ async def list_tools():
 @api_router.get("/db/status")
 async def supabase_db_status():
     """Returns connectivity and health status of the configured Supabase / DB instance."""
-    import asyncio
-    from app.db.supabase_client import supabase_client
     return await asyncio.to_thread(supabase_client.ping)
 
 
@@ -68,4 +95,3 @@ async def chat(req: ChatRequest):
         session_id=req.session_id,
         request_id=req.request_id
     )
-

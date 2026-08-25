@@ -1,16 +1,20 @@
 """
-Jarvis Realtime Message Router linking transport directly to JarvisBrain.
+Jarvis Realtime Message Router handling commands, device ACKs/results, confirmations, and cancellations.
 """
 
 import logging
 from typing import Any
 
+from app.agent.execution_models import ActionExecutionResult, ActionStatus
 from app.agent.orchestrator import jarvis_brain
 from app.memory.memory_manager import memory_manager
+from app.realtime.command_registry import command_registry
 from app.realtime.connection_manager import connection_manager
 from app.realtime.protocol import (
+    CancelRequestPayload,
     ClientCommandPayload,
     ClientConfirmationPayload,
+    DeviceResultPayload,
     ServerErrorPayload,
     WireEventType,
 )
@@ -35,6 +39,32 @@ class MessageRouter:
                 request_id=payload.request_id
             )
             await connection_manager.send_json(session_id, brain_res)
+
+        elif msg_type == WireEventType.DEVICE_RESULT:
+            # Device ACK & Verification result from Android client
+            payload = DeviceResultPayload(**raw_data)
+            result = ActionExecutionResult(
+                command_id=payload.command_id,
+                request_id=payload.request_id,
+                status=ActionStatus.VERIFIED if payload.verified else (ActionStatus.EXECUTION_FAILED if payload.status == "failed" else ActionStatus.EXECUTED),
+                executed=payload.status in ("executed", "success"),
+                verified=payload.verified,
+                data=payload.data,
+                error_code=payload.error_code,
+                error_message=payload.error_message,
+                latency_ms=payload.latency_ms
+            )
+            command_registry.record_result(result)
+
+        elif msg_type == WireEventType.CANCEL_REQUEST:
+            payload = CancelRequestPayload(**raw_data)
+            command_registry.cancel_request(payload.request_id)
+            await connection_manager.send_json(session_id, {
+                "type": WireEventType.CANCEL_RESULT,
+                "request_id": payload.request_id,
+                "status": "cancelled",
+                "message": "Task execution cancelled by user."
+            })
 
         elif msg_type == WireEventType.CONFIRMATION:
             payload = ClientConfirmationPayload(**raw_data)

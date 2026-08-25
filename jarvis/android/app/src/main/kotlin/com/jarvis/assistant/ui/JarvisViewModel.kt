@@ -6,15 +6,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.app.RuntimeState
-import com.jarvis.assistant.brain.JarvisBrain
-import com.jarvis.assistant.brain.JarvisIntent
+import com.jarvis.assistant.execution.ExecutionOutcome
+import com.jarvis.assistant.execution.TaskExecutionCoordinator
 import com.jarvis.assistant.llm.ProviderManager
-import com.jarvis.assistant.memory.MemoryStore
 import com.jarvis.assistant.memory.MessageLog
-import com.jarvis.assistant.network.ApiClient
-import com.jarvis.assistant.network.ConnectionManager
-import com.jarvis.assistant.network.ConnectionState
-import com.jarvis.assistant.network.WebSocketClient
+import com.jarvis.assistant.network.*
 import com.jarvis.assistant.permissions.PermissionManager
 import com.jarvis.assistant.permissions.PermissionState
 import com.jarvis.assistant.services.JarvisForegroundService
@@ -59,28 +55,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
 
     private val settingsManager = SettingsManager(application)
     private val permissionManager = PermissionManager(application)
-    private val connectionManager = ConnectionManager()
     private val providerManager = ProviderManager()
-    // Opening and warming the SQLite memory store can take noticeable time on a
-    // cold start. Keep it lazy and only create it from the IO dispatcher.
     private val memoryRouter by lazy { com.jarvis.assistant.memory.MemoryDecisionRouter(application) }
-    private val brain = JarvisBrain()
+    private val coordinator by lazy { TaskExecutionCoordinator(application) }
     private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl)
-    private val commandExecutor = com.jarvis.assistant.execution.CommandExecutor(application)
-
-    private fun deriveWsUrl(httpUrl: String): String {
-        val clean = httpUrl.trim().trimEnd('/')
-        return when {
-            clean.startsWith("https://") -> clean.replaceFirst("https://", "wss://") + "/ws"
-            clean.startsWith("http://") -> clean.replaceFirst("http://", "ws://") + "/ws"
-            else -> "wss://$clean/ws"
-        }
-    }
-
-    private val webSocketClient = WebSocketClient(
-        wsUrl = deriveWsUrl(settingsManager.backendUrl),
-        connectionManager = connectionManager
-    )
+    private val backendHealthManager = BackendHealthManager(application, apiClient)
 
     private val _uiState = MutableStateFlow(
         JarvisUiState(
@@ -101,12 +80,20 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        connectionManager.onStateChanged = { state ->
-            _uiState.update { it.copy(connectionState = state) }
+        // Single Source of Truth for Backend Health & Connectivity
+        backendHealthManager.start()
+        viewModelScope.launch {
+            backendHealthManager.health.collect { health ->
+                val connState = when (health.status) {
+                    HealthStatus.CONNECTED -> ConnectionState.CONNECTED
+                    HealthStatus.CONNECTING -> ConnectionState.CONNECTING
+                    HealthStatus.DEGRADED -> ConnectionState.RECONNECTING
+                    HealthStatus.OFFLINE -> ConnectionState.DISCONNECTED
+                }
+                _uiState.update { it.copy(connectionState = connState) }
+            }
         }
-        webSocketClient.onMessageReceived = { payload ->
-            handleWebSocketMessage(payload)
-        }
+
         JarvisForegroundService.onUtterance = { text ->
             sendUtterance(text)
         }
@@ -125,34 +112,12 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         JarvisForegroundService.onAudioMetrics = { metrics ->
             _uiState.update { it.copy(noiseFloorDb = metrics.noiseFloorDb, audioSnrDb = metrics.snrDb) }
         }
-        // Connect independently of the Providers screen so Home and voice
-        // flows do not incorrectly show the backend as offline.
-        connectBackend()
-    }
-
-    private fun handleWebSocketMessage(payload: String) {
-        try {
-            val json = org.json.JSONObject(payload)
-            val responseText = json.optString("response_text")
-                .ifBlank { json.optString("result") }
-                .ifBlank { json.optString("message") }
-                .ifBlank { json.optString("prompt") }
-            if (responseText.isNotBlank()) {
-                viewModelScope.launch(Dispatchers.IO) {
-                    val engine = memoryRouter.getEngine()
-                    engine.recordEpisode("assistant", responseText)
-                    updateCompletedResponse(_uiState.value.lastUtterance, responseText, RuntimeState.IDLE, engine)
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("JarvisViewModel", "Error parsing WebSocket message: ${e.message}")
-        }
     }
 
     override fun onCleared() {
         super.onCleared()
         commandJob?.cancel()
-        webSocketClient.disconnect()
+        backendHealthManager.release()
     }
 
     fun startListening() {
@@ -179,7 +144,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun connectBackend() {
-        webSocketClient.connect()
+        backendHealthManager.checkHealthAndReconnect()
     }
 
     fun selectProvider(provider: String, model: String = "") {
@@ -201,14 +166,13 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateBackendUrl(newUrl: String) {
-        val cleanUrl = newUrl.trim().trimEnd('/')
-        if (cleanUrl.isNotBlank()) {
-            settingsManager.backendUrl = cleanUrl
-            apiClient.baseUrl = cleanUrl
-            webSocketClient.updateUrl(deriveWsUrl(cleanUrl))
-            _uiState.update { it.copy(backendUrl = cleanUrl) }
+        val ok = backendHealthManager.updateEndpoint(newUrl)
+        if (ok) {
+            val clean = newUrl.trim().trimEnd('/')
+            settingsManager.backendUrl = clean
+            _uiState.update { it.copy(backendUrl = clean) }
             refreshProviders()
-            pingBackend(cleanUrl)
+            pingBackend(clean)
         }
     }
 
@@ -302,8 +266,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             it.copy(lastUtterance = text, lastResponse = "Thinking…", runtimeState = RuntimeState.THINKING)
         }
         commandJob = viewModelScope.launch(Dispatchers.IO) { processUtterance(text) }
-        // Voice responses are delivered when the background command finishes;
-        // never make the audio callback wait for SQLite, package-manager or I/O.
         return ""
     }
 
@@ -311,29 +273,26 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         val engine = memoryRouter.getEngine()
         engine.recordEpisode("user", text)
 
-        // 1. Check Router for FAST CAG path (< 1ms)
-        val routed = memoryRouter.route(text)
-        if (routed.source == com.jarvis.assistant.memory.RouteSource.FAST_CAG_EXACT ||
-            routed.source == com.jarvis.assistant.memory.RouteSource.FAST_CAG_NEAR) {
-            val cachedAnswer = routed.text
-            engine.recordEpisode("assistant", cachedAnswer)
-            updateCompletedResponse(text, cachedAnswer, RuntimeState.ACTING, engine)
-            return
-        }
+        val outcome = coordinator.coordinate(text, memoryRouter)
 
-        // 2. Check local command executor
-        val plan = brain.processCommand(text)
-        if (plan.intent is JarvisIntent.Unknown) {
-            routeToCloudBrain(text, routed, engine)
-        } else if (plan.requiresConfirmation) {
-            val response = "Confirmation required: ${plan.confirmationPrompt}"
-            engine.recordEpisode("assistant", response)
-            updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
-        } else {
-            val ack = commandExecutor.execute(plan.intent)
-            engine.recordEpisode("assistant", ack)
-            memoryRouter.learn(text, ack)
-            updateCompletedResponse(text, ack, RuntimeState.ACTING, engine)
+        when (outcome) {
+            is ExecutionOutcome.Success -> {
+                engine.recordEpisode("assistant", outcome.spokenResponse)
+                if (outcome.isLocalAction) memoryRouter.learn(text, outcome.spokenResponse)
+                updateCompletedResponse(text, outcome.spokenResponse, RuntimeState.ACTING, engine)
+            }
+            is ExecutionOutcome.ConfirmationRequired -> {
+                engine.recordEpisode("assistant", outcome.prompt)
+                updateCompletedResponse(text, outcome.prompt, RuntimeState.IDLE, engine)
+            }
+            is ExecutionOutcome.Failure -> {
+                engine.recordEpisode("assistant", outcome.spokenResponse)
+                updateCompletedResponse(text, outcome.spokenResponse, RuntimeState.IDLE, engine)
+            }
+            is ExecutionOutcome.RouteToCloud -> {
+                val routed = memoryRouter.route(text)
+                routeToCloudBrain(text, routed, engine)
+            }
         }
     }
 

@@ -94,6 +94,18 @@ async def root_health():
     return {"status": "healthy", "service": "jarvis-backend", "version": "1.0.0"}
 
 
+@app.get("/health/live", tags=["System"])
+@app.head("/health/live", tags=["System"])
+async def health_live():
+    return {"status": "alive", "service": "jarvis-backend", "version": "1.0.0"}
+
+
+@app.get("/health/ready", tags=["System"])
+@app.head("/health/ready", tags=["System"])
+async def health_ready():
+    return {"status": "ready", "service": "jarvis-backend", "version": "1.0.0"}
+
+
 @app.get("/api/v1/health", tags=["System"])
 @app.head("/api/v1/health", tags=["System"])
 async def api_v1_health():
