@@ -58,7 +58,8 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onOpenMemory = { navController.navigate("memory") },
                 onQuickAction = { viewModel.executeQuickAction(it) },
                 onStartListening = viewModel::startListening,
-                onToggleWakeListening = viewModel::toggleWakeListening
+                onToggleWakeListening = viewModel::toggleWakeListening,
+                onToggleOverlay = viewModel::toggleOverlay
             )
         }
         composable("conversation") {

@@ -5,13 +5,13 @@ import android.util.Log
 
 /**
  * Diagnostic logger and error translator for the Jarvis voice pipeline.
- * Converts raw Android speech codes into actionable, human-readable insights.
+ * Phase 11: Added forensic wake-candidate logging with full decision context.
  */
 object VoiceDiagnostics {
     private const val TAG = "VoiceDiagnostics"
 
     fun logStart(language: String, preferOffline: Boolean) {
-        Log.i(TAG, "[VOICE_DIAG] START: Initializing SpeechRecognizer (lang=$language, preferOffline=$preferOffline)")
+        Log.i(TAG, "[VOICE_DIAG] START: SpeechRecognizer init (lang=$language, preferOffline=$preferOffline)")
     }
 
     fun logReady() {
@@ -20,7 +20,7 @@ object VoiceDiagnostics {
 
     fun logRms(rmsdB: Float) {
         if (rmsdB > 2f) {
-            Log.v(TAG, "[VOICE_DIAG] RMS: Audio level rmsDb=${"%.1f".format(rmsdB)}")
+            Log.v(TAG, "[VOICE_DIAG] RMS: rmsDb=${"%.1f".format(rmsdB)}")
         }
     }
 
@@ -29,7 +29,7 @@ object VoiceDiagnostics {
     }
 
     fun logEnd() {
-        Log.i(TAG, "[VOICE_DIAG] END: User finished speaking — finalizing audio buffer")
+        Log.i(TAG, "[VOICE_DIAG] END: User finished speaking — finalizing buffer")
     }
 
     fun logPartialResult(text: String) {
@@ -37,7 +37,7 @@ object VoiceDiagnostics {
     }
 
     fun logResult(text: String) {
-        Log.i(TAG, "[VOICE_DIAG] RESULT: Recognized utterance: '$text'")
+        Log.i(TAG, "[VOICE_DIAG] RESULT: '$text'")
     }
 
     fun logError(errorCode: Int) {
@@ -49,36 +49,75 @@ object VoiceDiagnostics {
         Log.i(TAG, "[VOICE_DIAG] MIC_STATE: $state")
     }
 
+    /**
+     * Phase 11: Forensic wake-candidate log.
+     * Emitted for EVERY inference window so post-mortem analysis can explain
+     * exactly why "Yes Boss" did or did not happen.
+     *
+     * Example ACCEPT:
+     *   [WAKE] score=0.78 threshold=0.60 hits=3/5 rms=0.042 noise=0.012 decision=ACCEPT
+     *
+     * Example REJECT:
+     *   [WAKE] score=0.43 threshold=0.60 hits=1/5 rms=0.035 noise=0.012
+     *          decision=REJECT reason=TEMPORAL_GATE(hits=1/3)
+     */
+    fun logWakeCandidate(
+        score: Float,
+        threshold: Float,
+        positiveHits: Int,
+        windowSize: Int,
+        rms: Float,
+        noiseFloor: Float,
+        decision: String,
+        rejectReason: String?
+    ) {
+        val msg = buildString {
+            append("[WAKE] ")
+            append("score=${"%".format(score)} ")
+            append("threshold=${"%".format(threshold)} ")
+            append("hits=$positiveHits/$windowSize ")
+            append("rms=${"%".format(rms)} ")
+            append("noise=${"%".format(noiseFloor)} ")
+            append("decision=$decision")
+            if (rejectReason != null) append(" reason=$rejectReason")
+        }
+        if (decision == "ACCEPT") {
+            Log.i(TAG, "[VOICE_DIAG] $msg")
+        } else {
+            Log.v(TAG, "[VOICE_DIAG] $msg")
+        }
+    }
+
     fun getErrorDetails(errorCode: Int): Pair<String, String> {
         return when (errorCode) {
             AndroidSpeechRecognizer.ERROR_AUDIO ->
-                "ERROR_AUDIO" to "Audio recording error. Check microphone hardware and ensure no other process holds the mic."
+                "ERROR_AUDIO" to "Audio recording error. Check microphone hardware."
             AndroidSpeechRecognizer.ERROR_CLIENT ->
-                "ERROR_CLIENT" to "Client-side error occurred in the speech recognition service."
+                "ERROR_CLIENT" to "Client-side error in speech recognition service."
             AndroidSpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-                "ERROR_INSUFFICIENT_PERMISSIONS" to "Insufficient permissions: RECORD_AUDIO permission is required."
+                "ERROR_INSUFFICIENT_PERMISSIONS" to "Microphone permission (RECORD_AUDIO) required."
             AndroidSpeechRecognizer.ERROR_NETWORK ->
-                "ERROR_NETWORK" to "Network error encountered during cloud speech recognition."
+                "ERROR_NETWORK" to "Network error during cloud speech recognition."
             AndroidSpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
                 "ERROR_NETWORK_TIMEOUT" to "Network operation timed out."
             AndroidSpeechRecognizer.ERROR_NO_MATCH ->
-                "ERROR_NO_MATCH" to "No speech recognition result matched (silence or low volume)."
+                "ERROR_NO_MATCH" to "No speech matched (silence or low volume)."
             AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
-                "ERROR_RECOGNIZER_BUSY" to "SpeechRecognizer service is busy. Resetting session."
+                "ERROR_RECOGNIZER_BUSY" to "SpeechRecognizer busy. Resetting session."
             AndroidSpeechRecognizer.ERROR_SERVER ->
                 "ERROR_SERVER" to "Speech recognition backend server error."
             AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
-                "ERROR_SPEECH_TIMEOUT" to "No speech input detected within the expected timeout."
+                "ERROR_SPEECH_TIMEOUT" to "No speech detected within timeout."
             AndroidSpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ->
-                "ERROR_LANGUAGE_NOT_SUPPORTED" to "Selected speech language is not supported on this device."
+                "ERROR_LANGUAGE_NOT_SUPPORTED" to "Speech language not supported."
             AndroidSpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
-                "ERROR_LANGUAGE_UNAVAILABLE" to "Selected speech language is currently unavailable."
+                "ERROR_LANGUAGE_UNAVAILABLE" to "Speech language currently unavailable."
             AndroidSpeechRecognizer.ERROR_SERVER_DISCONNECTED ->
                 "ERROR_SERVER_DISCONNECTED" to "Server disconnected during recognition."
             AndroidSpeechRecognizer.ERROR_TOO_MANY_REQUESTS ->
                 "ERROR_TOO_MANY_REQUESTS" to "Too many requests to speech recognition service."
             else ->
-                "ERROR_UNKNOWN_$errorCode" to "Unknown speech recognition error code $errorCode."
+                "ERROR_UNKNOWN_$errorCode" to "Unknown error code $errorCode."
         }
     }
 }

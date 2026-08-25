@@ -5,19 +5,27 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import com.jarvis.assistant.voice.wakeword.LiveKitWakeWordEngine
 import com.jarvis.assistant.voice.wakeword.WakeWordConfig
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Central voice coordinator for Jarvis (Phase 1 & 2 Clean Architecture).
+ * Central voice coordinator — Phase 2, 3, 7, 8, 9, 12 rebuild.
  *
- * Enforces Single Mic Owner architecture:
- *   IDLE        -> Waiting for user action / push-to-talk
- *   LISTENING   -> SpeechController owns the microphone exclusively
- *   PROCESSING  -> Utterance routed to subconscious/conscious brain
- *   SPEAKING    -> TTS plays response
- *   IDLE        -> Return to idle resting state
+ * STATE MACHINE (enforced):
+ *   DISABLED → WAKE_LISTENING → ACKNOWLEDGING → COMMAND_LISTENING
+ *            → PROCESSING → SPEAKING → WAKE_LISTENING
+ *
+ * CRITICAL RULES:
+ *  1. Wake setting is authoritative: only setWakeEnabled() starts/stops the detector.
+ *  2. startRuntime() initialises components but does NOT start wake detection.
+ *  3. SpeechRecognizer is FORBIDDEN during WAKE_LISTENING / ACKNOWLEDGING.
+ *  4. "Yes Boss" TTS completes BEFORE command STT starts (Phase 8).
+ *  5. Wake callback is gated through 7 checks before any action (Phase 3).
+ *  6. AtomicBoolean wakeSessionActive prevents duplicate callbacks (Phase 9).
+ *  7. All voice-engine failures → RECOVERING → WAKE_LISTENING/DISABLED (Phase 12).
  */
 class VoiceRuntime(
     private val context: Context? = null,
@@ -27,8 +35,6 @@ class VoiceRuntime(
     private val audioRouteManager: AudioRouteManager = AudioRouteManager(context = context),
     private val audioProcessor: NearFieldAudioProcessor = NearFieldAudioProcessor(sampleRate = 16000),
     private val audioCapture: LowLatencyAudioCapture = LowLatencyAudioCapture(context, audioProcessor, micController),
-    // All voice components must share the same lock; otherwise each component
-    // can believe it owns the microphone while another component is recording.
     private val wakeEngine: LiveKitWakeWordEngine = LiveKitWakeWordEngine(
         context = context,
         config = WakeWordConfig(),
@@ -37,17 +43,25 @@ class VoiceRuntime(
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
-        private const val COMMAND_TIMEOUT_MS = 8000L
-        private const val ERROR_RECOVERY_MS = 500L
+        private const val COMMAND_TIMEOUT_MS   = 8000L
+        private const val ERROR_RECOVERY_MS    = 500L
+        private const val WAKE_COOLDOWN_MS     = 2500L  // Phase 9
     }
 
-    private val stateMachine = VoiceStateMachine()
+    private val stateMachine = VoiceStateMachine(VoiceState.IDLE)
     val state: VoiceState get() = stateMachine.state
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler    = Handler(Looper.getMainLooper())
     private var commandCallback: ((String) -> Unit)? = null
-    private var stateListener: ((VoiceState) -> Unit)? = null
+    private var stateListener:   ((VoiceState) -> Unit)? = null
     private var tone: ToneGenerator? = null
+
+    // Phase 9: AtomicBoolean — prevents duplicate wake callbacks.
+    private val wakeSessionActive = AtomicBoolean(false)
+    @Volatile private var lastWakeAcceptedAtMs = 0L
+
+    // Phase 2: single authority flag. Reflects the SettingsManager.wakeWordEnabled setting.
+    @Volatile private var wakeEnabled = false
 
     var onEnvironmentChanged: ((EnvironmentProfile) -> Unit)? = null
     var onAudioMetrics: ((AudioProcessingResult) -> Unit)? = null
@@ -60,103 +74,223 @@ class VoiceRuntime(
         listener(state)
     }
 
+    /**
+     * Phase 2: Initialises all components.
+     * Does NOT start wake detection — call setWakeEnabled(true) after startup
+     * to respect the SettingsManager.wakeWordEnabled flag.
+     */
     fun startRuntime(onCommandRecognized: (String) -> Unit) {
         commandCallback = onCommandRecognized
         audioRouteManager.start()
         audioCapture.onEnvironmentChanged = { env -> onEnvironmentChanged?.invoke(env) }
         audioCapture.onFrameProcessed = { res -> onAudioMetrics?.invoke(res) }
-        VoiceDiagnostics.logMicState("VoiceRuntime initialized in IDLE state")
+        VoiceDiagnostics.logMicState("VoiceRuntime initialised — IDLE (wake NOT started)")
+        Log.i(TAG, "VoiceRuntime started. Call setWakeEnabled(true) to begin wake monitoring.")
 
-        // Start always-listening wake-word detection (offline). If the ONNX
-        // models are missing, the engine falls back to STT text matching when
-        // enabled; otherwise it reports the failure and stays idle.
-        startWakeMonitoring()
-    }
-
-    private fun startWakeMonitoring() {
-        wakeEngine.setOnWakeListener { _ ->
-            Log.i(TAG, "Wake word event -> acknowledging wake word before command listening")
-            if (stateMachine.transition(VoiceState.WAKE)) notifyState()
-            wakeEngine.pause()
-            // Give the user a deterministic hand-off cue. Starting speech
-            // recognition only after TTS completes prevents the acknowledgement
-            // from being captured as part of the command.
-            speakResponse("Yes boss") {
-                startListeningForCommand()
-            }
-        }
+        // Set up wake engine error handler once.
         wakeEngine.setOnErrorListener { error ->
-            Log.w(TAG, "Wake-word engine unavailable: ${error.message}")
+            Log.w(TAG, "Wake-word engine error: ${error.message}")
+            handleVoiceEngineFailure("WakeEngine", error)
         }
-        wakeEngine.startMonitoring()
     }
 
     /**
-     * Maps a sensitivity label to a 0..1 value and applies it live to the engine.
-     * "Low" = 0.5f, "Balanced" = 0.8f, "High" = 1.0f.
+     * Phase 2: Single authority entry point for enabling / disabling wake detection.
+     * Called by the service after reading SettingsManager.wakeWordEnabled.
+     *
+     * wakeWordEnabled = false → detector.stop(), mic released, state = DISABLED
+     * wakeWordEnabled = true  → detector.start(), mic acquired, state = WAKE_LISTENING
+     */
+    fun setWakeEnabled(enabled: Boolean) {
+        wakeEnabled = enabled
+        if (enabled) {
+            activateWakeMode()
+        } else {
+            deactivateWakeMode()
+        }
+    }
+
+    private fun activateWakeMode() {
+        // Do not double-start if already in wake mode.
+        if (stateMachine.isWakeListening) return
+        if (!installWakeCallback()) return  // callback already installed on first call
+        val started = wakeEngine.startMonitoring()
+        if (started) {
+            if (stateMachine.transition(VoiceState.WAKE_LISTENING)) notifyState()
+            Log.i(TAG, "Wake mode ACTIVATED")
+        } else {
+            Log.w(TAG, "Wake engine failed to start — staying in current state")
+        }
+    }
+
+    private fun deactivateWakeMode() {
+        wakeEngine.stopMonitoring()
+        speechController.destroy()
+        micController.releaseAny()
+        if (stateMachine.transition(VoiceState.DISABLED) ||
+            stateMachine.transition(VoiceState.IDLE)) notifyState()
+        Log.i(TAG, "Wake mode DEACTIVATED — mic released")
+    }
+
+    /**
+     * Installs the wake callback once. Idempotent after first call.
+     * Returns true always (callback installed on first call).
+     */
+    private var wakeCallbackInstalled = false
+    private fun installWakeCallback(): Boolean {
+        if (wakeCallbackInstalled) return true
+        wakeCallbackInstalled = true
+        wakeEngine.setOnWakeListener { _ ->
+            handleWakeEvent()
+        }
+        return true
+    }
+
+    /**
+     * Phase 3 + Phase 9: Wake event gate.
+     * 7-step check before any action is taken.
+     */
+    private fun handleWakeEvent() {
+        val now = SystemClock.elapsedRealtime()
+
+        // Gate 1: Wake globally disabled.
+        if (!wakeEnabled) {
+            Log.d(TAG, "[WAKE_GATE] REJECT — wake disabled")
+            return
+        }
+
+        // Gate 2: Not in WAKE_LISTENING state.
+        if (!stateMachine.isWakeListening) {
+            Log.d(TAG, "[WAKE_GATE] REJECT — state=${stateMachine.state} (expected WAKE_LISTENING)")
+            return
+        }
+
+        // Gate 3: Mic owner must be WAKE_WORD (not STT).
+        val micOwner = micController.getCurrentOwner()
+        if (micOwner != null && micOwner != MicController.OWNER_WAKE) {
+            Log.d(TAG, "[WAKE_GATE] REJECT — mic owned by '$micOwner'")
+            return
+        }
+
+        // Gate 4: Cooldown.
+        if (now - lastWakeAcceptedAtMs < WAKE_COOLDOWN_MS) {
+            Log.d(TAG, "[WAKE_GATE] REJECT — cooldown (${now - lastWakeAcceptedAtMs}ms < ${WAKE_COOLDOWN_MS}ms)")
+            return
+        }
+
+        // Gate 5 + 6 + 7: AtomicBoolean session lock (prevents duplicate callbacks).
+        if (!wakeSessionActive.compareAndSet(false, true)) {
+            Log.d(TAG, "[WAKE_GATE] REJECT — wakeSessionActive already true")
+            return
+        }
+
+        // All gates passed.
+        lastWakeAcceptedAtMs = now
+        Log.i(TAG, "[WAKE_GATE] ACCEPT — starting acknowledgement")
+        startAcknowledgement()
+    }
+
+    /**
+     * Phase 8: Acknowledgement sequence.
+     * 1. Transition to ACKNOWLEDGING
+     * 2. Pause wake detector (mic released)
+     * 3. TTS "Yes Boss"
+     * 4. ONLY after TTS completes → start command STT
+     *
+     * During ACKNOWLEDGING: wake detector = OFF, command STT = OFF.
+     * This prevents "Yes Boss" from re-triggering wake detection.
+     */
+    private fun startAcknowledgement() {
+        // Transition state before anything else.
+        if (!stateMachine.transition(VoiceState.ACKNOWLEDGING)) {
+            Log.w(TAG, "Cannot enter ACKNOWLEDGING from ${stateMachine.state}")
+            wakeSessionActive.set(false)
+            return
+        }
+        notifyState()
+
+        // Phase 8: Pause wake detector FIRST, then speak.
+        // Mic must be free during TTS so speaker audio is not captured.
+        wakeEngine.pause()
+
+        speakAcknowledgement("Yes boss") {
+            // Phase 8: TTS fully complete → now start command STT.
+            startListeningForCommand()
+        }
+    }
+
+    /** Internal TTS for the acknowledgement phrase (no state changes on entry). */
+    private fun speakAcknowledgement(text: String, onComplete: () -> Unit) {
+        ttsEngine.speak(text) {
+            Log.i(TAG, "Acknowledgement TTS complete — starting command listening")
+            mainHandler.post(onComplete)
+        }
+    }
+
+    /**
+     * Sensitivity label → 0..1 value.
+     * "Low" = 0.5, "Balanced" = 0.8, "High" = 1.0.
      */
     fun setWakeSensitivity(label: String) {
         val value = when (label.lowercase()) {
-            "low" -> 0.5f
+            "low"  -> 0.5f
             "high" -> 1.0f
-            else -> 0.8f
+            else   -> 0.8f
         }
         wakeEngine.setSensitivity(value)
     }
+
+    /**
+     * Legacy toggle for UI button. Delegates to setWakeEnabled().
+     * Returns the new active state.
+     */
     fun toggleMonitoring(): Boolean {
-        if (wakeEngine.isMonitoringNow) {
-            wakeEngine.stopMonitoring()
-            if (stateMachine.state == VoiceState.WAKE) {
-                if (stateMachine.transition(VoiceState.IDLE)) notifyState()
-            }
-            Log.i(TAG, "Wake-word monitoring toggled OFF")
-            return false
-        }
-        val started = wakeEngine.startMonitoring()
-        if (started) {
-            Log.i(TAG, "Wake-word monitoring toggled ON")
-        } else {
-            Log.w(TAG, "Wake-word monitoring toggle failed to start")
-        }
-        return started
+        val nowEnabled = !wakeEnabled
+        setWakeEnabled(nowEnabled)
+        return nowEnabled
     }
 
     /**
-     * Starts listening for user command.
-     * Enforces single mic owner: stops any background audio recording before activating SpeechController.
+     * Starts command STT.
+     * Phase 7: Only allowed from ACKNOWLEDGING or COMMAND_LISTENING.
+     * Phase 6: Mic ownership check — STT must not start if wake engine holds mic.
      */
     fun startListeningForCommand() {
-        if (state == VoiceState.SPEAKING) {
+        // Guard: never allow STT while in WAKE_LISTENING (critical rule).
+        if (stateMachine.isWakeListening) {
+            Log.e(TAG, "FORBIDDEN: startListeningForCommand called during WAKE_LISTENING — ignoring")
+            return
+        }
+        if (stateMachine.state == VoiceState.SPEAKING) {
             ttsEngine.stop()
         }
 
-        // 1. Ensure background audio capture is completely stopped and released
-        if (audioCapture.isCapturing()) {
-            Log.d(TAG, "Stopping background audio capture before starting speech recognition")
-            audioCapture.stop()
-        }
+        // Ensure background audio capture is completely stopped.
+        if (audioCapture.isCapturing()) audioCapture.stop()
 
-        // 2. Unconditionally pause wake-word engine and release mic so SpeechController can acquire it
+        // Ensure wake engine mic is released before STT acquires.
         wakeEngine.pause()
 
-        if (!stateMachine.transition(VoiceState.LISTENING)) {
-            Log.w(TAG, "Cannot transition to LISTENING from $state — recovering state")
-            stateMachine.recoverFromError()
+        if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
+            // Try LISTENING (legacy alias) if COMMAND_LISTENING fails.
             if (!stateMachine.transition(VoiceState.LISTENING)) {
-                Log.e(TAG, "Failed to transition to LISTENING state")
-                return
+                Log.w(TAG, "Cannot enter COMMAND_LISTENING from ${stateMachine.state} — recovering")
+                stateMachine.recoverFromError()
+                if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
+                    Log.e(TAG, "Cannot start command listening — state machine stuck")
+                    wakeSessionActive.set(false)
+                    resumeWakeAfterCommand()
+                    return
+                }
             }
         }
         notifyState()
 
-        // Activate voice routing only for the duration of active listening
         audioRouteManager.activateVoiceRouting()
-
         playBeep()
 
-        // Immediate recognition startup (50ms) to avoid clipping user speech
         mainHandler.postDelayed({
-            if (state == VoiceState.LISTENING) {
+            if (stateMachine.isCommandListening) {
                 startRecognition()
             }
         }, 50L)
@@ -168,13 +302,12 @@ class VoiceRuntime(
 
         speechController.startListening(
             onResult = { utterance -> onCommandReceived(utterance) },
-            onError = { errorCode, errorMessage ->
-                Log.w(TAG, "Speech recognition error ($errorCode): $errorMessage")
+            onError  = { errorCode, errorMessage ->
+                Log.w(TAG, "STT error ($errorCode): $errorMessage")
                 handleError(errorCode, errorMessage)
             },
             onRmsChanged = { rms ->
                 if (rms > 2f) {
-                    // Reset command timeout when active speech / sound is being captured
                     mainHandler.removeCallbacks(commandTimeoutRunnable)
                     mainHandler.postDelayed(commandTimeoutRunnable, COMMAND_TIMEOUT_MS)
                 }
@@ -189,111 +322,154 @@ class VoiceRuntime(
         audioRouteManager.deactivateVoiceRouting()
 
         if (command.isBlank()) {
-            Log.i(TAG, "Empty utterance captured — returning to IDLE")
-            if (stateMachine.transition(VoiceState.IDLE)) notifyState()
+            Log.i(TAG, "Empty utterance — returning to wake mode")
+            resumeWakeAfterCommand()
             return
         }
 
         if (!stateMachine.transition(VoiceState.PROCESSING)) {
-            Log.w(TAG, "Command received but cannot transition to PROCESSING from $state")
+            Log.w(TAG, "Cannot transition to PROCESSING from ${stateMachine.state}")
+            resumeWakeAfterCommand()
             return
         }
         notifyState()
-        VoiceDiagnostics.logResult("Passing command to brain router: '$command'")
+        VoiceDiagnostics.logResult("Command: '$command'")
         commandCallback?.invoke(command)
     }
 
     private fun onCommandTimeout() {
-        Log.w(TAG, "Voice command timeout — no speech detected within ${COMMAND_TIMEOUT_MS}ms")
+        Log.w(TAG, "Command timeout after ${COMMAND_TIMEOUT_MS}ms")
         speechController.destroy()
         audioRouteManager.deactivateVoiceRouting()
         handleError(android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT, "Speech timeout")
     }
 
-    private fun handleError(errorCode: Int = android.speech.SpeechRecognizer.ERROR_CLIENT, reason: String) {
-        Log.w(TAG, "Voice error occurred ($errorCode): $reason")
+    private fun handleError(
+        errorCode: Int = android.speech.SpeechRecognizer.ERROR_CLIENT,
+        reason: String
+    ) {
+        Log.w(TAG, "Voice error ($errorCode): $reason")
         VoiceDiagnostics.logError(errorCode)
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         speechController.destroy()
         audioRouteManager.deactivateVoiceRouting()
 
-        if (stateMachine.transition(VoiceState.ERROR)) notifyState()
+        // Phase 12: RECOVERING state — no infinite restart loops.
+        if (stateMachine.transition(VoiceState.RECOVERING)) notifyState()
 
         mainHandler.postDelayed({
-            if (stateMachine.recoverFromError()) {
-                notifyState()
-                resumeWakeAfterCommand()
-            }
+            stateMachine.recoverFromError()
+            notifyState()
+            resumeWakeAfterCommand()
         }, ERROR_RECOVERY_MS)
     }
 
     /**
-     * Speaks assistant response via TTS and returns state to IDLE upon completion.
+     * Phase 12: Voice engine failure handler.
+     * AudioRecord / ONNX / STT / TTS / mic-unavailable → safe recovery.
+     */
+    private fun handleVoiceEngineFailure(component: String, error: Throwable) {
+        Log.e(TAG, "[$component] failure: ${error.message}")
+        mainHandler.post {
+            // 1. Release all resources.
+            try { audioCapture.stop() } catch (_: Exception) {}
+            try { speechController.destroy() } catch (_: Exception) {}
+            try { audioRouteManager.deactivateVoiceRouting() } catch (_: Exception) {}
+            micController.releaseAny()
+
+            // 2. Reset state.
+            if (stateMachine.transition(VoiceState.RECOVERING)) notifyState()
+
+            // 3. After a brief pause, return to wake or disabled.
+            mainHandler.postDelayed({
+                stateMachine.recoverFromError()
+                notifyState()
+                if (wakeEnabled) {
+                    // Re-start wake engine.
+                    val ok = wakeEngine.startMonitoring()
+                    if (ok && stateMachine.transition(VoiceState.WAKE_LISTENING)) notifyState()
+                } else {
+                    if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
+                }
+            }, ERROR_RECOVERY_MS * 3)
+        }
+    }
+
+    /**
+     * Speaks assistant response via TTS.
+     * After TTS completes, returns to wake mode if enabled.
      */
     fun speakResponse(text: String, onComplete: () -> Unit = {}) {
         audioRouteManager.deactivateVoiceRouting()
         if (text.isBlank()) {
-            if (stateMachine.transition(VoiceState.IDLE)) notifyState()
+            resumeWakeAfterCommand()
             onComplete()
             return
         }
 
         if (!stateMachine.transition(VoiceState.SPEAKING)) {
-            Log.d(TAG, "Forcing state transition to SPEAKING from $state for response delivery")
+            Log.d(TAG, "Forcing SPEAKING from ${stateMachine.state}")
             stateMachine.recoverFromError()
             stateMachine.transition(VoiceState.SPEAKING)
         }
         notifyState()
 
         ttsEngine.speak(text) {
-            Log.i(TAG, "TTS completed speaking — returning to IDLE")
+            Log.i(TAG, "Response TTS complete")
             mainHandler.postDelayed({
-                if (stateMachine.transition(VoiceState.IDLE)) notifyState()
                 audioRouteManager.ensureNormalAudioMode()
                 onComplete()
-                // A wake acknowledgement uses onComplete() to immediately
-                // acquire the command recognizer. Do not briefly resume the
-                // wake detector before that hand-off.
-                if (state == VoiceState.IDLE) resumeWakeAfterCommand()
+                resumeWakeAfterCommand()
             }, 100L)
         }
     }
 
-    fun setSpeechRate(rate: Float) {
-        ttsEngine.setSpeechRate(rate)
-    }
+    fun setSpeechRate(rate: Float) { ttsEngine.setSpeechRate(rate) }
 
     /**
-     * After a command cycle finishes (TTS done / error / timeout) hand the mic
-     * back to the wake-word detector if it was active.
+     * Phase 9: After a command cycle finishes, atomically reset the session lock
+     * and return the mic to the wake-word detector.
      */
     private fun resumeWakeAfterCommand() {
+        wakeSessionActive.set(false)
+        if (!wakeEnabled) {
+            if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
+            return
+        }
+        // Return to WAKE_LISTENING.
+        if (!stateMachine.transition(VoiceState.WAKE_LISTENING)) {
+            stateMachine.recoverFromError()
+            stateMachine.transition(VoiceState.WAKE_LISTENING)
+        }
+        notifyState()
         if (wakeEngine.isMonitoringNow) {
             wakeEngine.resume()
+        } else {
+            wakeEngine.startMonitoring()
         }
     }
 
     fun stopRuntime() {
         mainHandler.removeCallbacksAndMessages(null)
+        wakeSessionActive.set(false)
         audioCapture.stop()
         speechController.destroy()
         wakeEngine.stopMonitoring()
         audioRouteManager.deactivateVoiceRouting()
         ttsEngine.stop()
         if (stateMachine.transition(VoiceState.IDLE)) notifyState()
-        Log.i(TAG, "VoiceRuntime stopped — IDLE")
+        Log.i(TAG, "VoiceRuntime stopped")
     }
 
     fun release() {
         mainHandler.removeCallbacksAndMessages(null)
+        wakeSessionActive.set(false)
         audioCapture.stop()
         speechController.destroy()
         wakeEngine.release()
         audioRouteManager.release()
         ttsEngine.shutdown()
-        try {
-            tone?.release()
-        } catch (_: Exception) {}
+        try { tone?.release() } catch (_: Exception) {}
         tone = null
         stateListener = null
         stateMachine.transition(VoiceState.IDLE)
@@ -305,18 +481,14 @@ class VoiceRuntime(
             val beepTone = ToneGenerator(AudioManager.STREAM_SYSTEM, 50)
             beepTone.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
             mainHandler.postDelayed({
-                try {
-                    beepTone.release()
-                } catch (_: Exception) {}
+                try { beepTone.release() } catch (_: Exception) {}
             }, 100L)
         } catch (e: Exception) {
             Log.w(TAG, "Beep tone generation failed", e)
         }
     }
 
-    private fun notifyState() {
-        stateListener?.invoke(state)
-    }
+    private fun notifyState() { stateListener?.invoke(state) }
 
     fun getMicController(): MicController = micController
 }

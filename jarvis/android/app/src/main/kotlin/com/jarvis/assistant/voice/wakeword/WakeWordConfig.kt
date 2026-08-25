@@ -1,28 +1,30 @@
 package com.jarvis.assistant.voice.wakeword
 
 /**
- * Central wake-word configuration. Safe defaults; tune from real-device testing.
+ * Central wake-word configuration.
  *
- * @param enabled Master switch for offline wake-word listening.
- * @param sensitivity 0.0 (least sensitive / higher threshold) .. 1.0 (most
- *   sensitive / lower threshold). Mapped to the ONNX classifier threshold.
- * @param cooldownMs Minimum gap between two accepted wake events.
- * @param backgroundListeningEnabled Keep listening while the app is backgrounded.
- * @param fallbackTextMatchingEnabled Fall back to continuous STT text matching
- *   when the offline ONNX models are missing (degraded, battery-heavy path).
+ * Phase 1 fix: fallbackTextMatchingEnabled = false by default.
+ * This removes the SpeechRecognizer continuous-listening fallback.
+ * When ONNX models are unavailable the engine reports an error and stops —
+ * it does NOT fall back to continuous STT.
  */
 data class WakeWordConfig(
     val enabled: Boolean = true,
     var sensitivity: Float = 0.8f,
-    val cooldownMs: Long = 1500,
+    val cooldownMs: Long = 2500,        // Phase 9: raised from 1500 → 2500 ms
     val backgroundListeningEnabled: Boolean = true,
-    val fallbackTextMatchingEnabled: Boolean = true
+    // Phase 1 FIX: disabled by default — SpeechRecognizer must NEVER run in wake mode.
+    val fallbackTextMatchingEnabled: Boolean = false,
+    // Phase 4: temporal gate parameters
+    val temporalWindowSize: Int = 5,    // evaluate last N inference windows
+    val temporalPositiveCount: Int = 3, // require at least M positives in the window
+    val minConfidenceForPositive: Float = 0.55f  // per-window minimum to count as positive
 ) {
     companion object {
         /** Maps sensitivity (0..1) to a classifier detection threshold. */
         fun thresholdForSensitivity(sensitivity: Float): Float {
             val s = sensitivity.coerceIn(0f, 1f)
-            // sensitivity 1.0 -> 0.30 (eager); 0.0 -> 0.85 (strict)
+            // sensitivity 1.0 → 0.30 (eager); 0.0 → 0.85 (strict)
             return (0.85f - (0.55f * s)).coerceIn(0.25f, 0.9f)
         }
     }

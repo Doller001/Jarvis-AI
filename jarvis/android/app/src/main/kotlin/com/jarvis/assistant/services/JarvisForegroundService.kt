@@ -9,11 +9,20 @@ import android.os.IBinder
 import android.util.Log
 import com.jarvis.assistant.brain.JarvisBrain
 import com.jarvis.assistant.execution.CommandExecutor
+import com.jarvis.assistant.settings.SettingsManager
 import com.jarvis.assistant.voice.VoiceRuntime
 import com.jarvis.assistant.voice.VoiceState
 
+/**
+ * Foreground service that owns VoiceRuntime.
+ *
+ * Phase 2 fix: Reads SettingsManager.wakeWordEnabled AFTER startRuntime() and
+ * calls voiceRuntime.setWakeEnabled() as the SINGLE wake authority.
+ * UI must call setWakeEnabled() via the service — never touch WakeEngine directly.
+ */
 class JarvisForegroundService : Service() {
     private lateinit var voiceRuntime: VoiceRuntime
+    private lateinit var settingsManager: SettingsManager
     private val brain by lazy { JarvisBrain() }
     private val commandExecutor by lazy { CommandExecutor(applicationContext) }
 
@@ -27,28 +36,35 @@ class JarvisForegroundService : Service() {
         var onEnvironmentChanged: ((com.jarvis.assistant.voice.EnvironmentProfile) -> Unit)? = null
         var onAudioMetrics: ((com.jarvis.assistant.voice.AudioProcessingResult) -> Unit)? = null
         var speak: ((String) -> Unit)? = null
+        /** Phase 2: single authority toggle — delegates to voiceRuntime.setWakeEnabled(). */
         var toggleWakeListening: (() -> Boolean)? = null
         var setWakeSensitivity: ((String) -> Unit)? = null
         var startCommandListening: (() -> Unit)? = null
         var setSpeechRate: ((Float) -> Unit)? = null
 
         const val ACTION_START = "com.jarvis.assistant.START"
-        const val ACTION_STOP = "com.jarvis.assistant.STOP"
+        const val ACTION_STOP  = "com.jarvis.assistant.STOP"
         const val ACTION_LISTEN_FOR_COMMAND = "com.jarvis.assistant.LISTEN_FOR_COMMAND"
     }
 
     override fun onCreate() {
         super.onCreate()
+        settingsManager = SettingsManager(applicationContext)
         voiceRuntime = VoiceRuntime(applicationContext)
+
         speak = { text ->
             voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
         }
+        // Phase 2: toggleWakeListening → voiceRuntime.toggleMonitoring()
+        // which internally calls setWakeEnabled(). No direct engine access from UI.
         toggleWakeListening = {
             val active = voiceRuntime.toggleMonitoring()
+            settingsManager.wakeWordEnabled = active
             onWakeToggled?.invoke(active)
             active
         }
         setWakeSensitivity = { label ->
+            settingsManager.wakeSensitivity = label
             voiceRuntime.setWakeSensitivity(label)
         }
         startCommandListening = {
@@ -57,7 +73,7 @@ class JarvisForegroundService : Service() {
         setSpeechRate = { rate ->
             voiceRuntime.setSpeechRate(rate)
         }
-        Log.i("JarvisService", "Starting JarvisForegroundService runtime...")
+        Log.i("JarvisService", "JarvisForegroundService created")
         createNotificationChannel()
     }
 
@@ -81,18 +97,15 @@ class JarvisForegroundService : Service() {
         try {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R && hasMicPermission) {
                 startForeground(
-                    1001,
-                    notification,
+                    1001, notification,
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 )
             } else {
                 startForeground(1001, notification)
             }
         } catch (e: Exception) {
-            Log.e("JarvisService", "Failed to start foreground service with microphone type", e)
-            try {
-                startForeground(1001, notification)
-            } catch (ex: Exception) {
+            Log.e("JarvisService", "startForeground with mic type failed", e)
+            try { startForeground(1001, notification) } catch (ex: Exception) {
                 Log.e("JarvisService", "Fallback startForeground also failed", ex)
             }
         }
@@ -102,21 +115,15 @@ class JarvisForegroundService : Service() {
                 onStateChanged?.invoke(state)
                 updateNotification(state)
             }
-            voiceRuntime.onEnvironmentChanged = { env ->
-                onEnvironmentChanged?.invoke(env)
-            }
-            voiceRuntime.onAudioMetrics = { metrics ->
-                onAudioMetrics?.invoke(metrics)
-            }
+            voiceRuntime.onEnvironmentChanged = { env -> onEnvironmentChanged?.invoke(env) }
+            voiceRuntime.onAudioMetrics = { metrics -> onAudioMetrics?.invoke(metrics) }
+
             voiceRuntime.startRuntime { userUtterance ->
-                Log.i("JarvisService", "Received utterance in foreground service: '$userUtterance'")
+                Log.i("JarvisService", "Utterance: '$userUtterance'")
                 val uiHandler = onUtterance
                 if (uiHandler != null) {
                     uiHandler(userUtterance)
                 } else {
-                    // The service can outlive the activity. Keep local commands
-                    // working in that state, while never executing a risky action
-                    // without the UI's confirmation flow.
                     val plan = brain.processCommand(userUtterance)
                     val response = if (plan.requiresConfirmation) {
                         "Please open Jarvis to confirm this action."
@@ -126,6 +133,14 @@ class JarvisForegroundService : Service() {
                     voiceRuntime.speakResponse(response)
                 }
             }
+
+            // Phase 2: Apply wake setting AFTER startRuntime() — this is the
+            // authoritative moment when the detector is allowed to start.
+            val wakeEnabled = settingsManager.wakeWordEnabled
+            val sensitivity = settingsManager.wakeSensitivity
+            voiceRuntime.setWakeSensitivity(sensitivity)
+            voiceRuntime.setWakeEnabled(wakeEnabled)
+            Log.i("JarvisService", "Wake word enabled=$wakeEnabled, sensitivity=$sensitivity")
         }
 
         if (intent?.action == ACTION_LISTEN_FOR_COMMAND) {
@@ -137,35 +152,33 @@ class JarvisForegroundService : Service() {
 
     private fun updateNotification(state: VoiceState) {
         val text = when (state) {
-            VoiceState.IDLE -> "JARVIS Assistant Active"
-            VoiceState.WAKE -> "Listening for 'Hey Jarvis'"
-            VoiceState.LISTENING -> "Listening for command…"
-            VoiceState.PROCESSING -> "Processing…"
-            VoiceState.SPEAKING -> "Speaking…"
-            VoiceState.ERROR -> "Recovering…"
+            VoiceState.DISABLED           -> "Wake word OFF"
+            VoiceState.WAKE_LISTENING, VoiceState.WAKE -> "Listening for 'Hey Jarvis'"
+            VoiceState.ACKNOWLEDGING      -> "Acknowledging…"
+            VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> "Listening for command…"
+            VoiceState.PROCESSING         -> "Processing…"
+            VoiceState.SPEAKING           -> "Speaking…"
+            VoiceState.RECOVERING, VoiceState.ERROR -> "Recovering…"
+            VoiceState.IDLE               -> "JARVIS Assistant Active"
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager?.notify(1001, buildForegroundNotification().setContentText(text).build())
     }
 
     fun speakResponse(text: String) {
-        Log.i("JarvisService", "Speaking response: '$text'")
+        Log.i("JarvisService", "Speaking: '$text'")
         if (::voiceRuntime.isInitialized) {
-            voiceRuntime.speakResponse(text) {
-                onResponseDone?.invoke()
-            }
+            voiceRuntime.speakResponse(text) { onResponseDone?.invoke() }
         }
     }
 
     private fun createNotificationChannel() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                "jarvis_runtime",
-                "Jarvis Runtime Service",
+                "jarvis_runtime", "Jarvis Runtime Service",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
@@ -185,20 +198,18 @@ class JarvisForegroundService : Service() {
 
     override fun onDestroy() {
         isRunning = false
-        if (::voiceRuntime.isInitialized) {
-            voiceRuntime.release()
-        }
-        onUtterance = null
-        onResponseDone = null
-        onWakeToggled = null
-        onStateChanged = null
+        if (::voiceRuntime.isInitialized) voiceRuntime.release()
+        onUtterance          = null
+        onResponseDone       = null
+        onWakeToggled        = null
+        onStateChanged       = null
         onEnvironmentChanged = null
-        onAudioMetrics = null
-        speak = null
-        toggleWakeListening = null
-        setWakeSensitivity = null
+        onAudioMetrics       = null
+        speak                = null
+        toggleWakeListening  = null
+        setWakeSensitivity   = null
         startCommandListening = null
-        setSpeechRate = null
+        setSpeechRate        = null
         super.onDestroy()
     }
 

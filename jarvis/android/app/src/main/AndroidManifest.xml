@@ -90,6 +90,12 @@
             android:foregroundServiceType="microphone"
             android:exported="false" />
 
+        <!-- Floating Overlay Service -->
+        <service
+            android:name=".services.JarvisOverlayService"
+            android:exported="false" />
+
+
         <!-- Quick Settings Tile Service -->
         <service
             android:name=".services.JarvisQuickTileService"

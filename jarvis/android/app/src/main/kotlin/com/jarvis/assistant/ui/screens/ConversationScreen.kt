@@ -173,10 +173,9 @@ fun ConversationScreen(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                if (uiState.wakeListening) "Wake word on — say \"Hey Jarvis\"" else "Wake word paused",
+                if (uiState.wakeListening) "Wake word on — say \"Jarvis\" or \"Hey Jarvis\"" else "Wake word paused",
                 fontSize = 14.sp
             )
         }
     }
 }
-

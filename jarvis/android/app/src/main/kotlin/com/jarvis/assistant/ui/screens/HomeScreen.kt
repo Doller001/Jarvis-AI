@@ -46,7 +46,8 @@ fun HomeScreen(
     onOpenMemory: () -> Unit,
     onQuickAction: (String) -> Unit,
     onStartListening: () -> Unit = {},
-    onToggleWakeListening: () -> Unit = {}
+    onToggleWakeListening: () -> Unit = {},
+    onToggleOverlay: () -> Unit = {}
 ) {
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -150,12 +151,17 @@ fun HomeScreen(
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {
-                VoiceState.WAKE -> "SAY 'HEY JARVIS'"
-                VoiceState.LISTENING -> "LISTENING..."
-                VoiceState.PROCESSING -> "THINKING..."
-                VoiceState.SPEAKING -> "SPEAKING..."
-                VoiceState.ERROR -> "RECOVERING..."
-                VoiceState.IDLE -> if (uiState.wakeListening) "LISTENING FOR WAKE WORD" else "TAP MIC TO SPEAK"
+                VoiceState.DISABLED       -> "WAKE WORD OFF"
+                VoiceState.WAKE_LISTENING -> "SAY 'HEY JARVIS'"
+                VoiceState.ACKNOWLEDGING  -> "YES BOSS..."
+                VoiceState.COMMAND_LISTENING -> "LISTENING..."
+                VoiceState.RECOVERING     -> "RECOVERING..."
+                VoiceState.WAKE           -> "SAY 'HEY JARVIS'"
+                VoiceState.LISTENING      -> "LISTENING..."
+                VoiceState.PROCESSING     -> "THINKING..."
+                VoiceState.SPEAKING       -> "SPEAKING..."
+                VoiceState.ERROR          -> "RECOVERING..."
+                VoiceState.IDLE           -> if (uiState.wakeListening) "LISTENING FOR WAKE WORD" else "TAP MIC TO SPEAK"
             }
 
             Text(
@@ -174,31 +180,65 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Wake-word toggle (offline "Hey Jarvis" detection)
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = if (uiState.wakeListening) CyanGlow.copy(alpha = 0.2f) else DarkCardBg,
-                border = BorderStroke(1.dp, if (uiState.wakeListening) CyanGlow else TextGray),
-                onClick = onToggleWakeListening,
-                modifier = Modifier.height(36.dp)
+            // Controls Row: Wake word toggle + Floating Overlay toggle
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 14.dp)
+                // Wake-word toggle (offline "Hey Jarvis" detection)
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (uiState.wakeListening) CyanGlow.copy(alpha = 0.2f) else DarkCardBg,
+                    border = BorderStroke(1.dp, if (uiState.wakeListening) CyanGlow else TextGray),
+                    onClick = onToggleWakeListening,
+                    modifier = Modifier.height(36.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.Mic,
-                        contentDescription = null,
-                        tint = if (uiState.wakeListening) CyanGlow else TextGray,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        if (uiState.wakeListening) "Wake word ON" else "Wake word OFF",
-                        color = if (uiState.wakeListening) CyanGlow else TextGray,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 14.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Mic,
+                            contentDescription = null,
+                            tint = if (uiState.wakeListening) CyanGlow else TextGray,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            if (uiState.wakeListening) "Wake word ON" else "Wake word OFF",
+                            color = if (uiState.wakeListening) CyanGlow else TextGray,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Floating UI Overlay Toggle
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (uiState.isOverlayActive) CyanGlow.copy(alpha = 0.2f) else DarkCardBg,
+                    border = BorderStroke(1.dp, if (uiState.isOverlayActive) CyanGlow else TextGray),
+                    onClick = onToggleOverlay,
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 14.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Layers,
+                            contentDescription = null,
+                            tint = if (uiState.isOverlayActive) CyanGlow else TextGray,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            if (uiState.isOverlayActive) "Overlay ON" else "Floating UI",
+                            color = if (uiState.isOverlayActive) CyanGlow else TextGray,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 

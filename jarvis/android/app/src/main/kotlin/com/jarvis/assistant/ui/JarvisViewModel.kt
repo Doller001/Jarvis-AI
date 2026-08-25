@@ -51,7 +51,8 @@ data class JarvisUiState(
     val isPinging: Boolean = false,
     val environmentProfile: String = "Indoor (Quiet)",
     val noiseFloorDb: Float = -58f,
-    val audioSnrDb: Float = 0f
+    val audioSnrDb: Float = 0f,
+    val isOverlayActive: Boolean = false
 )
 
 class JarvisViewModel(application: Application) : AndroidViewModel(application) {
@@ -255,6 +256,21 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         settingsManager.wakeSensitivity = sensitivity
         JarvisForegroundService.setWakeSensitivity?.invoke(sensitivity)
         _uiState.update { it.copy(wakeSensitivity = sensitivity) }
+    }
+
+    fun toggleOverlay() {
+        val context = getApplication<Application>()
+        if (com.jarvis.assistant.overlay.OverlayController.hasOverlayPermission(context)) {
+            if (com.jarvis.assistant.services.JarvisOverlayService.isRunning) {
+                com.jarvis.assistant.overlay.OverlayController.hide(context)
+                _uiState.update { it.copy(isOverlayActive = false) }
+            } else {
+                com.jarvis.assistant.overlay.OverlayController.show(context)
+                _uiState.update { it.copy(isOverlayActive = true) }
+            }
+        } else {
+            com.jarvis.assistant.overlay.OverlayController.openPermissionSettings(context)
+        }
     }
 
     fun clearHistory() {
