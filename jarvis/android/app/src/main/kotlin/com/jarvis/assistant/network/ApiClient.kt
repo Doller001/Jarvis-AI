@@ -32,9 +32,9 @@ class ApiClient(var baseUrl: String = "https://and9-1.onrender.com") {
         private val sharedClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
-                .connectTimeout(3500, TimeUnit.MILLISECONDS)
-                .readTimeout(15000, TimeUnit.MILLISECONDS)
-                .writeTimeout(5000, TimeUnit.MILLISECONDS)
+                .connectTimeout(3000, TimeUnit.MILLISECONDS)
+                .readTimeout(5000, TimeUnit.MILLISECONDS)
+                .writeTimeout(3000, TimeUnit.MILLISECONDS)
                 .retryOnConnectionFailure(true)
                 .build()
         }

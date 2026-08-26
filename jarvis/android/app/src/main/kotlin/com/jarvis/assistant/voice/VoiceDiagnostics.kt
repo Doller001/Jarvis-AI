@@ -19,9 +19,7 @@ object VoiceDiagnostics {
     }
 
     fun logRms(rmsdB: Float) {
-        if (rmsdB > 2f) {
-            Log.v(TAG, "[VOICE_DIAG] RMS: rmsDb=${"%.1f".format(rmsdB)}")
-        }
+        // Suppress per-frame RMS logs to eliminate I/O and CPU overhead
     }
 
     fun logBegin() {

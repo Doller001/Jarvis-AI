@@ -44,9 +44,10 @@ class VoiceRuntime(
 ) {
     companion object {
         private const val TAG = "VoiceRuntime"
-        private const val COMMAND_TIMEOUT_MS   = 8000L
-        private const val ERROR_RECOVERY_MS    = 500L
-        private const val WAKE_COOLDOWN_MS     = 2500L  // Phase 9
+        private const val COMMAND_TIMEOUT_MS      = 8000L
+        private const val PROCESSING_TIMEOUT_MS   = 6000L
+        private const val ERROR_RECOVERY_MS       = 500L
+        private const val WAKE_COOLDOWN_MS        = 2500L  // Phase 9
     }
 
     private val stateMachine = VoiceStateMachine(VoiceState.IDLE)
@@ -69,6 +70,7 @@ class VoiceRuntime(
     var onRmsChanged: ((Float) -> Unit)? = null
 
     private val commandTimeoutRunnable = Runnable { onCommandTimeout() }
+    private val processingTimeoutRunnable = Runnable { onProcessingTimeout() }
 
     fun setStateListener(listener: (VoiceState) -> Unit) {
         stateListener = listener
@@ -202,7 +204,6 @@ class VoiceRuntime(
      * This prevents "Yes Boss" from re-triggering wake detection.
      */
     private fun startAcknowledgement() {
-        // Transition state before anything else.
         if (!stateMachine.transition(VoiceState.ACKNOWLEDGING)) {
             Log.w(TAG, "Cannot enter ACKNOWLEDGING from ${stateMachine.state}")
             wakeSessionActive.set(false)
@@ -210,22 +211,13 @@ class VoiceRuntime(
         }
         notifyState()
 
-        // Phase 8: Pause wake detector FIRST, then speak.
-        // Mic must be free during TTS so speaker audio is not captured.
+        // Phase 4: Low-latency wake transition (≤ 100ms)
         wakeEngine.pause()
+        playBeep()
 
-        speakAcknowledgement("Yes boss") {
-            // Phase 8: TTS fully complete → now start command STT.
+        mainHandler.postDelayed({
             startListeningForCommand()
-        }
-    }
-
-    /** Internal TTS for the acknowledgement phrase (no state changes on entry). */
-    private fun speakAcknowledgement(text: String, onComplete: () -> Unit) {
-        ttsEngine.speak(text) {
-            Log.i(TAG, "Acknowledgement TTS complete — starting command listening")
-            mainHandler.post(onComplete)
-        }
+        }, 80L)
     }
 
     /**
@@ -330,7 +322,19 @@ class VoiceRuntime(
         }
         notifyState()
         VoiceDiagnostics.logResult("Command: '$command'")
+
+        // Phase 3 Fix: Watchdog timer prevents 75-second hang in PROCESSING
+        mainHandler.removeCallbacks(processingTimeoutRunnable)
+        mainHandler.postDelayed(processingTimeoutRunnable, PROCESSING_TIMEOUT_MS)
+
         commandCallback?.invoke(command)
+    }
+
+    private fun onProcessingTimeout() {
+        Log.w(TAG, "[PROCESSING_TIMEOUT] Command processing took > ${PROCESSING_TIMEOUT_MS}ms — resetting session")
+        if (stateMachine.state == VoiceState.PROCESSING) {
+            handleError(android.speech.SpeechRecognizer.ERROR_NETWORK_TIMEOUT, "Processing timeout")
+        }
     }
 
     private fun onCommandTimeout() {
@@ -347,6 +351,7 @@ class VoiceRuntime(
         Log.w(TAG, "Voice error ($errorCode): $reason")
         VoiceDiagnostics.logError(errorCode)
         mainHandler.removeCallbacks(commandTimeoutRunnable)
+        mainHandler.removeCallbacks(processingTimeoutRunnable)
         speechController.destroy()
         audioSessionManager.endSession()
 
@@ -396,6 +401,7 @@ class VoiceRuntime(
      * After TTS completes, returns to wake mode if enabled.
      */
     fun speakResponse(text: String, onComplete: () -> Unit = {}) {
+        mainHandler.removeCallbacks(processingTimeoutRunnable)
         audioRouteManager.deactivateVoiceRouting()
         if (text.isBlank()) {
             resumeWakeAfterCommand()
@@ -427,6 +433,7 @@ class VoiceRuntime(
      * and return the mic to the wake-word detector.
      */
     private fun resumeWakeAfterCommand() {
+        mainHandler.removeCallbacks(processingTimeoutRunnable)
         wakeSessionActive.set(false)
         lastWakeAcceptedAtMs = SystemClock.elapsedRealtime()
         if (!wakeEnabled) {

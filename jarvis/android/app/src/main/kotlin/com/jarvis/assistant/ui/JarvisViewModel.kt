@@ -313,7 +313,11 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
                     runtimeState = state
                 )
             }
-            if (shouldSpeak) JarvisForegroundService.speak?.invoke(response)
+            if (shouldSpeak) {
+                JarvisForegroundService.speak?.invoke(response)
+            } else {
+                JarvisForegroundService.onResponseDone?.invoke()
+            }
         }
     }
 

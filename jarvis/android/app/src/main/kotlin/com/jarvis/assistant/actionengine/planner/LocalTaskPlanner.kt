@@ -74,7 +74,7 @@ class LocalTaskPlanner {
                     ActionStep(
                         actionId = "step_2",
                         action = ActionType.WAIT,
-                        parameters = mapOf("durationMs" to 1000L),
+                        parameters = mapOf("durationMs" to 500L),
                         prerequisites = listOf("step_1")
                     )
                 )
@@ -90,7 +90,7 @@ class LocalTaskPlanner {
                     ActionStep(
                         actionId = "step_4",
                         action = ActionType.WAIT,
-                        parameters = mapOf("durationMs" to 1500L),
+                        parameters = mapOf("durationMs" to 500L),
                         prerequisites = listOf("step_3")
                     )
                 )

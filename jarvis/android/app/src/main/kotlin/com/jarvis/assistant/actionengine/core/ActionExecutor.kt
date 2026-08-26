@@ -387,8 +387,14 @@ class ActionExecutor(private val context: Context? = null) {
                 Pair(ok, mapOf("btState" to state))
             }
             ActionType.PLAY_MEDIA -> {
-                val ok = mediaController.playMedia()
-                Pair(ok, null)
+                val query = step.parameters["query"] as? String
+                val app = step.parameters["app"] as? String ?: "youtube"
+                val ok = if (!query.isNullOrBlank()) {
+                    appController.playMediaOnApp(query, app)
+                } else {
+                    mediaController.playMedia()
+                }
+                Pair(ok, mapOf("mediaPlayed" to (query ?: "resumed"), "app" to app))
             }
             ActionType.TAKE_SELFIE -> {
                 val opened = cameraController.takeSelfie()
