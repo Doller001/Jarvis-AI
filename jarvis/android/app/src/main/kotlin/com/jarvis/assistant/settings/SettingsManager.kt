@@ -14,7 +14,7 @@ class SettingsManager(context: Context) {
         const val KEY_WAKE_ENABLED = "key_wake_enabled"
         const val KEY_WAKE_SENSITIVITY = "key_wake_sensitivity"
 
-        const val DEFAULT_BACKEND_URL = "https://and9-1.onrender.com"
+        const val DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
         const val DEFAULT_TTS_ENABLED = true
         const val DEFAULT_SPEECH_RATE = 1.0f
         // Sensitivity: "Low"=0.5f, "Balanced"=0.8f, "High"=1.0f

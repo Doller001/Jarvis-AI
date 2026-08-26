@@ -11,7 +11,7 @@ import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
 
 class WebSocketClient(
-    var wsUrl: String = "wss://and9-1.onrender.com/ws",
+    var wsUrl: String = "ws://127.0.0.1:8000/ws",
     val connectionManager: ConnectionManager = ConnectionManager(),
     var sessionId: String? = null
 ) {
