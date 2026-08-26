@@ -295,10 +295,6 @@ class VoiceRuntime(
                 handleError(errorCode, errorMessage)
             },
             onRmsChanged = { rms ->
-                if (rms > 2f) {
-                    mainHandler.removeCallbacks(commandTimeoutRunnable)
-                    mainHandler.postDelayed(commandTimeoutRunnable, COMMAND_TIMEOUT_MS)
-                }
                 onRmsChanged?.invoke(rms)
             }
         )

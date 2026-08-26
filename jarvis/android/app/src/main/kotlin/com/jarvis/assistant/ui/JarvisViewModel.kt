@@ -338,7 +338,8 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        apiClient.sendChat(promptText, "android-device") { answer ->
+        val deviceSessionId = settingsManager.deviceId
+        apiClient.sendChat(promptText, deviceSessionId) { answer ->
             viewModelScope.launch(Dispatchers.IO) {
                 val response = answer ?: "JARVIS is operating in local mode. All on-device systems, hardware controls, and local memories are active."
                 engine.recordEpisode("assistant", response)

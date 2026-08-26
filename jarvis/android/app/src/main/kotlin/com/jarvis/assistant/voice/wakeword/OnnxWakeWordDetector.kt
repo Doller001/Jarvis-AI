@@ -68,6 +68,9 @@ class OnnxWakeWordDetector(
         const val EMB_INPUT  = "input_1"
         const val CLS_INPUT  = "input"
         const val CLS_OUTPUT = "score"
+
+        // Stride: evaluate ONNX inference every 80ms (1280 samples) instead of every 20ms
+        const val INFERENCE_STRIDE_SAMPLES = 1280
     }
 
     private val ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
@@ -81,6 +84,7 @@ class OnnxWakeWordDetector(
     private val pcmRing = ShortArray(PCM_BUFFER_SAMPLES)
     @Volatile private var pcmWritePos = 0
     @Volatile private var pcmFilled  = 0
+    private var samplesSinceLastInference = 0
 
     private var listener: WakeWordListener? = null
     private val cooldown = WakeCooldown(config.cooldownMs)
@@ -97,6 +101,10 @@ class OnnxWakeWordDetector(
     private var calibrationRmsSum = 0.0
     private val calibrationTarget = 30  // number of silent windows to calibrate
     @Volatile private var calibrated = false
+
+    // Reusable buffers to eliminate per-frame GC allocations
+    private val classifyWindow = FloatArray(CLASSIFY_WINDOW_SAMPLES)
+    private val last16Buffer = FloatArray(MIN_EMBEDDINGS * EMBEDDING_DIM)
 
     private val threshold: Float
         get() = WakeWordConfig.thresholdForSensitivity(config.sensitivity)
@@ -164,15 +172,23 @@ class OnnxWakeWordDetector(
         }
         if (pcmFilled < CLASSIFY_WINDOW_SAMPLES) return null
 
-        // 2. Extract last 2.0 s as float32.
-        val window = FloatArray(CLASSIFY_WINDOW_SAMPLES)
+        samplesSinceLastInference += length
+        if (samplesSinceLastInference < INFERENCE_STRIDE_SAMPLES) {
+            return null
+        }
+        samplesSinceLastInference = 0
+
+        // 2. Extract last 2.0 s as float32 into preallocated classifyWindow.
         val startIdx = (pcmWritePos - CLASSIFY_WINDOW_SAMPLES + PCM_BUFFER_SAMPLES) % PCM_BUFFER_SAMPLES
+        var sumSquares = 0.0
         for (i in 0 until CLASSIFY_WINDOW_SAMPLES) {
-            window[i] = pcmRing[(startIdx + i) % PCM_BUFFER_SAMPLES] / 32768.0f
+            val sample = pcmRing[(startIdx + i) % PCM_BUFFER_SAMPLES] / 32768.0f
+            classifyWindow[i] = sample
+            sumSquares += sample * sample
         }
 
         // 3. Phase 10: Adaptive noise gate.
-        val rms = sqrt(window.sumOf { (it * it).toDouble() } / window.size).toFloat()
+        val rms = sqrt(sumSquares / CLASSIFY_WINDOW_SAMPLES).toFloat()
         val dynamicThreshold = noiseFloor * 2.5f  // signal must be 2.5× noise floor
         if (!calibrated) {
             // Calibration phase: sample quiet-ish windows to estimate noise floor.
@@ -188,26 +204,30 @@ class OnnxWakeWordDetector(
             // During calibration use fixed base floor.
             if (rms < BASE_AUDIO_RMS) return null
         } else {
+            // Smooth continuous upward/downward adaptation under ambient noise
+            noiseFloor = (noiseFloor * 0.995f + rms * 0.005f).coerceIn(BASE_AUDIO_RMS, 0.08f)
             if (rms < dynamicThreshold.coerceAtLeast(BASE_AUDIO_RMS)) {
-                // Below noise floor — update floor estimate and skip inference.
-                noiseFloor = (noiseFloor * 0.98f + rms * 0.02f).coerceAtLeast(BASE_AUDIO_RMS)
+                // Below noise floor — skip expensive inference
                 return null
             }
         }
 
         // 4. Mel spectrogram.
-        val mel = runMel(window) ?: return null
+        val mel = runMel(classifyWindow) ?: return null
 
         // 5. Embeddings.
         val embeddings = runEmbeddings(mel) ?: return null
         if (embeddings.size < MIN_EMBEDDINGS * EMBEDDING_DIM) return null
-        val last16 = embeddings.copyOfRange(
+        System.arraycopy(
+            embeddings,
             embeddings.size - MIN_EMBEDDINGS * EMBEDDING_DIM,
-            embeddings.size
+            last16Buffer,
+            0,
+            MIN_EMBEDDINGS * EMBEDDING_DIM
         )
 
         // 6. Classifier score.
-        val score = runClassifier(last16)
+        val score = runClassifier(last16Buffer)
 
         // 7. Phase 4: Temporal gate.
         scoreWindow[scoreWindowIdx] = score

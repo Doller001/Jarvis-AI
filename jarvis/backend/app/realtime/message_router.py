@@ -106,8 +106,22 @@ class MessageRouter:
             await connection_manager.send_json(session_id, err.model_dump())
             return
 
-        exec_res = await tool_executor.execute_tool(valid_payload.action, valid_payload.parameters)
-        response_text = exec_res.get("result") or f"Jarvis confirmed and executed '{valid_payload.action}'."
+        from app.agent.execution_models import ActionVerification, ExecutionPlan, PlannedAction
+        from app.agent.execution_orchestrator import execution_orchestrator
+
+        planned_action = PlannedAction(
+            id=f"cmd-conf-{payload.request_id}",
+            tool=valid_payload.action,
+            parameters=valid_payload.parameters,
+            verification=ActionVerification(type="device_ack")
+        )
+        plan = ExecutionPlan(
+            request_id=payload.request_id,
+            session_id=session_id,
+            actions=[planned_action]
+        )
+        report = await execution_orchestrator.execute_plan(plan)
+        response_text = report.message or f"Jarvis confirmed and executed '{valid_payload.action}'."
         memory_manager.record_assistant_message(session_id, response_text)
 
         res = {
@@ -117,7 +131,11 @@ class MessageRouter:
             "action": valid_payload.action,
             "parameters": valid_payload.parameters,
             "response_text": response_text,
-            "execution_result": exec_res
+            "execution_result": {
+                "status": report.status,
+                "verified": report.verified_actions > 0,
+                "actions": report.actions
+            }
         }
         await connection_manager.send_json(session_id, res)
 

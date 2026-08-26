@@ -61,6 +61,10 @@ class BackendHealthManager(
     private var retryAttempt = 0
 
     fun start() {
+        val deviceId = context?.let { com.jarvis.assistant.settings.SettingsManager(it).deviceId }
+        if (deviceId != null) {
+            webSocketClient.sessionId = deviceId
+        }
         registerNetworkCallback()
         setupWebSocketListeners()
         startPeriodicHealthCheck()

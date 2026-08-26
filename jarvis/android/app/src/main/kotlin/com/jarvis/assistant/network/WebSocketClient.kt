@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
 
 class WebSocketClient(
     var wsUrl: String = "wss://and9-1.onrender.com/ws",
-    val connectionManager: ConnectionManager = ConnectionManager()
+    val connectionManager: ConnectionManager = ConnectionManager(),
+    var sessionId: String? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var reconnectJob: Job? = null
@@ -58,9 +59,15 @@ class WebSocketClient(
     fun connect() {
         disconnectRequested = false
         reconnectJob?.cancel()
-        Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $wsUrl...")
+        val targetUrl = sessionId?.let { sid ->
+            if (wsUrl.contains("session_id=")) wsUrl
+            else if (wsUrl.contains("?")) "$wsUrl&session_id=$sid"
+            else "$wsUrl?session_id=$sid"
+        } ?: wsUrl
+
+        Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $targetUrl...")
         connectionManager.setConnectionState(ConnectionState.CONNECTING)
-        val request = Request.Builder().url(wsUrl).build()
+        val request = Request.Builder().url(targetUrl).build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -94,7 +101,10 @@ class WebSocketClient(
             put("text", text)
         }.toString()
         Log.i("WebSocketClient", "Sending command over WebSocket: '$text' (req: $requestId)")
-        webSocket?.send(payload)
+        val sent = webSocket?.send(payload) ?: false
+        if (!sent) {
+            Log.w("WebSocketClient", "Failed to send command over WebSocket (socket disconnected or closed)")
+        }
     }
 
     fun disconnect() {

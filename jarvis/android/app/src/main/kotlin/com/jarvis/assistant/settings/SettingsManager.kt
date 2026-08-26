@@ -40,4 +40,14 @@ class SettingsManager(context: Context) {
     var wakeSensitivity: String
         get() = prefs.getString(KEY_WAKE_SENSITIVITY, DEFAULT_WAKE_SENSITIVITY) ?: DEFAULT_WAKE_SENSITIVITY
         set(value) = prefs.edit().putString(KEY_WAKE_SENSITIVITY, value).apply()
+
+    val deviceId: String
+        get() {
+            var id = prefs.getString("key_device_id", null)
+            if (id.isNullOrBlank()) {
+                id = "device_${java.util.UUID.randomUUID().toString().take(12)}"
+                prefs.edit().putString("key_device_id", id).apply()
+            }
+            return id
+        }
 }

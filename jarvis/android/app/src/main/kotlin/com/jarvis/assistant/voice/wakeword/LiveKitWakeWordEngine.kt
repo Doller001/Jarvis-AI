@@ -92,18 +92,22 @@ class LiveKitWakeWordEngine(
 
         detector.setListener(object : WakeWordListener {
             override fun onWakeWordDetected() {
-                // Guard: only fire if engine is still actively monitoring
-                // and not paused for a command session.
                 if (!isMonitoring || pausedForCommand) {
                     Log.d(TAG, "Wake event suppressed (isMonitoring=$isMonitoring, paused=$pausedForCommand)")
                     return
                 }
-                Log.i(TAG, "Wake word detected — firing callback")
-                onWakeCallback?.invoke(null)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    if (isMonitoring && !pausedForCommand) {
+                        Log.i(TAG, "Wake word detected — firing callback")
+                        onWakeCallback?.invoke(null)
+                    }
+                }
             }
             override fun onWakeWordError(error: Throwable) {
                 Log.e(TAG, "Wake-word detector error", error)
-                onErrorCallback?.invoke(error)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    onErrorCallback?.invoke(error)
+                }
             }
         })
 
@@ -180,26 +184,23 @@ class LiveKitWakeWordEngine(
     }
 
     /**
-     * Phase 8: Hands the mic to the command recognizer.
-     * Must be called BEFORE TTS "Yes Boss" starts — mic must be free during TTS
-     * to prevent the acknowledgement from being captured as a new wake event.
+     * Hands the mic to the command recognizer.
+     * Prevents self-join if called from the audio thread and stops capture safely.
      */
     fun pause() {
         if (!isMonitoring) return
         pausedForCommand = true
 
-        releaseAudioRecord()
-        detector.pause()
-
         val threadToJoin = captureThread
         captureThread = null
-        if (threadToJoin != null && threadToJoin.isAlive) {
+        if (threadToJoin != null && threadToJoin.isAlive && Thread.currentThread() != threadToJoin) {
             try {
                 threadToJoin.interrupt()
                 threadToJoin.join(150)
             } catch (_: Exception) {}
         }
-        // Mic already released by releaseAudioRecord()
+        releaseAudioRecord()
+        detector.pause()
         Log.i(TAG, "Wake-word paused — microphone released for command mode")
     }
 
@@ -231,9 +232,14 @@ class LiveKitWakeWordEngine(
     fun stopMonitoring() {
         isMonitoring     = false
         pausedForCommand = false
-        captureThread?.interrupt()
-        try { captureThread?.join(1000) } catch (_: Exception) {}
+        val threadToJoin = captureThread
         captureThread = null
+        if (threadToJoin != null && threadToJoin.isAlive && Thread.currentThread() != threadToJoin) {
+            try {
+                threadToJoin.interrupt()
+                threadToJoin.join(1000)
+            } catch (_: Exception) {}
+        }
         releaseAudioRecord()
         detector.stop()
         Log.i(TAG, "Wake-word monitoring stopped")

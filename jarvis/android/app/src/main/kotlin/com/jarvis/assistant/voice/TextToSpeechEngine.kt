@@ -87,6 +87,13 @@ class TextToSpeechEngine(private val context: Context? = null) {
                 }
             }
 
+            override fun onStop(uttId: String?, interrupted: Boolean) {
+                Log.d(TAG, "TTS playback stopped/interrupted: $uttId (interrupted=$interrupted)")
+                if (uttId != null) {
+                    utteranceCallbacks.remove(uttId)?.invoke()
+                }
+            }
+
             @Deprecated("Deprecated in Java")
             override fun onError(uttId: String?) {
                 Log.w(TAG, "TTS playback error: $uttId")
@@ -105,13 +112,22 @@ class TextToSpeechEngine(private val context: Context? = null) {
     }
 
     private fun flushPendingQueue(error: Boolean = false) {
+        val items = mutableListOf<Pair<String, () -> Unit>>()
         while (!pendingQueue.isEmpty()) {
             val item = pendingQueue.poll() ?: break
-            if (error) {
-                item.second()
-            } else {
-                speak(item.first, item.second)
+            items.add(item)
+        }
+        if (items.isEmpty()) return
+
+        if (error) {
+            items.forEach { it.second() }
+        } else {
+            // Keep the last utterance to speak and invoke previous callbacks so state does not hang
+            for (i in 0 until items.size - 1) {
+                items[i].second()
             }
+            val last = items.last()
+            speak(last.first, last.second)
         }
     }
 

@@ -127,6 +127,9 @@ dependencies {
     // Sherpa-ONNX / ONNX Runtime Mobile — runs the offline wake-word models (melspectrogram,
     // embedding_model, hey_jarvis) entirely on-device with zero external cloud dependencies.
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+
+    // Baseline Profiles & Startup Optimization
+    implementation("androidx.profileinstaller:profileinstaller:1.3.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
     testImplementation("org.mockito:mockito-core:5.10.0")

@@ -180,11 +180,13 @@ class SpeechController(
 
                     val (_, detailedMessage) = VoiceDiagnostics.getErrorDetails(error)
 
-                    // If user spoke and partial results were captured before error/silence, recover it
+                    // If user spoke and partial results were captured before error/silence/network glitch, recover it
                     if (lastRecognizedText.isNotBlank() && (
                             error == AndroidSpeechRecognizer.ERROR_NO_MATCH ||
                             error == AndroidSpeechRecognizer.ERROR_SPEECH_TIMEOUT ||
-                            error == AndroidSpeechRecognizer.ERROR_CLIENT
+                            error == AndroidSpeechRecognizer.ERROR_CLIENT ||
+                            error == AndroidSpeechRecognizer.ERROR_NETWORK ||
+                            error == AndroidSpeechRecognizer.ERROR_NETWORK_TIMEOUT
                         )) {
                         VoiceDiagnostics.logResult("$lastRecognizedText (recovered from partial)")
                         val text = lastRecognizedText
