@@ -172,15 +172,15 @@ class ExecutionOrchestrator:
 
         # Device Action Dispatch over WebSocket
         if not connection_manager.is_connected(session_id):
-            logger.info(f"[EXEC] Device session {session_id} not connected to WebSocket — falling back to local executor format")
-            res = await tool_executor.execute_tool(action.tool, action.parameters)
+            logger.warning(f"[EXEC] Device session '{session_id}' is not connected to WebSocket — cannot execute device action '{action.tool}'")
             return ActionExecutionResult(
                 command_id=action.id,
                 request_id=request_id,
-                status=ActionStatus.VERIFIED,
-                executed=True,
-                verified=True,
-                data=res
+                status=ActionStatus.DISPATCH_FAILED,
+                executed=False,
+                verified=False,
+                error_code="DEVICE_OFFLINE",
+                error_message=f"Android device is not connected; cannot execute '{action.tool.replace('_', ' ')}'."
             )
 
         # Register pending command with future

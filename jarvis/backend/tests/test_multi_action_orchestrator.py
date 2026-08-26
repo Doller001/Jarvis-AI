@@ -66,3 +66,16 @@ async def test_real_health_endpoints():
         data = dep_res.json()
         assert data["backend"] == "ok"
         assert "available_llm_providers" in data
+
+
+@pytest.mark.asyncio
+async def test_device_offline_rejection_no_fake_verification():
+    """Verifies that device commands are rejected when device is offline, preventing fake success."""
+    plan = task_planner.plan_utterance("open settings", session_id="offline-device-session", request_id="r-offline-1")
+    report = await execution_orchestrator.execute_plan(plan)
+
+    assert report.status == "failed"
+    assert report.verified_actions == 0
+    assert report.total_actions == 1
+    assert "not connected" in report.message.lower() or "could not complete" in report.message.lower()
+    assert report.actions[0]["status"] == ActionStatus.DISPATCH_FAILED
