@@ -431,7 +431,7 @@ class VoiceRuntime(
     private fun resumeWakeAfterCommand() {
         mainHandler.removeCallbacks(processingTimeoutRunnable)
         wakeSessionActive.set(false)
-        lastWakeAcceptedAtMs = SystemClock.elapsedRealtime()
+        lastWakeAcceptedAtMs = 0L   // Reset cooldown — allow wake immediately after response
         if (!wakeEnabled) {
             if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
             return

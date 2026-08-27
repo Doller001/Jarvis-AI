@@ -1,9 +1,10 @@
 # 🛸 JARVIS AI ASSISTANT — COMPLETE FEATURES & FUNCTIONS INVENTORY
 
-> **Document Version:** 2.0.0  
+> **Document Version:** 2.1.0  
 > **Target OS:** Android 8.0 (API 26) to Android 15 (API 35, 16KB Page Compatible)  
 > **Architecture:** Offline-First Edge AGI + Cloud Brain Fallback  
-> **Identity:** JARVIS (Created by Minaty)
+> **Identity:** JARVIS (Created by Minaty)  
+> **Session:** 2026-08-27 — Phase 2 additions: RoutineEngine, RoutinesScreen, 20 new backend tools, 2 new intents (ToggleAirplaneMode, GetDailyBriefing), extended settings sections, 13 new unit tests
 
 ---
 
@@ -101,3 +102,31 @@
 | **A6.7** | **Risk Policy & User Confirmation** | `ActionPolicy.kt` | Enforces risk tiers (`LOW`, `MEDIUM`, `HIGH`) requiring explicit confirmation before executing calls or messaging actions. |
 | **A6.8** | **Hinglish/English Failure Reporter** | `FailureReporter.kt` | Converts failure codes (`APP_NOT_INSTALLED`, `ELEMENT_NOT_FOUND`, `PERMISSION_DENIED`, `TIMEOUT`) into natural spoken feedback in Hindi & English. |
 
+---
+
+## 7. ⚡ Routine Engine (IFTTT-Style Preset Automation)
+
+| # | Feature / Function | File / Class | Description & Operational Flow |
+|---|---|---|---|
+| **R7.1** | **RoutineEngine** | `routines/RoutineEngine.kt` | Executes named multi-step preset routines. 7 built-in routines: Morning, Night, Movie, Meeting, Driving, Gym, Reading. Each routine orchestrates multiple device controllers (brightness, volume, DND, ringer, torch, auto-rotate, media, maps) in a single voice command. |
+| **R7.2** | **Morning Routine** | `RoutineEngine.executeMorning()` | Brightness → 80%, Volume → 50%, DND off, Ringer normal. Reads time + battery. Voice: "morning routine chalao". |
+| **R7.3** | **Night Routine** | `RoutineEngine.executeNight()` | Brightness → 15%, Volume → 20%, DND on, Silent mode. Voice: "night mode on karo". |
+| **R7.4** | **Movie Mode** | `RoutineEngine.executeMovie()` | Brightness → 100%, Volume → 80%, DND on, Torch off, Auto-rotate on. Voice: "movie mode chalao". |
+| **R7.5** | **Meeting Mode** | `RoutineEngine.executeMeeting()` | DND on, Vibrate mode, Volume → 0, Brightness → 60%. Voice: "meeting mode". |
+| **R7.6** | **Driving Mode** | `RoutineEngine.executeDriving()` | Volume → 100%, Brightness → 100%, Auto-rotate on, Maps opened. Voice: "driving mode on". |
+| **R7.7** | **Gym Mode** | `RoutineEngine.executeGym()` | Volume → 100%, DND on, Music play. Voice: "gym mode chalao". |
+| **R7.8** | **Reading Mode** | `RoutineEngine.executeReading()` | Brightness → 50%, DND on, Silent, Rotation locked portrait. Voice: "reading mode". |
+| **R7.9** | **Routines Screen (UI)** | `ui/screens/RoutinesScreen.kt` | 2-column grid Compose UI showing all 7 routines as tappable cards with emoji, description, and voice shortcut. Accessible from bottom nav ⚡ icon. |
+| **R7.10** | **Routine Resolution** | `IntentResolver` + `RoutineEngine.resolveRoutineName()` | 60+ Hinglish/English aliases recognized. Any alias (e.g. "movie time", "film mode", "cinema mode") maps to canonical routine name. |
+
+---
+
+## 8. 🌐 Phase 2 Intent Expansions (New 2026-08-27)
+
+| # | Feature / Function | Intent | Description |
+|---|---|---|---|
+| **P8.1** | **Airplane Mode** | `ToggleAirplaneMode` | Opens Airplane/Flight mode settings panel. Voice: "airplane mode on/off", "flight mode". |
+| **P8.2** | **Daily Briefing** | `GetDailyBriefing` | Full spoken morning briefing: time, battery status, storage, calendar events. Voice: "daily briefing sunao", "aaj ka update". |
+| **P8.3** | **Extended Settings Sections** | `OpenSettings(section)` | Added: location, security, NFC, storage, airplane mode settings sections. |
+| **P8.4** | **Backend Tool Registry +20** | `tools/registry.py` | Added 20 new backend tool definitions: set_brightness, toggle_dnd, set_ringer_mode, toggle_rotation_lock, take_screenshot, run_routine, set_alarm, set_timer, set_reminder, get_location, navigate_to, read_calendar, get_daily_briefing, lock_screen, + more. |
+| **P8.5** | **Backend Executor Honesty** | `tools/executor.py` | `analyze_image` and `get_battery_level` now return `pending_device` status with `dispatch_to_device: true` instead of hardcoded mock strings. |

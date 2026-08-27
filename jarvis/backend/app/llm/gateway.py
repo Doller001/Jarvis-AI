@@ -32,13 +32,13 @@ class LLMGateway:
         chain = []
         if requested_provider and requested_provider in llm_registry._providers:
             p = llm_registry._providers[requested_provider]
-            chain.append((requested_provider, lambda p=p: retry_policy.execute(lambda p=p: p.generate(req))))
+            chain.append((requested_provider, lambda p=p: retry_policy.execute(lambda: p.generate(req))))
         elif active_provider:
-            chain.append((active_provider.provider_name, lambda p=active_provider: retry_policy.execute(lambda p=active_provider: p.generate(req))))
+            chain.append((active_provider.provider_name, lambda p=active_provider: retry_policy.execute(lambda: p.generate(req))))
 
         for p_name, p in llm_registry._providers.items():
             if not any(c[0] == p_name for c in chain):
-                chain.append((p_name, lambda p=p: retry_policy.execute(lambda p=p: p.generate(req))))
+                chain.append((p_name, lambda p=p: retry_policy.execute(lambda: p.generate(req))))
 
         async def _local_fallback() -> LLMResponse:
             p = prompt.lower().strip()

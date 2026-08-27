@@ -31,11 +31,17 @@ class ToolExecutor:
 
         if tool_name == "analyze_image":
             prompt = parameters.get("prompt", "Describe this image in detail.")
+            # Real implementation requires the Android device runtime to capture and
+            # forward image frames to the vision provider. The backend dispatches
+            # the request to the connected device via WebSocket and awaits the result.
+            # Until device connectivity is active, return a dispatch request.
             return {
-                "status": "success",
+                "status": "pending_device",
                 "tool": "analyze_image",
-                "result": f"Multimodal analysis completed for prompt '{prompt}'. Image shows UI components and controls.",
-                "parameters": parameters
+                "result": "Requesting visual analysis from device runtime. Please wait.",
+                "dispatch_to_device": True,
+                "device_action": "ANALYZE_VISION",
+                "parameters": parameters,
             }
 
         if tool_name == "get_time":
@@ -48,10 +54,14 @@ class ToolExecutor:
             }
 
         if tool_name == "get_battery_level":
+            # Battery level is a live device metric — dispatch to connected device runtime.
+            # The Android CommandExecutor responds to the device_action BATTERY_STATUS.
             return {
-                "status": "success",
+                "status": "pending_device",
                 "tool": tool_name,
-                "result": "Battery level is 85%",
+                "result": "Querying device battery status…",
+                "dispatch_to_device": True,
+                "device_action": "BATTERY_STATUS",
                 "parameters": parameters,
             }
 
@@ -80,6 +90,43 @@ class ToolExecutor:
         elif tool_name == "whatsapp_send":
             contact = parameters.get("contact_name", "contact")
             result_msg = f"Sending WhatsApp message to {contact}."
+        # === New Phase 1+2 tool handlers ===
+        elif tool_name == "set_brightness":
+            result_msg = f"Setting brightness to {level if level is not None else 50}%."
+        elif tool_name == "toggle_dnd":
+            result_msg = f"Do Not Disturb {state or 'toggled'}."
+        elif tool_name == "set_ringer_mode":
+            mode = parameters.get("mode", "normal")
+            result_msg = f"Ringer mode set to {mode}."
+        elif tool_name == "toggle_rotation_lock":
+            result_msg = f"Rotation lock {'enabled' if state == 'on' else 'disabled'}."
+        elif tool_name == "take_screenshot":
+            result_msg = "Capturing screenshot."
+        elif tool_name == "run_routine":
+            routine = parameters.get("routine", "morning")
+            result_msg = f"Activating {routine} routine on device."
+        elif tool_name == "set_alarm":
+            hour = parameters.get("hour", 7)
+            minute = parameters.get("minute", 0)
+            result_msg = f"Setting alarm for {hour:02d}:{minute:02d}."
+        elif tool_name == "set_timer":
+            seconds = parameters.get("seconds", 60)
+            result_msg = f"Starting {seconds}s countdown timer."
+        elif tool_name == "set_reminder":
+            mins = parameters.get("delay_minutes", 60)
+            msg = parameters.get("message", "Reminder")
+            result_msg = f"Setting reminder in {mins} minutes: {msg}."
+        elif tool_name == "get_location":
+            result_msg = "Requesting current device location."
+        elif tool_name == "navigate_to":
+            place = parameters.get("place", "destination")
+            result_msg = f"Opening navigation to {place}."
+        elif tool_name == "read_calendar":
+            result_msg = "Reading upcoming calendar events from device."
+        elif tool_name == "get_daily_briefing":
+            result_msg = "Requesting daily briefing from device: time, battery, storage, calendar."
+        elif tool_name == "lock_screen":
+            result_msg = "Locking device screen."
         else:
             result_msg = f"Executed {tool_name}."
 

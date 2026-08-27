@@ -19,6 +19,7 @@ import com.jarvis.assistant.ui.screens.MemoryScreen
 import com.jarvis.assistant.ui.screens.OnboardingScreen
 import com.jarvis.assistant.ui.screens.ProvidersScreen
 import com.jarvis.assistant.ui.screens.SettingsScreen
+import com.jarvis.assistant.ui.screens.RoutinesScreen
 import com.jarvis.assistant.ui.theme.JarvisTheme
 
 class MainActivity : ComponentActivity() {
@@ -56,6 +57,7 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onOpenPermissions = { navController.navigate("onboarding") },
                 onOpenSettings = { navController.navigate("settings") },
                 onOpenMemory = { navController.navigate("memory") },
+                onOpenRoutines = { navController.navigate("routines") },
                 onQuickAction = { viewModel.executeQuickAction(it) },
                 onStartListening = viewModel::startListening,
                 onToggleWakeListening = viewModel::toggleWakeListening,
@@ -101,6 +103,15 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onClearHistory = viewModel::clearHistory
             )
         }
+        composable("routines") {
+            RoutinesScreen(
+                onBack = { navController.popBackStack() },
+                onRunRoutine = { routineName ->
+                    viewModel.sendUtterance("$routineName mode")
+                }
+            )
+        }
     }
         }
 }
+

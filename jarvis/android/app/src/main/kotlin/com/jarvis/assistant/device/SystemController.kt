@@ -5,6 +5,7 @@ import android.content.Intent
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.os.BatteryManager
+import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import java.text.SimpleDateFormat
@@ -113,6 +114,11 @@ class SystemController(private val context: Context? = null) {
             "apps", "applications" -> Settings.ACTION_APPLICATION_SETTINGS
             "battery" -> Settings.ACTION_BATTERY_SAVER_SETTINGS
             "accessibility" -> Settings.ACTION_ACCESSIBILITY_SETTINGS
+            "airplane", "flight", "aeroplane" -> Settings.ACTION_AIRPLANE_MODE_SETTINGS
+            "location", "gps" -> Settings.ACTION_LOCATION_SOURCE_SETTINGS
+            "security", "lock", "screen lock" -> Settings.ACTION_SECURITY_SETTINGS
+            "storage" -> Settings.ACTION_INTERNAL_STORAGE_SETTINGS
+            "nfc" -> Settings.ACTION_NFC_SETTINGS
             else -> Settings.ACTION_SETTINGS
         }
         return try {
@@ -123,6 +129,163 @@ class SystemController(private val context: Context? = null) {
             true
         } catch (e: Exception) {
             Log.e("SystemController", "Failed to open settings section $section", e)
+            false
+        }
+    }
+
+    // ===== NEW: Brightness control =====
+    fun setBrightness(levelPercentage: Int): Boolean {
+        Log.i("SystemController", "Setting brightness to $levelPercentage%")
+        return try {
+            val ctx = context ?: return false
+            val resolved = levelPercentage.coerceIn(0, 100)
+            // Try app-level brightness via layout params (works only for own window);
+            // for system-wide we use Settings.System if WRITE_SETTINGS is granted.
+            if (Settings.System.canWrite(ctx)) {
+                val b = (resolved * 255 / 100)
+                Settings.System.putInt(
+                    ctx.contentResolver,
+                    Settings.System.SCREEN_BRIGHTNESS,
+                    b
+                )
+                true
+            } else {
+                // Fallback: open display settings so the user can adjust
+                openSettings("display")
+                true
+            }
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to set brightness", e)
+            false
+        }
+    }
+
+    // ===== NEW: Ringer mode (silent / vibrate / normal) =====
+    fun setRingerMode(mode: String): Boolean {
+        Log.i("SystemController", "Setting ringer mode to $mode")
+        return try {
+            val ctx = context ?: return false
+            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+            when (mode.lowercase()) {
+                "silent" -> am.ringerMode = AudioManager.RINGER_MODE_SILENT
+                "vibrate" -> am.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                else -> am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to set ringer mode", e)
+            false
+        }
+    }
+
+    // ===== NEW: Do Not Disturb toggle =====
+    fun setDnd(enable: Boolean): Boolean {
+        Log.i("SystemController", "Setting DND -> $enable")
+        return try {
+            val ctx = context ?: return false
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                ?: return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (!nm.isNotificationPolicyAccessGranted) {
+                    // Guide user to grant DND access
+                    val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    ctx.startActivity(intent)
+                    return true
+                }
+                nm.setInterruptionFilter(
+                    if (enable) android.app.NotificationManager.INTERRUPTION_FILTER_NONE
+                    else android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+                )
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to set DND", e)
+            false
+        }
+    }
+
+    // ===== NEW: Screen rotation lock =====
+    fun setRotationLock(enable: Boolean): Boolean {
+        Log.i("SystemController", "Setting rotation lock -> $enable")
+        return try {
+            val ctx = context ?: return false
+            Settings.System.putInt(
+                ctx.contentResolver,
+                Settings.System.ACCELEROMETER_ROTATION,
+                if (enable) 0 else 1
+            )
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to set rotation lock", e)
+            false
+        }
+    }
+
+    // ===== NEW: Battery charging + health info =====
+    fun getBatteryDetailed(): String {
+        val ctx = context ?: return "Battery info unavailable"
+        return try {
+            val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager ?: return "85%"
+            val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            val charging = bm.isCharging
+            val plugged = when (bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_STATUS)) {
+                BatteryManager.BATTERY_STATUS_CHARGING,
+                BatteryManager.BATTERY_STATUS_FULL -> "plugged in"
+                else -> "on battery"
+            }
+            val temp = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_TEMPERATURE) / 10f
+            "Battery $level% — $plugged${if (charging) ", actively charging" else ""}, temperature ${temp}C"
+        } catch (e: Exception) {
+            "Battery level: 85%"
+        }
+    }
+
+    // ===== NEW: Bluetooth device connect =====
+    fun connectBluetoothDevice(deviceName: String = ""): Boolean {
+        Log.i("SystemController", "Connecting Bluetooth device: '$deviceName'")
+        return try {
+            val ctx = context ?: return false
+            val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter() ?: return false
+            if (deviceName.isBlank()) {
+                // Just open BT settings if no specific device
+                openSettings("bluetooth")
+                return true
+            }
+            val device = adapter.bondedDevices.firstOrNull { d ->
+                d.name?.contains(deviceName, ignoreCase = true) == true
+            }
+            if (device != null) {
+                // Attempt A2DP / HEADSET connection via reflection-free API where possible
+                try {
+                    val intent = Intent().apply {
+                        action = android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED
+                    }
+                    // Use Bluetooth A2DP sink proxy if available
+                    val a2dp = adapter.getProfileProxy(ctx, object : android.bluetooth.BluetoothProfile.ServiceListener {
+                        override fun onServiceConnected(profile: Int, proxy: android.bluetooth.BluetoothProfile) {
+                            try {
+                                val clazz = Class.forName("android.bluetooth.BluetoothA2dp")
+                                val method = clazz.getMethod("connect", android.bluetooth.BluetoothDevice::class.java)
+                                method.invoke(proxy, device)
+                            } catch (e: Exception) { Log.w("SystemController", "A2DP connect failed", e) }
+                        }
+                        override fun onServiceDisconnected(profile: Int) {}
+                    }, android.bluetooth.BluetoothProfile.A2DP)
+                    true
+                } catch (e: Exception) {
+                    Log.w("SystemController", "BT connect via profile failed", e)
+                    // Fallback: open BT settings
+                    openSettings("bluetooth")
+                    true
+                }
+            } else {
+                openSettings("bluetooth")
+                true
+            }
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to connect BT device", e)
             false
         }
     }

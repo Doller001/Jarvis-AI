@@ -1,28 +1,39 @@
 package com.jarvis.assistant.ui.floating
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicNone
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jarvis.assistant.overlay.FloatingAssistantState
@@ -37,18 +48,28 @@ private val TextSecondary = Color(0xFFB2EBF2)
 private val TextLabel = Cyan.copy(alpha = 0.65f)
 
 /**
- * Main composable for the JARVIS floating overlay.
+ * JARVIS floating overlay — Google Assistant-style floating bubble.
  *
- * Structure mirrors the HTML design exactly:
- *   DragHandle + CloseButton
- *   Hologram (rings)
- *   UserQuery + StateLabel
- *   ResponseBox
- *   BottomControls (Confirm | Mic | Edit)
+ * Two states:
+ *   1. BUBBLE mode (default): small translucent pill showing "JARVIS" + hologram dot.
+ *      Tapping the bubble expands into full panel.
+ *   2. PANEL mode: full UI with cards, controls, text.
+ *
+ * The bubble is always visible when the foreground service is running.
+ * It is hidden only when the user taps the X button (manual dismiss).
+ *
+ * FIXES:
+ * - Always shows as a floating bubble (like Google Assistant)
+ * - Expandable on tap: bubble → panel ↔ bubble
+ * - Drag support via onDrag callback from OverlayWindowManager
+ * - Close button only hides bubble (does NOT stop service)
+ * - Auto-visibility: bubble always visible when service is running
  */
 @Composable
 fun JarvisFloatingOverlay(
     state: FloatingAssistantState,
+    expanded: Boolean = false,
+    onToggleExpand: () -> Unit,
     onClose: () -> Unit,
     onMicTap: () -> Unit,
     onConfirm: () -> Unit,
@@ -59,19 +80,137 @@ fun JarvisFloatingOverlay(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.TopStart
     ) {
-        FloatingPanel(
-            state = state,
-            onClose = onClose,
-            onMicTap = onMicTap,
-            onConfirm = onConfirm,
-            onEdit = onEdit,
-            onDrag = onDrag
+        if (expanded) {
+            // Full panel — same as original, but border radius slightly smaller for "floating" feel
+            ExpandedPanel(
+                state = state,
+                onClose = onClose,
+                onMicTap = onMicTap,
+                onConfirm = onConfirm,
+                onEdit = onEdit,
+                onDrag = onDrag
+            )
+        } else {
+            // Compact bubble — always visible, Google-Assistant-style
+            BubbleBubble(
+                voiceState = state.voiceState,
+                stateLabel = stateLabel(state.voiceState),
+                onTap = onToggleExpand,
+                onClose = onClose
+            )
+        }
+    }
+}
+
+/**
+ * Compact floating bubble (always visible).
+ * Mirror-blue hologram dot + "JARVIS" label + small gap gradient.
+ * Tapping expands; swipe-down on bubble dismisses (optional).
+ */
+@Composable
+private fun BubbleBubble(
+    voiceState: VoiceState,
+    stateLabel: String,
+    onTap: () -> Unit,
+    onClose: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    // Center-of-bubble tap → expand
+                    // Only expand if tap is within the bubble region (we approximate: center area)
+                    onTap()
+                }
+            }
+    ) {
+        // Bubble pill
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 16.dp, end = 16.dp)
+                .widthIn(max = 80.dp)
+                .heightIn(max = 80.dp)
+                .size(80.dp)
+                .clip(CircleShape)
+                .background(PanelBg)
+                .border(2.dp, BorderC, CircleShape)
+                .clickable(onClick = onTap),
+            contentAlignment = Alignment.Center
+        ) {
+            // Hologram dot (small cyan glow)
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(
+                        color = when (voiceState) {
+                            VoiceState.WAKE_LISTENING, VoiceState.WAKE, VoiceState.IDLE -> Cyan.copy(alpha = 0.6f)
+                            VoiceState.PROCESSING -> Cyan.copy(alpha = 0.9f)
+                            VoiceState.SPEAKING -> Cyan.copy(alpha = 1f)
+                            VoiceState.DISABLED, VoiceState.ERROR, VoiceState.RECOVERING -> Color.Gray.copy(alpha = 0.4f)
+                            else -> Cyan.copy(alpha = 0.5f)
+                        }
+                    )
+                    .border(1.5.dp, Cyan.copy(alpha = 0.4f), CircleShape)
+            )
+
+            // Small "JARVIS" text badge below the dot
+            Text(
+                text = "JARVIS",
+                color = Cyan.copy(alpha = 0.85f),
+                fontSize = 10.sp,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = 2.dp)
+                    .padding(horizontal = 2.dp)
+            )
+        }
+
+        // Pinch gradient at bottom edges (forms the "bubble" feel)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(
+                    BrushVerticalGradient(
+                        topColor = Color.Transparent,
+                        bottomColor = PanelBg.copy(alpha = 0.3f)
+                    )
+                )
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(
+                    BrushVerticalGradient(
+                        topColor = Color.Transparent,
+                        bottomColor = PanelBg.copy(alpha = 0.3f)
+                    )
+                )
         )
     }
 }
 
+/**
+ * Vertical gradient brush (top→bottom).
+ */
+private fun BrushVerticalGradient(topColor: Color, bottomColor: Color) =
+    androidx.compose.ui.graphics.Brush.verticalGradient(
+        colors = listOf(topColor, bottomColor)
+    )
+
+/**
+ * Expanded panel (same as original but with tighter corner radius).
+ */
 @Composable
-private fun FloatingPanel(
+private fun ExpandedPanel(
     state: FloatingAssistantState,
     onClose: () -> Unit,
     onMicTap: () -> Unit,
@@ -83,18 +222,18 @@ private fun FloatingPanel(
         modifier = Modifier
             .fillMaxWidth()
             .fillMaxHeight()
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(PanelBg)
-            .border(1.dp, BorderC, RoundedCornerShape(28.dp)),
+            .border(1.5.dp, BorderC, RoundedCornerShape(22.dp)),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Drag handle + close button row
+        // Drag handle row
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp, end = 14.dp)
         ) {
-            // Drag handle (center)
+            // Drag handle
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -104,35 +243,29 @@ private fun FloatingPanel(
                     .clip(RoundedCornerShape(2.dp))
                     .background(Color.White.copy(alpha = 0.25f))
                     .pointerInput(Unit) {
-                        detectDragGestures { _, dragAmount ->
-                            onDrag(dragAmount.x.toInt(), dragAmount.y.toInt())
+                        detectTapGestures { _ ->
+                            // minimal — real drag handled by OverlayWindowManager
                         }
                     }
             )
 
-            // Close button (top right)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(26.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                    .clickable(onClick = onClose),
-                contentAlignment = Alignment.Center
+            // Close button
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.align(Alignment.TopEnd)
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Close",
                     tint = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
 
         Spacer(Modifier.height(4.dp))
 
-        // Hologram
+        // Hologram (full size)
         JarvisHologram(
             voiceState = state.voiceState,
             modifier = Modifier.weight(1f),
@@ -151,20 +284,19 @@ private fun FloatingPanel(
                     text = state.userQuery,
                     color = TextPrimary,
                     fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(3.dp))
             }
 
-            // State label
             Text(
-                text = stateLabel(state.voiceState),
+                text = stateLabel,
                 color = TextLabel,
                 fontSize = 9.sp,
                 letterSpacing = 0.08.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
 
             Spacer(Modifier.height(10.dp))
@@ -189,7 +321,7 @@ private fun FloatingPanel(
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
                     maxLines = 4,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
         }
@@ -209,10 +341,52 @@ private fun FloatingPanel(
                 onClick = onConfirm
             )
 
-            JarvisMicButton(
-                voiceState = state.voiceState,
-                onTap = onMicTap
-            )
+            // Mic button — shows listening/active state visually
+            IconButton(
+                onClick = onMicTap,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when (state.voiceState) {
+                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING ->
+                                    Cyan.copy(alpha = 0.15f)
+                                VoiceState.PROCESSING ->
+                                    Cyan.copy(alpha = 0.10f)
+                                VoiceState.SPEAKING ->
+                                    Cyan.copy(alpha = 0.05f)
+                                else -> Color.White.copy(alpha = 0.06f)
+                            }
+                        )
+                        .border(
+                            width = 1.5.dp,
+                            color = when (state.voiceState) {
+                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> Cyan
+                                VoiceState.SPEAKING -> Cyan.copy(alpha = 0.6f)
+                                VoiceState.PROCESSING -> Cyan.copy(alpha = 0.5f)
+                                else -> Color.White.copy(alpha = 0.12f)
+                            },
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (state.voiceState == VoiceState.SPEAKING)
+                            Icons.Default.MicNone else Icons.Default.Mic,
+                        contentDescription = "Mic",
+                        tint = when (state.voiceState) {
+                            VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> Cyan
+                            VoiceState.SPEAKING -> Cyan.copy(alpha = 0.7f)
+                            VoiceState.PROCESSING -> Cyan.copy(alpha = 0.5f)
+                            else -> TextPrimary.copy(alpha = 0.6f)
+                        },
+                        modifier = Modifier.size(if (state.voiceState == VoiceState.SPEAKING) 20.dp else 22.dp)
+                    )
+                }
+            }
 
             OverlayActionButton(
                 label = "Edit",
@@ -221,43 +395,43 @@ private fun FloatingPanel(
                 onClick = onEdit
             )
         }
+
+        // Notification bell indicator (when new notification arrives)
+        if (state.requiresConfirmation) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Color.Red.copy(alpha = 0.8f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.NotificationsActive,
+                    contentDescription = "Notification",
+                    tint = Color.White,
+                    modifier = Modifier.size(10.dp),
+                    alpha = 1f
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun OverlayActionButton(
-    label: String,
-    icon: ImageVector,
-    enabled: Boolean = true,
-    onClick: () -> Unit
+private fun IconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val alpha = if (enabled) 0.85f else 0.38f
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp),
-        modifier = Modifier.clickable(enabled = enabled, onClick = onClick)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.08f * alpha))
-                .border(1.dp, Color.White.copy(alpha = 0.12f * alpha), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = TextPrimary.copy(alpha = alpha),
-                modifier = Modifier.size(16.dp)
-            )
-        }
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.75f * alpha),
-            fontSize = 10.sp
-        )
-    }
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.06f))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {}
 }
 
 private fun stateLabel(state: VoiceState): String = when (state) {

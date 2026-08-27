@@ -138,5 +138,95 @@ class ToolRegistry:
             parameters={"contact_name": ToolParameter(type="string", description="Contact name"), "message": ToolParameter(type="string", description="Message text")}
         ))
 
+        # === New Phase 1+2 tools ===
+        self.register(ToolDefinition(
+            name="set_brightness",
+            description="Set device screen brightness (0-100%).",
+            risk_level="safe",
+            parameters={"level": ToolParameter(type="integer", description="Brightness level 0-100")}
+        ))
+        self.register(ToolDefinition(
+            name="toggle_dnd",
+            description="Toggle Do Not Disturb mode on or off.",
+            risk_level="safe",
+            parameters={"state": ToolParameter(type="string", description="on or off", enum=["on", "off"])}
+        ))
+        self.register(ToolDefinition(
+            name="set_ringer_mode",
+            description="Set phone ringer mode to silent, vibrate, or normal.",
+            risk_level="safe",
+            parameters={"mode": ToolParameter(type="string", description="silent, vibrate, or normal", enum=["silent", "vibrate", "normal"])}
+        ))
+        self.register(ToolDefinition(
+            name="toggle_rotation_lock",
+            description="Enable or disable screen rotation lock.",
+            risk_level="safe",
+            parameters={"state": ToolParameter(type="string", description="on (locked) or off (auto-rotate)", enum=["on", "off"])}
+        ))
+        self.register(ToolDefinition(
+            name="take_screenshot",
+            description="Capture a screenshot of the current screen.",
+            risk_level="safe"
+        ))
+        self.register(ToolDefinition(
+            name="run_routine",
+            description=(
+                "Activate a preset multi-step device routine. "
+                "Available routines: morning (brightness up, volume up, DND off), "
+                "night (brightness down, DND on, silent), movie (max brightness/volume, DND on), "
+                "meeting (DND on, vibrate, muted), driving (max volume/brightness, Maps open), "
+                "gym (max volume, DND on, music play), reading (50% brightness, DND on, silent)."
+            ),
+            risk_level="safe",
+            parameters={"routine": ToolParameter(type="string", description="Routine name", enum=["morning", "night", "movie", "meeting", "driving", "gym", "reading"])}
+        ))
+        self.register(ToolDefinition(
+            name="set_alarm",
+            description="Set an alarm at a specified hour (24h clock).",
+            risk_level="safe",
+            parameters={"hour": ToolParameter(type="integer", description="Hour in 24h format (0-23)"), "minute": ToolParameter(type="integer", description="Minute (0-59)", required=False)}
+        ))
+        self.register(ToolDefinition(
+            name="set_timer",
+            description="Start a countdown timer for a specified number of seconds.",
+            risk_level="safe",
+            parameters={"seconds": ToolParameter(type="integer", description="Duration in seconds")}
+        ))
+        self.register(ToolDefinition(
+            name="set_reminder",
+            description="Set a reminder to fire after a specified number of minutes.",
+            risk_level="safe",
+            parameters={"delay_minutes": ToolParameter(type="integer", description="Minutes until reminder fires"), "message": ToolParameter(type="string", description="Reminder message")}
+        ))
+        self.register(ToolDefinition(
+            name="get_location",
+            description="Get the device's current coarse location description.",
+            risk_level="safe",
+            permissions=["ACCESS_COARSE_LOCATION"]
+        ))
+        self.register(ToolDefinition(
+            name="navigate_to",
+            description="Open navigation directions to a specified place.",
+            risk_level="safe",
+            parameters={"place": ToolParameter(type="string", description="Destination place name or address")}
+        ))
+        self.register(ToolDefinition(
+            name="read_calendar",
+            description="Read upcoming calendar events for today.",
+            risk_level="safe",
+            permissions=["READ_CALENDAR"]
+        ))
+        self.register(ToolDefinition(
+            name="get_daily_briefing",
+            description="Get a full morning briefing: time, battery, storage, and calendar events.",
+            risk_level="safe"
+        ))
+        self.register(ToolDefinition(
+            name="lock_screen",
+            description="Lock the device screen immediately.",
+            risk_level="safe"
+        ))
+
 
 tool_registry = ToolRegistry()
+

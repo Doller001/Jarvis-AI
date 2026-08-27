@@ -44,6 +44,7 @@ fun HomeScreen(
     onOpenPermissions: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenMemory: () -> Unit,
+    onOpenRoutines: () -> Unit = {},
     onQuickAction: (String) -> Unit,
     onStartListening: () -> Unit = {},
     onToggleWakeListening: () -> Unit = {},
@@ -71,7 +72,7 @@ fun HomeScreen(
             JarvisBottomNavigation(
                 onHome = {},
                 onData = onOpenMemory,
-                onMap = onOpenProviders,
+                onRoutines = onOpenRoutines,
                 onCommunication = onOpenConversation,
                 onSettings = onOpenSettings
             )
@@ -269,7 +270,8 @@ fun HomeScreen(
                 onAnalyzeData = { onQuickAction("analyze data") },
                 onVoiceCommand = onOpenConversation,
                 onHomeControl = { onQuickAction("home control") },
-                onSchedule = { onQuickAction("schedule") }
+                onSchedule = { onQuickAction("schedule") },
+                onRoutines = onOpenRoutines
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -334,7 +336,8 @@ fun ActionGrid(
     onAnalyzeData: () -> Unit,
     onVoiceCommand: () -> Unit,
     onHomeControl: () -> Unit,
-    onSchedule: () -> Unit
+    onSchedule: () -> Unit,
+    onRoutines: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
@@ -378,10 +381,15 @@ fun ActionGrid(
             ActionCard(
                 icon = Icons.Default.CalendarMonth,
                 title = "Schedule",
-                modifier = Modifier.weight(0.5f),
+                modifier = Modifier.weight(1f),
                 onClick = onSchedule
             )
-            Spacer(modifier = Modifier.weight(0.5f)) // Empty space to match the layout
+            ActionCard(
+                icon = Icons.Default.FlashOn,
+                title = "Routines",
+                modifier = Modifier.weight(1f),
+                onClick = onRoutines
+            )
         }
     }
 }
@@ -420,7 +428,7 @@ fun ActionCard(
 fun JarvisBottomNavigation(
     onHome: () -> Unit,
     onData: () -> Unit,
-    onMap: () -> Unit,
+    onRoutines: () -> Unit,
     onCommunication: () -> Unit,
     onSettings: () -> Unit
 ) {
@@ -435,8 +443,8 @@ fun JarvisBottomNavigation(
     ) {
         BottomNavItem(icon = Icons.Default.Home, label = "Home", isSelected = true, onClick = onHome)
         BottomNavItem(icon = Icons.Default.BarChart, label = "Data", isSelected = false, onClick = onData)
-        BottomNavItem(icon = Icons.Default.Place, label = "Map", isSelected = false, onClick = onMap)
-        BottomNavItem(icon = Icons.Default.ChatBubbleOutline, label = "Communication", isSelected = false, onClick = onCommunication)
+        BottomNavItem(icon = Icons.Default.FlashOn, label = "Routines", isSelected = false, onClick = onRoutines)
+        BottomNavItem(icon = Icons.Default.ChatBubbleOutline, label = "Chat", isSelected = false, onClick = onCommunication)
         BottomNavItem(icon = Icons.Default.Settings, label = "Settings", isSelected = false, onClick = onSettings)
     }
 }

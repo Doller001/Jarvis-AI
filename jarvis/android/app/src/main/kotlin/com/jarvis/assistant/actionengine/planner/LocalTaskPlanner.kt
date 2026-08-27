@@ -51,9 +51,9 @@ class LocalTaskPlanner {
                 .replace("play", "")
                 .replace("gaana", "")
                 .replace("gana", "")
-                .replace(Regex("\\bka\\b"), "")
-                .replace(Regex("\\bpar\\b"), "")
-                .replace(Regex("\\bpe\\b"), "")
+                .replace(Regex("\\\\bka\\\\b"), "")
+                .replace(Regex("\\\\bpar\\\\b"), "")
+                .replace(Regex("\\\\bpe\\\\b"), "")
                 .trim()
 
             if (query.isBlank() && secondPart.isNotBlank()) {
@@ -174,7 +174,7 @@ class LocalTaskPlanner {
             val steps = listOf(
                 ActionStep("step_1", ActionType.OPEN_APP, mapOf("target" to "whatsapp")),
                 ActionStep("step_2", ActionType.WAIT, mapOf("durationMs" to 1200L), prerequisites = listOf("step_1")),
-                ActionStep("step_3", ActionType.READ_MESSAGES, mapOf("target" to "whatsapp"), prerequisites = listOf("step_2"))
+                ActionStep("step_3", ActionType.READ_WHATSAPP_UNREAD, mapOf("target" to "whatsapp"), prerequisites = listOf("step_2"))
             )
             return TaskPlan(taskId = taskId, command = command, intent = "whatsapp_read_flow", steps = steps)
         }
@@ -202,34 +202,83 @@ class LocalTaskPlanner {
             return TaskPlan(taskId = taskId, command = command, intent = "whatsapp_send_flow", steps = steps)
         }
 
-        // Multi-action: "Torch on karo aur volume badhao"
+        // "Torch on aur volume badhao"
         if ((lower.contains("torch") || lower.contains("flashlight")) && 
-            (lower.contains("volume") || lower.contains("awaaz") || lower.contains("awaz"))) {
-            
+            (lower.contains("volume") || lower.contains("awaz") || lower.contains("awaaz"))) {
             val torchState = if (lower.contains("off") || lower.contains("band") || lower.contains("bujhao")) "off" else "on"
             val volumeLevel = if (lower.contains("kam") || lower.contains("dheere") || lower.contains("down") || lower.contains("low") || lower.contains("ghatao")) 30 else 80
-
             val steps = listOf(
-                ActionStep(
-                    actionId = "step_1",
-                    action = ActionType.TOGGLE_TORCH,
-                    parameters = mapOf("state" to torchState)
-                ),
-                ActionStep(
-                    actionId = "step_2",
-                    action = ActionType.VOLUME_SET,
-                    parameters = mapOf("level" to volumeLevel),
-                    prerequisites = listOf("step_1")
-                )
+                ActionStep("step_1", ActionType.TOGGLE_TORCH, mapOf("state" to torchState)),
+                ActionStep("step_2", ActionType.VOLUME_SET, mapOf("level" to volumeLevel))
             )
-            return TaskPlan(taskId = taskId, command = command, intent = "system_torch_volume_flow", steps = steps)
+            return TaskPlan(taskId = taskId, command = command, intent = "torch_volume_flow", steps = steps)
+        }
+
+        // ===== NEW TASK FLOW: "Morning routine" =====
+        if (lower.contains("morning routine") || lower.contains("subah ki routine") || 
+            lower.contains("good morning") || lower.contains("brushing")/* simple*/) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.SET_BRIGHTNESS, mapOf("level" to 80)),
+                ActionStep("step_2", ActionType.VOLUME_SET, mapOf("level" to 50), prerequisites = listOf("step_1")),
+                ActionStep("step_3", ActionType.GET_DAILY_BRIEFING, mapOf("raw" to "morning"), prerequisites = listOf("step_2"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "morning_routine", steps = steps)
+        }
+
+        // ===== NEW TASK FLOW: "Night mode" =====
+        if (lower.contains("shayad mode") || lower.contains("neend") || lower.contains("raat ki routine") || 
+            lower.contains("night routine") || lower.contains("sleep mode")) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.BRIGHTNESS_DOWN, mapOf("level" to 20)),
+                ActionStep("step_2", ActionType.SET_RINGER, mapOf("mode" to "silent"), prerequisites = listOf("step_1")),
+                ActionStep("step_3", ActionType.TOGGLE_DND, mapOf("state" to "on"), prerequisites = listOf("step_2"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "night_mode", steps = steps)
+        }
+
+        // ===== NEW TASK FLOW: "Meeting mode" =====
+        if (lower.contains("meeting mode") || lower.contains("room me enter") || 
+            lower.contains("class mode") || lower.contains("silent mode")) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.SET_RINGER, mapOf("mode" to "silent")),
+                ActionStep("step_2", ActionType.TOGGLE_DND, mapOf("state" to "on"), prerequisites = listOf("step_1"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "meeting_mode", steps = steps)
+        }
+
+        // ===== NEW TASK FLOW: "Movie mode" =====
+        if (lower.contains("movie") && (lower.contains("mode") || lower.contains("chalao"))) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.OPEN_APP, mapOf("target" to "youtube")),
+                ActionStep("step_2", ActionType.SET_BRIGHTNESS, mapOf("level" to 100), prerequisites = listOf("step_1")),
+                ActionStep("step_3", ActionType.VOLUME_SET, mapOf("level" to 80), prerequisites = listOf("step_2"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "movie_mode", steps = steps)
+        }
+
+        // ===== NEW TASK FLOW: "Battery low check + actions" =====
+        if (lower.contains("battery") && (lower.contains("check") || lower.contains("low") || lower.contains("khatam"))) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.GET_LOCATION, mapOf("raw" to "battery check")),
+                ActionStep("step_2", ActionType.GET_DAILY_BRIEFING, mapOf("raw" to "battery low"), prerequisites = listOf("step_1"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "battery_alert_flow", steps = steps)
+        }
+
+        // "WiFi chalu aur YouTube kholo"
+        if ((lower.contains("wifi on") || lower.contains("wifi chalu") || lower.contains("wifi")) &&
+            lower.contains("youtube") && (lower.contains("kholo") || lower.contains("open") || lower.contains("chalao"))) {
+            val steps = listOf(
+                ActionStep("step_1", ActionType.TOGGLE_WIFI, mapOf("state" to "on")),
+                ActionStep("step_2", ActionType.OPEN_APP, mapOf("target" to "youtube"), prerequisites = listOf("step_1"))
+            )
+            return TaskPlan(taskId = taskId, command = command, intent = "wifi_youtube_flow", steps = steps)
         }
 
         return null
     }
 
     private fun extractContact(text: String): String? {
-        // Pattern 1 (Hindi): "... <contact> ko ..."
         val hindiMatch = Regex("(?i)\\b([a-zA-Z0-9_]+)\\s+ko\\b").find(text)
         if (hindiMatch != null) {
             val candidate = hindiMatch.groupValues[1].trim()
@@ -237,7 +286,6 @@ class LocalTaskPlanner {
                 return candidate
             }
         }
-        // Pattern 2 (English): "to <contact>"
         val englishMatch = Regex("(?i)\\bto\\s+([a-zA-Z0-9_]+)").find(text)
         if (englishMatch != null) {
             val candidate = englishMatch.groupValues[1].trim()
@@ -249,25 +297,21 @@ class LocalTaskPlanner {
     }
 
     private fun extractMessage(text: String): String? {
-        // Pattern 1 (Hindi): "... ko <message> (bhejo|send|message|kaho)"
         val hindiMatch = Regex("(?i)\\bko\\s+(.+?)\\s*(?:bhejo|send|message|kaho)\\s*$").find(text)
         if (hindiMatch != null) {
             val candidate = hindiMatch.groupValues[1].trim()
             if (candidate.isNotBlank()) return candidate
         }
-        // If no trailing verb, take everything after "ko"
         val hindiFallback = Regex("(?i)\\bko\\s+(.+)$").find(text)
         if (hindiFallback != null) {
             val candidate = hindiFallback.groupValues[1].trim()
             if (candidate.isNotBlank()) return candidate
         }
-        // Pattern 2 (English): "send <message> to <contact>"
-        val englishMatch = Regex("(?i)\\b(?:send|message|saying|text)\\s+(.+?)\\s+\\bto\\s+[a-zA-Z0-9_]+").find(text)
+        val englishMatch = Regex("(?i)\\b(?:send|message|saying|text)\\s+(.+?)\\s+\\bto\\s+[a-zA-Z0-9_]+\\b").find(text)
         if (englishMatch != null) {
             val candidate = englishMatch.groupValues[1].trim()
             if (candidate.isNotBlank()) return candidate
         }
-        // Pattern 3 (English): "to <contact> <message>"
         val englishFallback = Regex("(?i)\\bto\\s+[a-zA-Z0-9_]+\\s+(.+)$").find(text)
         if (englishFallback != null) {
             val candidate = englishFallback.groupValues[1].trim()
