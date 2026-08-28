@@ -92,24 +92,41 @@ class JarvisForegroundService : Service() {
         createNotificationChannel()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            shutdownRuntime("ACTION_STOP requested")
-            return START_NOT_STICKY
-        }
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
 
-        if (intent?.action == ACTION_LISTEN_FOR_COMMAND) {
-            if (::voiceRuntime.isInitialized) {
-                voiceRuntime.startManualCommand()
-            }
-            return START_STICKY
-        }
+        when (intent?.action) {
 
-        if (intent?.action == ACTION_INTERRUPT) {
-            if (::voiceRuntime.isInitialized) {
-                voiceRuntime.interrupt()
+            ACTION_STOP -> {
+                shutdownRuntime(
+                    "ACTION_STOP requested"
+                )
+                return START_NOT_STICKY
             }
-            return START_STICKY
+
+            ACTION_LISTEN_FOR_COMMAND -> {
+                if (::voiceRuntime.isInitialized) {
+                    Log.i(
+                        TAG,
+                        "Explicit manual mic action received"
+                    )
+
+                    voiceRuntime.startManualCommand()
+                }
+
+                return START_STICKY
+            }
+
+            ACTION_INTERRUPT -> {
+                if (::voiceRuntime.isInitialized) {
+                    voiceRuntime.interrupt()
+                }
+
+                return START_STICKY
+            }
         }
 
         val wasRunning = isRunning
@@ -177,10 +194,6 @@ class JarvisForegroundService : Service() {
             voiceRuntime.setWakeSensitivity(sensitivity)
             voiceRuntime.setWakeEnabled(wakeEnabled)
             Log.i(TAG, "Wake word initialized: enabled=$wakeEnabled, sensitivity=$sensitivity")
-        }
-
-        if (intent?.action == ACTION_LISTEN_FOR_COMMAND) {
-            voiceRuntime.startListeningForCommand()
         }
 
         return START_STICKY

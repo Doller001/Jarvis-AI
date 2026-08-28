@@ -54,7 +54,7 @@ class SpeechController(
     private var audioFocusRequest: AudioFocusRequest? = null
 
     private fun requestAudioFocus() {
-        // Managed by platform SpeechRecognizer
+        Log.d(TAG, "Audio focus delegated to SpeechRecognizer")
     }
 
     private fun abandonAudioFocus() {
@@ -81,6 +81,26 @@ class SpeechController(
         val ctx = context ?: run {
             Log.w(TAG, "Context is null for SpeechController")
             onError(AndroidSpeechRecognizer.ERROR_CLIENT, "Application context is null.")
+            return
+        }
+
+        if (
+            request.reason !in setOf(
+                TriggerReason.WakeWordConfirmed,
+                TriggerReason.ManualButton,
+                TriggerReason.BargeInInterrupt
+            )
+        ) {
+            Log.e(
+                TAG,
+                "STT_REJECT invalid trigger=${request.reason}"
+            )
+
+            onError(
+                AndroidSpeechRecognizer.ERROR_CLIENT,
+                "Invalid command trigger"
+            )
+
             return
         }
 
@@ -253,6 +273,10 @@ class SpeechController(
                     override fun onEvent(eventType: Int, params: Bundle?) {}
                 })
 
+                Log.i(
+                    TAG,
+                    "STT_START trigger=${request.reason} session=${request.sessionId}"
+                )
                 speechRecognizer?.startListening(intent)
             } catch (e: Exception) {
                 Log.e(TAG, "Exception starting SpeechRecognizer", e)

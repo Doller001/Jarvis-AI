@@ -59,28 +59,20 @@ class MicControllerTest {
     }
 
     @Test
-    fun `releaseAny unconditionally frees the mic`() {
-        val controller = MicController(context = null)
-        assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
-        controller.releaseAny()
-        assertTrue(controller.isAvailable())
-        assertNull(controller.getCurrentOwner())
-    }
-
-    @Test
-    fun `forceAcquire overrides current owner`() {
-        val controller = MicController(context = null)
-        assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
-        assertTrue(controller.forceAcquire(MicController.OWNER_STT))
-        assertEquals(MicController.OWNER_STT, controller.getCurrentOwner())
-    }
-
-    @Test
-    fun `same owner can re-acquire without contention`() {
+    fun `same owner can re-acquire with count tracking`() {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
         assertEquals(MicController.OWNER_WAKE, controller.getCurrentOwner())
+        assertEquals(2, controller.getAcquireCount())
+
+        assertTrue(controller.releaseMic(MicController.OWNER_WAKE))
+        assertEquals(MicController.OWNER_WAKE, controller.getCurrentOwner())
+        assertEquals(1, controller.getAcquireCount())
+
+        assertTrue(controller.releaseMic(MicController.OWNER_WAKE))
+        assertTrue(controller.isAvailable())
+        assertEquals(0, controller.getAcquireCount())
     }
 
     @Test

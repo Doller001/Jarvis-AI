@@ -204,8 +204,17 @@ class OnnxWakeWordDetector(
             // During calibration use fixed base floor.
             if (rms < BASE_AUDIO_RMS) return null
         } else {
-            // Smooth continuous upward/downward adaptation under ambient noise
-            noiseFloor = (noiseFloor * 0.995f + rms * 0.005f).coerceIn(BASE_AUDIO_RMS, 0.08f)
+            // Only adapt noise floor when the window looks like background noise.
+            // Never learn from strong speech/wake candidates.
+            if (rms < noiseFloor * 1.8f) {
+                noiseFloor = (
+                    noiseFloor * 0.995f +
+                        rms * 0.005f
+                    ).coerceIn(
+                        BASE_AUDIO_RMS,
+                        0.08f
+                    )
+            }
             if (rms < dynamicThreshold.coerceAtLeast(BASE_AUDIO_RMS)) {
                 // Below noise floor — skip expensive inference
                 return null
@@ -235,9 +244,11 @@ class OnnxWakeWordDetector(
 
         val positiveCount = scoreWindow.count { it >= config.minConfidenceForPositive }
         val temporalAccept = positiveCount >= config.temporalPositiveCount
+        val confidenceAccept = score >= threshold
+        val strongAccept = temporalAccept && confidenceAccept
 
         // Diagnostic log for every candidate.
-        val decision = if (temporalAccept && score >= threshold && cooldown.allow()) "ACCEPT" else "REJECT"
+        val decision = if (strongAccept && cooldown.allow()) "ACCEPT" else "REJECT"
         val rejectReason = when {
             score < config.minConfidenceForPositive -> "LOW_SCORE(${"%.3f".format(score)})"
             !temporalAccept -> "TEMPORAL_GATE(hits=$positiveCount/${config.temporalPositiveCount})"
@@ -256,7 +267,12 @@ class OnnxWakeWordDetector(
         )
 
         if (decision == "ACCEPT") {
-            Log.i(TAG, "Wake word ACCEPTED (score=${"%.3f".format(score)}, hits=$positiveCount/${config.temporalPositiveCount})")
+            Log.i(
+                TAG,
+                "WAKE CONFIRMED score=${
+                    "%.3f".format(score)
+                } hits=$positiveCount/${config.temporalWindowSize}"
+            )
             // Immediately flush rolling ring buffer and temporal gate so stale audio cannot trigger again
             flushBuffers()
             listener?.onWakeWordDetected()

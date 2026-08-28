@@ -13,24 +13,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Central voice coordinator with session generation, interrupt support, and optimized transitions.
- *
- * STATE MACHINE (canonical):
- *   DISABLED → WAKE_LISTENING → ACKNOWLEDGING → COMMAND_LISTENING
- *            → PROCESSING → SPEAKING → WAKE_LISTENING
- *
- * INTERRUPT PATH:
- *   SPEAKING → INTERRUPTING → COMMAND_LISTENING
- *   PROCESSING → INTERRUPTING → COMMAND_LISTENING
- *
- * SESSION GENERATION:
- *   Every new session (wake detect, STT start, interrupt) increments generation.
- *   All callbacks check generation before invoking, preventing stale actions.
- *
- * PERFORMANCE:
- *   - No artificial delays (80ms + 50ms removed)
- *   - Atomic mic handoff between wake/stt/interrupt
- *   - TTS barge-in with acknowledgement
+ * Central voice coordinator with strict CommandTrigger validation,
+ * atomic mic handoff, session generation tracking, and hardened recovery.
  */
 class VoiceRuntime(
     private val context: Context? = null,
@@ -62,6 +46,14 @@ class VoiceRuntime(
     private var commandCallback: ((String) -> Unit)? = null
     private var stateListener: ((VoiceState) -> Unit)? = null
     private var tone: ToneGenerator? = null
+
+    private val voiceLock = Any()
+
+    @Volatile
+    private var commandSessionActive = false
+
+    @Volatile
+    private var activeCommandTrigger: CommandTrigger? = null
 
     // Session generation — invalidates stale callbacks
     private val sessionGeneration = AtomicLong(0L)
@@ -130,7 +122,7 @@ class VoiceRuntime(
         if (!installWakeCallback()) return
         val started = wakeEngine.startMonitoring()
         if (started) {
-            if (stateMachine.transition(VoiceState.WAKE_LISTENING)) notifyState()
+            if (stateMachine.dispatch(VoiceEvent.EnableWake)) notifyState()
             Log.i(TAG, "Wake mode ACTIVATED")
         } else {
             Log.w(TAG, "Wake engine failed to start — staying in current state")
@@ -138,15 +130,40 @@ class VoiceRuntime(
     }
 
     private fun deactivateWakeMode() {
-        wakeEngine.stopMonitoring()
-        interruptDetector.stop()
-        speechController.destroy()
-        micController.releaseAny()
-        if (stateMachine.state != VoiceState.DISABLED) {
-            stateMachine.recoverTo(VoiceState.DISABLED)
+        synchronized(voiceLock) {
+            wakeEnabled = false
+
+            wakeEngine.stopMonitoring()
+            interruptDetector.stop()
+            speechController.destroy()
+
+            if (audioCapture.isCapturing()) {
+                audioCapture.stop()
+            }
+
+            micController.releaseMic(
+                MicController.OWNER_STT
+            )
+
+            micController.releaseMic(
+                MicController.OWNER_WAKE
+            )
+
+            stateMachine.dispatch(
+                VoiceEvent.DisableWake
+            )
+
+            commandSessionActive = false
+            activeCommandTrigger = null
+            wakeSessionActive.set(false)
+
+            notifyState()
+
+            Log.i(
+                TAG,
+                "Wake mode disabled safely"
+            )
         }
-        notifyState()
-        Log.i(TAG, "Wake mode DEACTIVATED — mic released")
     }
 
     private var wakeCallbackInstalled = false
@@ -160,86 +177,213 @@ class VoiceRuntime(
     }
 
     /**
-     * Wake event gate — 7-step check before action.
+     * Wake event gate — strict checks before action.
      */
     private fun handleWakeEvent() {
-        val now = SystemClock.elapsedRealtime()
+        synchronized(voiceLock) {
+            val now = SystemClock.elapsedRealtime()
 
-        // Gate 1: Wake globally disabled.
-        if (!wakeEnabled) {
-            Log.d(TAG, "[WAKE_GATE] REJECT — wake disabled")
-            return
+            if (!wakeEnabled) {
+                Log.d(
+                    TAG,
+                    "WAKE_REJECT reason=wake_disabled"
+                )
+                return
+            }
+
+            if (stateMachine.state != VoiceState.WAKE_LISTENING) {
+                Log.d(
+                    TAG,
+                    "WAKE_REJECT reason=invalid_state state=${stateMachine.state}"
+                )
+                return
+            }
+
+            val owner = micController.getCurrentOwner()
+
+            if (
+                owner != null &&
+                owner != MicController.OWNER_WAKE
+            ) {
+                Log.d(
+                    TAG,
+                    "WAKE_REJECT reason=mic_busy owner=$owner"
+                )
+                return
+            }
+
+            if (
+                now - lastWakeAcceptedAtMs <
+                WAKE_COOLDOWN_MS
+            ) {
+                Log.d(
+                    TAG,
+                    "WAKE_REJECT reason=cooldown"
+                )
+                return
+            }
+
+            if (
+                !wakeSessionActive.compareAndSet(false, true)
+            ) {
+                Log.d(
+                    TAG,
+                    "WAKE_REJECT reason=session_active"
+                )
+                return
+            }
+
+            if (
+                !stateMachine.dispatch(
+                    VoiceEvent.WakeConfirmed
+                )
+            ) {
+                wakeSessionActive.set(false)
+
+                Log.w(
+                    TAG,
+                    "WAKE_REJECT reason=state_machine"
+                )
+
+                return
+            }
+
+            lastWakeAcceptedAtMs = now
+
+            val generation =
+                sessionGeneration.incrementAndGet()
+
+            VoiceDiagnostics.logSessionGeneration(
+                generation
+            )
+
+            VoiceDiagnostics.logLifecycleEvent(
+                "WAKE_CONFIRMED generation=$generation"
+            )
+
+            notifyState()
+
+            mainHandler.post {
+                beginWakeToSttHandoff(generation)
+            }
         }
-
-        // Gate 2: Not in WAKE_LISTENING state.
-        if (!stateMachine.isWakeListening) {
-            Log.d(TAG, "[WAKE_GATE] REJECT — state=${stateMachine.state}")
-            return
-        }
-
-        // Gate 3: Mic owner must be WAKE or null.
-        val micOwner = micController.getCurrentOwner()
-        if (micOwner != null && micOwner != MicController.OWNER_WAKE) {
-            Log.d(TAG, "[WAKE_GATE] REJECT — mic owned by '$micOwner'")
-            return
-        }
-
-        // Gate 4: Cooldown.
-        if (now - lastWakeAcceptedAtMs < WAKE_COOLDOWN_MS) {
-            Log.d(TAG, "[WAKE_GATE] REJECT — cooldown")
-            return
-        }
-
-        // Gate 5+6+7: AtomicBoolean session lock.
-        if (!wakeSessionActive.compareAndSet(false, true)) {
-            Log.d(TAG, "[WAKE_GATE] REJECT — session active")
-            return
-        }
-
-        // All gates passed.
-        lastWakeAcceptedAtMs = now
-        Log.i(TAG, "[WAKE_GATE] ACCEPT — starting acknowledgement")
-        startAcknowledgement()
     }
 
-    /**
-     * Optimized acknowledgement sequence — no artificial delays.
-     *
-     * 1. Invalidate wake session (increment generation)
-     * 2. Pause wake engine (non-blocking)
-     * 3. Start STT immediately (no 80ms delay)
-     */
-    /**
-     * Optimized acknowledgement sequence — no artificial delays.
-     *
-     * 1. Invalidate wake session (increment generation)
-     * 2. Pause wake engine (synchronous release)
-     * 3. Start STT immediately
-     */
-    private fun startAcknowledgement() {
-        if (!stateMachine.transition(VoiceState.ACKNOWLEDGING)) {
-            Log.w(TAG, "Cannot enter ACKNOWLEDGING from ${stateMachine.state}")
-            wakeSessionActive.set(false)
-            return
+    private fun beginWakeToSttHandoff(
+        generation: Long
+    ) {
+        synchronized(voiceLock) {
+            if (generation != sessionGeneration.get()) {
+                Log.d(
+                    TAG,
+                    "WAKE_HANDOFF_ABORT stale generation=$generation"
+                )
+                return
+            }
+
+            if (
+                stateMachine.state !=
+                VoiceState.ACKNOWLEDGING
+            ) {
+                Log.w(
+                    TAG,
+                    "WAKE_HANDOFF_ABORT state=${stateMachine.state}"
+                )
+                wakeSessionActive.set(false)
+                return
+            }
+
+            Log.i(
+                TAG,
+                "WAKE_HANDOFF begin generation=$generation"
+            )
+
+            // 1. Completely stop wake engine.
+            wakeEngine.pause()
+
+            // 2. Verify physical wake capture stopped.
+            if (!wakeEngine.isAudioRecordReleased) {
+                Log.w(
+                    TAG,
+                    "WAKE_HANDOFF waiting for AudioRecord release"
+                )
+
+                mainHandler.postDelayed(
+                    {
+                        beginWakeToSttHandoff(
+                            generation
+                        )
+                    },
+                    50L
+                )
+
+                return
+            }
+
+            // 3. Wake must no longer own logical mic.
+            if (
+                micController.isOwnedBy(
+                    MicController.OWNER_WAKE
+                )
+            ) {
+                micController.releaseMic(
+                    MicController.OWNER_WAKE
+                )
+            }
+
+            // 4. Verify again.
+            val ownerAfterRelease =
+                micController.getCurrentOwner()
+
+            if (ownerAfterRelease != null) {
+                Log.w(
+                    TAG,
+                    "WAKE_HANDOFF_ABORT mic still owned by=$ownerAfterRelease"
+                )
+                return
+            }
+
+            // 5. Now, and ONLY now, enter command state.
+            if (
+                !stateMachine.dispatch(
+                    VoiceEvent.CommandRequested(
+                        CommandTrigger.WAKE_WORD
+                    )
+                )
+            ) {
+                Log.w(
+                    TAG,
+                    "WAKE_HANDOFF_ABORT state transition rejected"
+                )
+
+                wakeSessionActive.set(false)
+                return
+            }
+
+            commandSessionActive = true
+            activeCommandTrigger = CommandTrigger.WAKE_WORD
+
+            notifyState()
+
+            Log.i(
+                TAG,
+                "WAKE_HANDOFF complete -> COMMAND_LISTENING"
+            )
+
+            audioSessionManager.beginSession()
+
+            startRecognition(
+                trigger = CommandTrigger.WAKE_WORD,
+                generation = generation
+            )
         }
-        notifyState()
-
-        // Invalidate wake session and increment generation
-        val generation = sessionGeneration.incrementAndGet()
-        VoiceDiagnostics.logSessionGeneration(generation)
-
-        // Synchronously release wake engine audio capture
-        wakeEngine.pause()
-
-        // Start STT with confirmed wake word trigger
-        startListeningForCommand(TriggerReason.WakeWordConfirmed)
     }
 
     fun setWakeSensitivity(label: String) {
         val value = when (label.lowercase()) {
-            "low" -> 0.5f
-            "high" -> 1.0f
-            else -> 0.8f
+            "low" -> 0.35f
+            "high" -> 0.8f
+            else -> 0.5f
         }
         wakeEngine.setSensitivity(value)
     }
@@ -252,58 +396,259 @@ class VoiceRuntime(
 
     /**
      * Explicit manual command entry point (e.g. mic button in UI or overlay).
-     * Works seamlessly whether wake-word is enabled or disabled.
      */
     fun startManualCommand() {
-        Log.i(TAG, "Explicit manual command trigger received from state ${stateMachine.state}")
-        startListeningForCommand(TriggerReason.ManualButton)
+        Log.i(
+            TAG,
+            "MANUAL_MIC_REQUEST state=${stateMachine.state}"
+        )
+
+        requestCommandListening(
+            CommandTrigger.MANUAL_BUTTON
+        )
     }
 
-    /**
-     * Starts command STT with strict TriggerReason verification.
-     */
-    fun startListeningForCommand(reason: TriggerReason = TriggerReason.ManualButton) {
-        val generation = sessionGeneration.incrementAndGet()
+    private fun requestCommandListening(
+        trigger: CommandTrigger
+    ) {
+        synchronized(voiceLock) {
+            val currentState = stateMachine.state
 
-        // Stop TTS if speaking
-        if (stateMachine.isSpeaking) {
-            ttsEngine.stop()
+            Log.i(
+                TAG,
+                "COMMAND_REQUEST trigger=$trigger state=$currentState"
+            )
+
+            // ---------------------------------------------------------
+            // HARD SECURITY GATE
+            // ---------------------------------------------------------
+            val allowed = when (trigger) {
+                CommandTrigger.WAKE_WORD ->
+                    currentState == VoiceState.ACKNOWLEDGING && wakeEnabled
+
+                CommandTrigger.MANUAL_BUTTON ->
+                    currentState == VoiceState.DISABLED ||
+                            currentState == VoiceState.WAKE_LISTENING
+
+                CommandTrigger.BARGE_IN ->
+                    currentState == VoiceState.INTERRUPTING
+            }
+
+            if (!allowed) {
+                Log.w(
+                    TAG,
+                    "COMMAND_REQUEST_REJECTED trigger=$trigger state=$currentState"
+                )
+
+                VoiceDiagnostics.logLifecycleEvent(
+                    "COMMAND_REJECT trigger=$trigger state=$currentState"
+                )
+
+                return
+            }
+
+            // Prevent duplicate sessions.
+            if (commandSessionActive) {
+                Log.w(
+                    TAG,
+                    "COMMAND_REQUEST_REJECTED reason=session_already_active"
+                )
+                return
+            }
+
+            val generation = sessionGeneration.incrementAndGet()
+
+            // ---------------------------------------------------------
+            // STOP EVERYTHING THAT CAN COMPETE FOR AUDIO
+            // ---------------------------------------------------------
+            interruptDetector.stop()
+
+            if (audioCapture.isCapturing()) {
+                audioCapture.stop()
+            }
+
+            if (trigger == CommandTrigger.WAKE_WORD) {
+                wakeEngine.pause()
+            }
+
+            // TTS may only be stopped for an interrupt.
+            if (trigger == CommandTrigger.BARGE_IN) {
+                ttsEngine.stop()
+            }
+
+            // ---------------------------------------------------------
+            // VERIFY MIC IS REALLY FREE
+            // ---------------------------------------------------------
+            val currentOwner = micController.getCurrentOwner()
+
+            if (
+                currentOwner != null &&
+                currentOwner != MicController.OWNER_STT
+            ) {
+                Log.w(
+                    TAG,
+                    "COMMAND_REQUEST_REJECTED micOwner=$currentOwner"
+                )
+                return
+            }
+
+            // ---------------------------------------------------------
+            // STATE TRANSITION
+            // ---------------------------------------------------------
+            val stateChanged = when (trigger) {
+                CommandTrigger.WAKE_WORD -> {
+                    stateMachine.dispatch(
+                        VoiceEvent.CommandRequested(
+                            CommandTrigger.WAKE_WORD
+                        )
+                    )
+                }
+
+                CommandTrigger.MANUAL_BUTTON -> {
+                    stateMachine.dispatch(
+                        VoiceEvent.CommandRequested(
+                            CommandTrigger.MANUAL_BUTTON
+                        )
+                    )
+                }
+
+                CommandTrigger.BARGE_IN -> {
+                    stateMachine.dispatch(
+                        VoiceEvent.CommandRequested(
+                            CommandTrigger.BARGE_IN
+                        )
+                    )
+                }
+            }
+
+            if (!stateChanged) {
+                Log.w(
+                    TAG,
+                    "COMMAND_REQUEST_REJECTED state transition failed trigger=$trigger"
+                )
+                return
+            }
+
+            commandSessionActive = true
+            activeCommandTrigger = trigger
+
+            notifyState()
+
+            VoiceDiagnostics.logLifecycleEvent(
+                "COMMAND_START trigger=$trigger generation=$generation"
+            )
+
+            audioSessionManager.beginSession()
+
+            startRecognition(
+                trigger = trigger,
+                generation = generation
+            )
         }
-
-        // Stop interrupt detector if running
-        interruptDetector.stop()
-
-        // Ensure background audio capture is stopped
-        if (audioCapture.isCapturing()) audioCapture.stop()
-
-        // Ensure wake engine mic is released
-        wakeEngine.pause()
-
-        if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
-            Log.w(TAG, "Cannot enter COMMAND_LISTENING from ${stateMachine.state} — recovering")
-            stateMachine.recoverTo(VoiceState.COMMAND_LISTENING)
-        }
-        notifyState()
-
-        audioSessionManager.beginSession()
-
-        // Start recognition with verified trigger reason
-        startRecognition(reason, generation)
     }
 
-    private fun startRecognition(reason: TriggerReason, generation: Long) {
+    private fun startRecognition(
+        trigger: CommandTrigger,
+        generation: Long
+    ) {
         mainHandler.removeCallbacks(commandTimeoutRunnable)
-        mainHandler.postDelayed(commandTimeoutRunnable, COMMAND_TIMEOUT_MS)
 
-        val request = CommandListeningRequest(reason = reason, sessionId = generation)
+        mainHandler.postDelayed(
+            commandTimeoutRunnable,
+            COMMAND_TIMEOUT_MS
+        )
+
+        val request = CommandListeningRequest(
+            reason = when (trigger) {
+                CommandTrigger.WAKE_WORD ->
+                    TriggerReason.WakeWordConfirmed
+
+                CommandTrigger.MANUAL_BUTTON ->
+                    TriggerReason.ManualButton
+
+                CommandTrigger.BARGE_IN ->
+                    TriggerReason.BargeInInterrupt
+            },
+            sessionId = generation
+        )
+
+        // Final runtime guard BEFORE SpeechRecognizer.
+        val state = stateMachine.state
+
+        if (state != VoiceState.COMMAND_LISTENING) {
+            Log.e(
+                TAG,
+                "STT_START_ABORT invalid state=$state trigger=$trigger"
+            )
+
+            commandSessionActive = false
+            activeCommandTrigger = null
+
+            handleError(
+                android.speech.SpeechRecognizer.ERROR_CLIENT,
+                "Invalid voice state before STT start"
+            )
+
+            return
+        }
+
+        if (
+            trigger == CommandTrigger.WAKE_WORD &&
+            wakeEngine.isMonitoringNow
+        ) {
+            Log.e(
+                TAG,
+                "STT_START_ABORT wake engine still monitoring"
+            )
+
+            commandSessionActive = false
+            activeCommandTrigger = null
+
+            handleError(
+                android.speech.SpeechRecognizer.ERROR_CLIENT,
+                "Wake engine still owns microphone"
+            )
+
+            return
+        }
+
+        VoiceDiagnostics.logLifecycleEvent(
+            "STT_AUTHORIZED trigger=$trigger generation=$generation"
+        )
+
         speechController.startListening(
             request = request,
-            onResult = { utterance -> onCommandReceived(utterance, generation) },
-            onError = { errorCode, errorMessage ->
-                Log.w(TAG, "STT error ($errorCode): $errorMessage")
-                handleError(errorCode, errorMessage)
+
+            onResult = { utterance ->
+                onCommandReceived(
+                    utterance,
+                    generation
+                )
             },
-            onRmsChanged = { rms -> onRmsChanged?.invoke(rms) }
+
+            onError = { errorCode, errorMessage ->
+                Log.w(
+                    TAG,
+                    "STT error code=$errorCode message=$errorMessage"
+                )
+
+                if (generation != sessionGeneration.get()) {
+                    Log.d(
+                        TAG,
+                        "Ignoring stale STT error generation=$generation"
+                    )
+                    return@startListening
+                }
+
+                handleError(
+                    errorCode,
+                    errorMessage
+                )
+            },
+
+            onRmsChanged = { rms ->
+                onRmsChanged?.invoke(rms)
+            }
         )
     }
 
@@ -324,7 +669,7 @@ class VoiceRuntime(
             return
         }
 
-        if (!stateMachine.transition(VoiceState.PROCESSING)) {
+        if (!stateMachine.dispatch(VoiceEvent.SpeechFinished)) {
             Log.w(TAG, "Cannot transition to PROCESSING from ${stateMachine.state}")
             resumeWakeAfterCommand()
             return
@@ -353,47 +698,184 @@ class VoiceRuntime(
     }
 
     private fun handleError(
-        errorCode: Int = android.speech.SpeechRecognizer.ERROR_CLIENT,
+        errorCode: Int =
+            android.speech.SpeechRecognizer.ERROR_CLIENT,
         reason: String
     ) {
-        Log.w(TAG, "Voice error ($errorCode): $reason")
-        VoiceDiagnostics.logError(errorCode)
-        mainHandler.removeCallbacks(commandTimeoutRunnable)
-        mainHandler.removeCallbacks(processingTimeoutRunnable)
-        speechController.destroy()
-        audioSessionManager.endSession()
-        interruptDetector.stop()
+        synchronized(voiceLock) {
+            Log.w(
+                TAG,
+                "VOICE_ERROR code=$errorCode reason=$reason"
+            )
 
-        if (stateMachine.transition(VoiceState.RECOVERING)) notifyState()
+            VoiceDiagnostics.logError(
+                errorCode
+            )
 
-        mainHandler.postDelayed({
-            stateMachine.recoverTo(VoiceState.WAKE_LISTENING)
-            notifyState()
-            resumeWakeAfterCommand()
-        }, ERROR_RECOVERY_MS)
+            mainHandler.removeCallbacks(
+                commandTimeoutRunnable
+            )
+
+            mainHandler.removeCallbacks(
+                processingTimeoutRunnable
+            )
+
+            commandSessionActive = false
+            activeCommandTrigger = null
+
+            speechController.destroy()
+
+            audioSessionManager.endSession()
+
+            interruptDetector.stop()
+
+            if (audioCapture.isCapturing()) {
+                audioCapture.stop()
+            }
+
+            wakeEngine.pause()
+
+            micController.releaseMic(
+                MicController.OWNER_STT
+            )
+
+            micController.releaseMic(
+                MicController.OWNER_WAKE
+            )
+
+            val enteredRecovery =
+                stateMachine.dispatch(
+                    VoiceEvent.Error
+                )
+
+            if (enteredRecovery) {
+                notifyState()
+            }
+
+            sessionGeneration.incrementAndGet()
+
+            mainHandler.postDelayed(
+                {
+                    synchronized(voiceLock) {
+                        wakeSessionActive.set(false)
+                        lastWakeAcceptedAtMs = 0L
+
+                        if (!wakeEnabled) {
+                            stateMachine.transition(
+                                VoiceState.DISABLED
+                            )
+                            notifyState()
+                            return@synchronized
+                        }
+
+                        stateMachine.dispatch(
+                            VoiceEvent.RecoveryComplete
+                        )
+
+                        notifyState()
+
+                        val started =
+                            wakeEngine.startMonitoring()
+
+                        if (!started) {
+                            Log.e(
+                                TAG,
+                                "VOICE_RECOVERY wake engine failed"
+                            )
+                        }
+                    }
+                },
+                ERROR_RECOVERY_MS
+            )
+        }
     }
 
-    private fun handleVoiceEngineFailure(component: String, error: Throwable) {
-        Log.e(TAG, "[$component] failure: ${error.message}")
-        mainHandler.post {
-            try { audioCapture.stop() } catch (_: Exception) {}
-            try { interruptDetector.stop() } catch (_: Exception) {}
-            try { speechController.destroy() } catch (_: Exception) {}
-            try { audioRouteManager.deactivateVoiceRouting() } catch (_: Exception) {}
-            micController.releaseAny()
+    private fun handleVoiceEngineFailure(
+        component: String,
+        error: Throwable
+    ) {
+        synchronized(voiceLock) {
+            Log.e(
+                TAG,
+                "VOICE_ENGINE_FAILURE component=$component",
+                error
+            )
 
-            if (stateMachine.transition(VoiceState.RECOVERING)) notifyState()
+            sessionGeneration.incrementAndGet()
 
-            mainHandler.postDelayed({
-                stateMachine.recoverTo(VoiceState.WAKE_LISTENING)
-                notifyState()
-                if (wakeEnabled) {
-                    val ok = wakeEngine.startMonitoring()
-                    if (ok && stateMachine.transition(VoiceState.WAKE_LISTENING)) notifyState()
-                } else {
-                    if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
-                }
-            }, ERROR_RECOVERY_MS * 3)
+            commandSessionActive = false
+            activeCommandTrigger = null
+            wakeSessionActive.set(false)
+
+            try {
+                audioCapture.stop()
+            } catch (_: Exception) {
+            }
+
+            try {
+                interruptDetector.stop()
+            } catch (_: Exception) {
+            }
+
+            try {
+                speechController.destroy()
+            } catch (_: Exception) {
+            }
+
+            try {
+                wakeEngine.stopMonitoring()
+            } catch (_: Exception) {
+            }
+
+            try {
+                audioRouteManager.deactivateVoiceRouting()
+            } catch (_: Exception) {
+            }
+
+            micController.releaseMic(
+                MicController.OWNER_STT
+            )
+
+            micController.releaseMic(
+                MicController.OWNER_WAKE
+            )
+
+            stateMachine.dispatch(
+                VoiceEvent.Error
+            )
+
+            notifyState()
+
+            mainHandler.postDelayed(
+                {
+                    synchronized(voiceLock) {
+                        if (!wakeEnabled) {
+                            stateMachine.transition(
+                                VoiceState.DISABLED
+                            )
+                            notifyState()
+                            return@synchronized
+                        }
+
+                        stateMachine.dispatch(
+                            VoiceEvent.RecoveryComplete
+                        )
+
+                        notifyState()
+
+                        val ok =
+                            wakeEngine.startMonitoring()
+
+                        if (!ok) {
+                            Log.e(
+                                TAG,
+                                "Wake engine recovery failed"
+                            )
+                        }
+                    }
+                },
+                1000L
+            )
         }
     }
 
@@ -414,9 +896,8 @@ class VoiceRuntime(
         }
 
         if (!stateMachine.isSpeaking) {
-            if (!stateMachine.transition(VoiceState.SPEAKING)) {
-                Log.d(TAG, "Recovering SPEAKING from ${stateMachine.state}")
-                stateMachine.recoverTo(VoiceState.SPEAKING)
+            if (!stateMachine.dispatch(VoiceEvent.TtsStarted)) {
+                stateMachine.transition(VoiceState.SPEAKING)
             }
             notifyState()
         }
@@ -446,31 +927,81 @@ class VoiceRuntime(
      * Flow: stop TTS → play acknowledgement beep → start listening
      */
     private fun handleInterruptDetected() {
-        if (!stateMachine.isSpeaking && !stateMachine.isProcessing) {
-            Log.d(TAG, "Interrupt detected but not speaking/processing — ignoring")
-            return
-        }
+        synchronized(voiceLock) {
+            val currentState = stateMachine.state
 
-        val generation = sessionGeneration.incrementAndGet()
-        Log.i(TAG, "Interrupt detected — gen=$generation")
+            if (
+                currentState != VoiceState.SPEAKING &&
+                currentState != VoiceState.PROCESSING
+            ) {
+                Log.d(
+                    TAG,
+                    "INTERRUPT_REJECT state=$currentState"
+                )
+                return
+            }
 
-        // Transition to INTERRUPTING
-        if (!stateMachine.transition(VoiceState.INTERRUPTING)) {
-            Log.w(TAG, "Cannot enter INTERRUPTING from ${stateMachine.state}")
-            return
-        }
-        notifyState()
+            if (commandSessionActive) {
+                Log.d(
+                    TAG,
+                    "INTERRUPT_REJECT command already active"
+                )
+                return
+            }
 
-        // Stop TTS immediately
-        ttsEngine.stop()
-        interruptDetector.stop()
+            val generation =
+                sessionGeneration.incrementAndGet()
 
-        // Play acknowledgement beep (option B: stop + acknowledge + listen)
-        playBeep()
+            Log.i(
+                TAG,
+                "INTERRUPT_CONFIRMED generation=$generation"
+            )
 
-        // Start listening immediately after beep
-        mainHandler.post {
-            startListeningForCommand()
+            if (
+                !stateMachine.dispatch(
+                    VoiceEvent.InterruptDetected
+                )
+            ) {
+                Log.w(
+                    TAG,
+                    "INTERRUPT_REJECT state-machine"
+                )
+                return
+            }
+
+            notifyState()
+
+            ttsEngine.stop()
+            interruptDetector.stop()
+
+            // Make sure no other audio capture is running.
+            if (audioCapture.isCapturing()) {
+                audioCapture.stop()
+            }
+
+            playBeep()
+
+            mainHandler.postDelayed(
+                {
+                    synchronized(voiceLock) {
+                        if (
+                            generation !=
+                            sessionGeneration.get()
+                        ) {
+                            Log.d(
+                                TAG,
+                                "INTERRUPT_STALE generation=$generation"
+                            )
+                            return@synchronized
+                        }
+
+                        requestCommandListening(
+                            CommandTrigger.BARGE_IN
+                        )
+                    }
+                },
+                120L
+            )
         }
     }
 
@@ -492,63 +1023,156 @@ class VoiceRuntime(
      * and return mic to wake-word detector.
      */
     private fun resumeWakeAfterCommand() {
-        mainHandler.removeCallbacks(processingTimeoutRunnable)
-        wakeSessionActive.set(false)
-        lastWakeAcceptedAtMs = 0L
-        interruptDetector.stop()
+        synchronized(voiceLock) {
+            mainHandler.removeCallbacks(
+                processingTimeoutRunnable
+            )
 
-        if (!wakeEnabled) {
-            if (stateMachine.state != VoiceState.DISABLED) {
-                stateMachine.recoverTo(VoiceState.DISABLED)
+            commandSessionActive = false
+            activeCommandTrigger = null
+
+            wakeSessionActive.set(false)
+            lastWakeAcceptedAtMs = 0L
+
+            interruptDetector.stop()
+
+            speechController.destroy()
+
+            audioSessionManager.endSession()
+
+            if (!wakeEnabled) {
+                stateMachine.transition(
+                    VoiceState.DISABLED
+                )
+
+                notifyState()
+                return
             }
+
+            // Current state must be safe before wake resumes.
+            if (
+                stateMachine.state !=
+                VoiceState.WAKE_LISTENING
+            ) {
+                when (stateMachine.state) {
+                    VoiceState.COMMAND_LISTENING,
+                    VoiceState.PROCESSING,
+                    VoiceState.SPEAKING,
+                    VoiceState.INTERRUPTING -> {
+                        stateMachine.transition(
+                            VoiceState.WAKE_LISTENING
+                        )
+                    }
+
+                    VoiceState.RECOVERING -> {
+                        stateMachine.dispatch(
+                            VoiceEvent.RecoveryComplete
+                        )
+                    }
+
+                    VoiceState.DISABLED -> {
+                        stateMachine.dispatch(
+                            VoiceEvent.EnableWake
+                        )
+                    }
+
+                    else -> Unit
+                }
+            }
+
             notifyState()
-            return
-        }
 
-        if (!stateMachine.isWakeListening) {
-            if (!stateMachine.transition(VoiceState.WAKE_LISTENING)) {
-                stateMachine.recoverTo(VoiceState.WAKE_LISTENING)
+            if (!wakeEngine.isMonitoringNow) {
+                val started =
+                    wakeEngine.startMonitoring()
+
+                if (!started) {
+                    Log.e(
+                        TAG,
+                        "Failed to restart wake-word monitoring"
+                    )
+                }
+            } else {
+                wakeEngine.resume()
             }
-        }
-        notifyState()
 
-        if (wakeEngine.isMonitoringNow) {
-            wakeEngine.resume()
-        } else {
-            wakeEngine.startMonitoring()
+            Log.i(
+                TAG,
+                "VOICE_READY wake=$wakeEnabled state=${stateMachine.state}"
+            )
         }
     }
 
     fun stopRuntime() {
-        mainHandler.removeCallbacksAndMessages(null)
-        wakeSessionActive.set(false)
-        interruptDetector.stop()
-        audioCapture.stop()
-        speechController.destroy()
-        wakeEngine.stopMonitoring()
-        audioSessionManager.endSession()
-        ttsEngine.stop()
-        if (stateMachine.state != VoiceState.DISABLED) {
-            stateMachine.recoverTo(VoiceState.DISABLED)
+        synchronized(voiceLock) {
+            mainHandler.removeCallbacksAndMessages(null)
+            wakeSessionActive.set(false)
+            commandSessionActive = false
+            activeCommandTrigger = null
+
+            interruptDetector.stop()
+            audioCapture.stop()
+            speechController.destroy()
+            wakeEngine.stopMonitoring()
+            audioSessionManager.endSession()
+            ttsEngine.stop()
+
+            micController.releaseMic(
+                MicController.OWNER_STT
+            )
+
+            micController.releaseMic(
+                MicController.OWNER_WAKE
+            )
+
+            stateMachine.transition(VoiceState.DISABLED)
+            notifyState()
+            Log.i(TAG, "VoiceRuntime stopped")
         }
-        notifyState()
-        Log.i(TAG, "VoiceRuntime stopped")
     }
 
     fun release() {
-        mainHandler.removeCallbacksAndMessages(null)
-        wakeSessionActive.set(false)
-        interruptDetector.stop()
-        audioCapture.stop()
-        speechController.destroy()
-        wakeEngine.release()
-        audioSessionManager.release()
-        ttsEngine.shutdown()
-        try { tone?.release() } catch (_: Exception) {}
-        tone = null
-        stateListener = null
-        stateMachine.forceState(VoiceState.DISABLED)
-        Log.i(TAG, "VoiceRuntime released")
+        synchronized(voiceLock) {
+            mainHandler.removeCallbacksAndMessages(null)
+
+            sessionGeneration.incrementAndGet()
+
+            wakeSessionActive.set(false)
+            commandSessionActive = false
+            activeCommandTrigger = null
+
+            interruptDetector.stop()
+            audioCapture.stop()
+            speechController.destroy()
+            wakeEngine.release()
+            audioSessionManager.release()
+            ttsEngine.shutdown()
+
+            micController.releaseMic(
+                MicController.OWNER_STT
+            )
+
+            micController.releaseMic(
+                MicController.OWNER_WAKE
+            )
+
+            stateMachine.transition(
+                VoiceState.DISABLED
+            )
+
+            try {
+                tone?.release()
+            } catch (_: Exception) {
+            }
+
+            tone = null
+            stateListener = null
+
+            Log.i(
+                TAG,
+                "VoiceRuntime released safely"
+            )
+        }
     }
 
     private fun playBeep() {
@@ -567,3 +1191,4 @@ class VoiceRuntime(
 
     fun getMicController(): MicController = micController
 }
+
