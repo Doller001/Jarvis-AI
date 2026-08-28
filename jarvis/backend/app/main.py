@@ -16,13 +16,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.auth_routes import auth_router
+from app.api.openai_compat import openai_router
 from app.api.providers_api import providers_router
 from app.api.routes import api_router
 from app.realtime.ws import ws_router
 from app.security.auth import get_allowed_origins
 from app.security.exceptions import JarvisBaseException
-
-logger = logging.getLogger("jarvis")
 
 logger = logging.getLogger("jarvis")
 logging.basicConfig(level=logging.INFO)
@@ -62,6 +61,7 @@ async def add_correlation_id_and_timing(request: Request, call_next):
 app.include_router(auth_router)
 app.include_router(ws_router)
 app.include_router(providers_router)
+app.include_router(openai_router)
 app.include_router(api_router)
 
 # Mount Desktop WebApp Static Directory

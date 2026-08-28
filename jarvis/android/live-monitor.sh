@@ -2,9 +2,9 @@
 # Jarvis Assistant - Live Monitor Script
 # Usage: bash live-monitor.sh [option]
 
-APK_PATH="/home/shanu/Desktop/and9/jarvis-debug.apk"
-PACKAGE="com.jarvis.assistant.debug"
-ACTIVITY="com.jarvis.assistant.debug/com.jarvis.assistant.ui.MainActivity"
+APK_PATH="/home/shanu/Desktop/and9/export/jarvis-debug.apk"
+PACKAGE="com.jarvis.assistant"
+ACTIVITY="com.jarvis.assistant/.ui.MainActivity"
 
 case "$1" in
     install)

@@ -72,3 +72,29 @@ async def require_auth(
 
     device_registry.touch_device(payload.sub)
     return payload
+
+
+async def optional_auth(
+    request: Request,
+    authorization: str | None = Header(None),
+) -> TokenPayload | None:
+    """FastAPI dependency that parses JWT Bearer token if present, returning None if unauthenticated."""
+    if not authorization:
+        return None
+
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+
+    token = parts[1]
+    payload = jwt_manager.validate_token(token)
+
+    if payload is None or payload.token_type != "access":
+        return None
+
+    device = device_registry.get_device(payload.sub)
+    if device is not None:
+        device_registry.touch_device(payload.sub)
+
+    return payload
+

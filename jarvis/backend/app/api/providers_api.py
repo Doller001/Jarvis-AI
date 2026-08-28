@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.llm.registry import ProviderStatus, llm_registry
-from app.security.auth import require_auth
+from app.security.auth import optional_auth, require_auth
 from app.security.jwt_manager import TokenPayload
 
 providers_router = APIRouter(prefix="/api/v1", tags=["LLM Providers"])
@@ -19,12 +19,12 @@ class SelectProviderRequest(BaseModel):
 
 
 @providers_router.get("/providers", response_model=list[ProviderStatus])
-async def list_available_providers(token: TokenPayload = Depends(require_auth)):
+async def list_available_providers(token: TokenPayload | None = Depends(optional_auth)):
     return await llm_registry.discover_available_providers()
 
 
 @providers_router.get("/models")
-async def list_available_models(token: TokenPayload = Depends(require_auth)):
+async def list_available_models(token: TokenPayload | None = Depends(optional_auth)):
     providers = await llm_registry.discover_available_providers()
     all_models = []
     for p in providers:
