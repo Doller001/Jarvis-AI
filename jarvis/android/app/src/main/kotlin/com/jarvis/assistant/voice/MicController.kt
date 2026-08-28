@@ -49,6 +49,12 @@ class MicController(private val context: Context? = null) {
                 Log.d(TAG, "Mic released by $owner (count=$acquireCount)")
             }
             true
+        } else if (currentOwner == null) {
+            // Stops and teardown calls are intentionally idempotent. A capture
+            // callback may already have released the mic before its owner is
+            // asked to stop on the main thread.
+            Log.d(TAG, "Mic already free; $owner release ignored")
+            false
         } else {
             Log.w(TAG, "Release denied: $owner does not hold mic (holder=$currentOwner)")
             false

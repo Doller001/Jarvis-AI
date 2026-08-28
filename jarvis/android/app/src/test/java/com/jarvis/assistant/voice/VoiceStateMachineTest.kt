@@ -34,6 +34,13 @@ class VoiceStateMachineTest {
     }
 
     @Test
+    fun `WAKE_LISTENING can transition directly to COMMAND_LISTENING for manual commands`() {
+        sm.transition(VoiceState.WAKE_LISTENING)
+        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
+        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
+    }
+
+    @Test
     fun `ACKNOWLEDGING can transition to COMMAND_LISTENING`() {
         sm.transition(VoiceState.WAKE_LISTENING)
         sm.transition(VoiceState.ACKNOWLEDGING)

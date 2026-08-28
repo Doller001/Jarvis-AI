@@ -71,6 +71,10 @@ class InterruptDetector(
     }
 
     fun stop() {
+        if (!isRunning && captureThread == null && audioRecord == null) {
+            return
+        }
+
         isRunning = false
         val thread = captureThread
         captureThread = null
@@ -81,7 +85,9 @@ class InterruptDetector(
             }
         }
         releaseAudioRecord()
-        micController.releaseMic(MicController.OWNER_INTERRUPT)
+        if (micController.isOwnedBy(MicController.OWNER_INTERRUPT)) {
+            micController.releaseMic(MicController.OWNER_INTERRUPT)
+        }
         Log.i(TAG, "Interrupt detector stopped")
     }
 

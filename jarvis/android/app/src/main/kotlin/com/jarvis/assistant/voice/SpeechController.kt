@@ -256,18 +256,29 @@ class SpeechController(
     }
 
     fun destroy() {
+        val wasListening = isListening
+        val recognizer = speechRecognizer
+        // Detach first, so overlapping teardown paths cannot cancel or destroy
+        // the same SpeechRecognizer twice.
+        speechRecognizer = null
         isListening = false
         abandonAudioFocus()
-        micController.releaseMic(OWNER_TAG)
+        if (micController.isOwnedBy(OWNER_TAG)) {
+            micController.releaseMic(OWNER_TAG)
+        }
         lastRecognizedText = ""
+        if (recognizer == null) return
         mainHandler.post {
             try {
-                speechRecognizer?.cancel()
-                speechRecognizer?.destroy()
+                // Calling cancel after the platform has delivered onError or
+                // onResults produces Samsung's "not connected" error. Only
+                // cancel an active recognition session; destroy always frees
+                // the recognizer instance.
+                if (wasListening) recognizer.cancel()
+                recognizer.destroy()
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to destroy SpeechRecognizer", e)
             }
-            speechRecognizer = null
         }
     }
 }

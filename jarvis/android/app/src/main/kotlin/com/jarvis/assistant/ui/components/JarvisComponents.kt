@@ -40,7 +40,7 @@ fun ScreenTopBar(title: String, subtitle: String? = null) {
 @Composable
 fun ConnectionPill(connectionState: ConnectionState) {
     val (label, color) = when (connectionState) {
-        ConnectionState.CONNECTED -> "Connected" to JarvisGreen
+        ConnectionState.CONNECTED -> "Online" to JarvisGreen
         ConnectionState.CONNECTING, ConnectionState.RECONNECTING -> "Connecting…" to JarvisAmber
         ConnectionState.DISCONNECTED -> "Offline" to JarvisRed
     }

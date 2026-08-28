@@ -180,7 +180,11 @@ class LiveKitWakeWordEngine(
             try { audioRecord?.release() } catch (_: Exception) {}
             audioRecord = null
         }
-        micController.releaseMic(MicController.OWNER_WAKE)
+        // The capture thread can finish after ownership has been handed to
+        // speech recognition. Never release another component's microphone.
+        if (micController.isOwnedBy(MicController.OWNER_WAKE)) {
+            micController.releaseMic(MicController.OWNER_WAKE)
+        }
     }
 
     /**

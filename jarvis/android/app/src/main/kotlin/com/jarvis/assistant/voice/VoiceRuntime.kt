@@ -142,7 +142,10 @@ class VoiceRuntime(
         interruptDetector.stop()
         speechController.destroy()
         micController.releaseAny()
-        if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
+        if (stateMachine.state != VoiceState.DISABLED) {
+            stateMachine.recoverTo(VoiceState.DISABLED)
+        }
+        notifyState()
         Log.i(TAG, "Wake mode DEACTIVATED — mic released")
     }
 
@@ -262,14 +265,12 @@ class VoiceRuntime(
         wakeEngine.pause()
 
         if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
-            Log.w(TAG, "Cannot enter COMMAND_LISTENING from ${stateMachine.state} — recovering")
-            stateMachine.recoverTo(VoiceState.COMMAND_LISTENING)
-            if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
-                Log.e(TAG, "Cannot start command listening — state machine stuck")
-                wakeSessionActive.set(false)
-                resumeWakeAfterCommand()
-                return
-            }
+            // Do not force the target state and then transition to it again:
+            // the latter is always invalid and used to leave the runtime in a
+            // phantom COMMAND_LISTENING state. A caller must first enter a
+            // valid source state (wake acknowledgement or interrupt).
+            Log.w(TAG, "Cannot enter COMMAND_LISTENING from ${stateMachine.state}")
+            return
         }
         notifyState()
 
@@ -399,12 +400,13 @@ class VoiceRuntime(
             return
         }
 
-        if (!stateMachine.transition(VoiceState.SPEAKING)) {
-            Log.d(TAG, "Forcing SPEAKING from ${stateMachine.state}")
-            stateMachine.recoverTo(VoiceState.SPEAKING)
-            stateMachine.transition(VoiceState.SPEAKING)
+        if (!stateMachine.isSpeaking) {
+            if (!stateMachine.transition(VoiceState.SPEAKING)) {
+                Log.d(TAG, "Recovering SPEAKING from ${stateMachine.state}")
+                stateMachine.recoverTo(VoiceState.SPEAKING)
+            }
+            notifyState()
         }
-        notifyState()
 
         // Start interrupt detection during TTS
         interruptDetector.start()
@@ -483,13 +485,17 @@ class VoiceRuntime(
         interruptDetector.stop()
 
         if (!wakeEnabled) {
-            if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
+            if (stateMachine.state != VoiceState.DISABLED) {
+                stateMachine.recoverTo(VoiceState.DISABLED)
+            }
+            notifyState()
             return
         }
 
-        if (!stateMachine.transition(VoiceState.WAKE_LISTENING)) {
-            stateMachine.recoverTo(VoiceState.WAKE_LISTENING)
-            stateMachine.transition(VoiceState.WAKE_LISTENING)
+        if (!stateMachine.isWakeListening) {
+            if (!stateMachine.transition(VoiceState.WAKE_LISTENING)) {
+                stateMachine.recoverTo(VoiceState.WAKE_LISTENING)
+            }
         }
         notifyState()
 
@@ -509,7 +515,10 @@ class VoiceRuntime(
         wakeEngine.stopMonitoring()
         audioSessionManager.endSession()
         ttsEngine.stop()
-        if (stateMachine.transition(VoiceState.DISABLED)) notifyState()
+        if (stateMachine.state != VoiceState.DISABLED) {
+            stateMachine.recoverTo(VoiceState.DISABLED)
+        }
+        notifyState()
         Log.i(TAG, "VoiceRuntime stopped")
     }
 

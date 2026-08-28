@@ -40,6 +40,9 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.DISABLED) {
             ),
             VoiceState.WAKE_LISTENING to setOf(
                 VoiceState.ACKNOWLEDGING,
+                // A user can start a command directly from the UI without a
+                // preceding wake-word acknowledgement.
+                VoiceState.COMMAND_LISTENING,
                 VoiceState.DISABLED
             ),
             VoiceState.ACKNOWLEDGING to setOf(

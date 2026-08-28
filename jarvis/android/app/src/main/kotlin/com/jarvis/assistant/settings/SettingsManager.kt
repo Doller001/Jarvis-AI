@@ -14,6 +14,7 @@ class SettingsManager(context: Context) {
         const val KEY_WAKE_ENABLED = "key_wake_enabled"
         const val KEY_WAKE_SENSITIVITY = "key_wake_sensitivity"
         const val KEY_AUTO_START_ON_BOOT = "key_auto_start_on_boot"
+        const val KEY_OFFLINE_MODE = "key_offline_mode"
 
         const val DEFAULT_BACKEND_URL = "https://jarvis-ai-59qd.onrender.com"
         const val DEFAULT_TTS_ENABLED = true
@@ -21,7 +22,12 @@ class SettingsManager(context: Context) {
         // Sensitivity: "Low"=0.5f, "Balanced"=0.8f, "High"=1.0f
         const val DEFAULT_WAKE_SENSITIVITY = "Balanced"
         const val DEFAULT_AUTO_START_ON_BOOT = false
+        const val DEFAULT_OFFLINE_MODE = false
     }
+
+    var isOfflineMode: Boolean
+        get() = prefs.getBoolean(KEY_OFFLINE_MODE, DEFAULT_OFFLINE_MODE)
+        set(value) = prefs.edit().putBoolean(KEY_OFFLINE_MODE, value).apply()
 
     var backendUrl: String
         get() {

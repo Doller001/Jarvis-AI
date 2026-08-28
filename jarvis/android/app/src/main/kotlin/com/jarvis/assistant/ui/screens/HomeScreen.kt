@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.Manifest
+import com.jarvis.assistant.ui.components.ConnectionPill
 import com.jarvis.assistant.ui.JarvisUiState
 import com.jarvis.assistant.voice.VoiceState
 
@@ -48,7 +49,8 @@ fun HomeScreen(
     onQuickAction: (String) -> Unit,
     onStartListening: () -> Unit = {},
     onToggleWakeListening: () -> Unit = {},
-    onToggleOverlay: () -> Unit = {}
+    onToggleOverlay: () -> Unit = {},
+    onToggleOfflineMode: (Boolean) -> Unit = {}
 ) {
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -96,12 +98,18 @@ fun HomeScreen(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 4.sp
             )
-            Text(
-                text = "Personal AI Assistant",
-                color = TextGray,
-                fontSize = 14.sp,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 16.dp)
-            )
+            ) {
+                Text(
+                    text = "Personal AI Assistant",
+                    color = TextGray,
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.width(8.dp))
+                ConnectionPill(uiState.connectionState)
+            }
 
             // Setup Required Banner if permissions are missing
             if (!uiState.permissionState.allRequiredGranted) {
@@ -152,7 +160,7 @@ fun HomeScreen(
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {
-                VoiceState.DISABLED       -> "WAKE WORD OFF"
+                VoiceState.DISABLED       -> if (uiState.isOfflineMode) "OFFLINE MODE" else "WAKE WORD OFF"
                 VoiceState.WAKE_LISTENING -> "SAY 'HEY JARVIS'"
                 VoiceState.ACKNOWLEDGING  -> "YES BOSS..."
                 VoiceState.COMMAND_LISTENING -> "LISTENING..."
@@ -178,11 +186,39 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Controls Row: Wake word toggle + Floating Overlay toggle
+            // Controls Row: Online/Offline Mode toggle + Wake word toggle + Floating Overlay toggle
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Online / Offline Mode Toggle
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (uiState.isOfflineMode) Color(0xFF332005) else CyanGlow.copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, if (uiState.isOfflineMode) Color(0xFFFFB020) else CyanGlow),
+                    onClick = { onToggleOfflineMode(!uiState.isOfflineMode) },
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    ) {
+                        Icon(
+                            if (uiState.isOfflineMode) Icons.Filled.CloudOff else Icons.Filled.Cloud,
+                            contentDescription = null,
+                            tint = if (uiState.isOfflineMode) Color(0xFFFFB020) else CyanGlow,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            if (uiState.isOfflineMode) "Offline Mode" else "Online (Default)",
+                            color = if (uiState.isOfflineMode) Color(0xFFFFB020) else CyanGlow,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 // Wake-word toggle (offline "Hey Jarvis" detection)
                 Surface(
                     shape = RoundedCornerShape(20.dp),
@@ -193,7 +229,7 @@ fun HomeScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 14.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp)
                     ) {
                         Icon(
                             Icons.Filled.Mic,
@@ -201,11 +237,11 @@ fun HomeScreen(
                             tint = if (uiState.wakeListening) CyanGlow else TextGray,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            if (uiState.wakeListening) "Wake word ON" else "Wake word OFF",
+                            if (uiState.wakeListening) "Wake ON" else "Wake OFF",
                             color = if (uiState.wakeListening) CyanGlow else TextGray,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -221,7 +257,7 @@ fun HomeScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 14.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp)
                     ) {
                         Icon(
                             Icons.Filled.Layers,
@@ -229,11 +265,11 @@ fun HomeScreen(
                             tint = if (uiState.isOverlayActive) CyanGlow else TextGray,
                             modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            if (uiState.isOverlayActive) "Overlay ON" else "Floating UI",
+                            if (uiState.isOverlayActive) "Overlay" else "Floating",
                             color = if (uiState.isOverlayActive) CyanGlow else TextGray,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }

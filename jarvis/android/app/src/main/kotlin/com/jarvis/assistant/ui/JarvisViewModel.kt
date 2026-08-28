@@ -24,12 +24,15 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 data class JarvisUiState(
     val voiceState: VoiceState = VoiceState.DISABLED,
-    val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
-    val runtimeState: RuntimeState = RuntimeState.OFFLINE,
+    val connectionState: ConnectionState = ConnectionState.CONNECTED,
+    val runtimeState: RuntimeState = RuntimeState.IDLE,
+    val isOfflineMode: Boolean = false,
     val permissionState: PermissionState = PermissionState(),
     val activeProvider: String = "Groq",
     val activeModel: String = "llama-3.3-70b-versatile",
@@ -68,7 +71,9 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         JarvisUiState(
             backendUrl = settingsManager.backendUrl,
             isTtsEnabled = settingsManager.isTtsEnabled,
-            speechRate = settingsManager.speechRate
+            speechRate = settingsManager.speechRate,
+            isOfflineMode = settingsManager.isOfflineMode,
+            connectionState = if (settingsManager.isOfflineMode) ConnectionState.DISCONNECTED else ConnectionState.CONNECTED
         )
     )
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
@@ -91,21 +96,31 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             apiClient.registerDevice(deviceName, deviceModel, osVersion) { tokens ->
                 if (tokens != null) {
                     android.util.Log.i("JarvisViewModel", "Device registered: ${tokens.deviceId}")
+                    backendHealthManager.checkHealthAndReconnect()
                 }
             }
         }
 
         // Single Source of Truth for Backend Health & Connectivity
-        backendHealthManager.start()
+        backendHealthManager.start(isOfflineMode = settingsManager.isOfflineMode)
         viewModelScope.launch {
             backendHealthManager.health.collect { health ->
-                val connState = when (health.status) {
-                    HealthStatus.CONNECTED -> ConnectionState.CONNECTED
-                    HealthStatus.CONNECTING -> ConnectionState.CONNECTING
-                    HealthStatus.DEGRADED -> ConnectionState.RECONNECTING
-                    HealthStatus.OFFLINE -> ConnectionState.DISCONNECTED
+                val connState = if (health.isOfflineMode) {
+                    ConnectionState.DISCONNECTED
+                } else {
+                    when (health.status) {
+                        HealthStatus.CONNECTED -> ConnectionState.CONNECTED
+                        HealthStatus.CONNECTING -> ConnectionState.CONNECTING
+                        HealthStatus.DEGRADED -> ConnectionState.CONNECTED
+                        HealthStatus.OFFLINE -> ConnectionState.CONNECTING
+                    }
                 }
-                _uiState.update { it.copy(connectionState = connState) }
+                _uiState.update {
+                    it.copy(
+                        connectionState = connState,
+                        isOfflineMode = health.isOfflineMode
+                    )
+                }
             }
         }
 
@@ -237,6 +252,17 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(wakeSensitivity = sensitivity) }
     }
 
+    fun toggleOfflineMode(isOffline: Boolean) {
+        settingsManager.isOfflineMode = isOffline
+        backendHealthManager.setOfflineMode(isOffline)
+        _uiState.update {
+            it.copy(
+                isOfflineMode = isOffline,
+                connectionState = if (isOffline) ConnectionState.DISCONNECTED else ConnectionState.CONNECTED
+            )
+        }
+    }
+
     fun toggleOverlay() {
         val context = getApplication<Application>()
         if (com.jarvis.assistant.overlay.OverlayController.hasOverlayPermission(context)) {
@@ -336,7 +362,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun routeToCloudBrain(
+    private suspend fun routeToCloudBrain(
         text: String,
         routed: com.jarvis.assistant.memory.RoutedAnswer,
         engine: com.jarvis.assistant.memory.MemoryEngine
@@ -353,14 +379,64 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        val deviceSessionId = settingsManager.deviceId
-        apiClient.sendChat(promptText, deviceSessionId) { answer ->
-            viewModelScope.launch(Dispatchers.IO) {
-                val response = answer ?: "JARVIS is operating in local mode. All on-device systems, hardware controls, and local memories are active."
-                engine.recordEpisode("assistant", response)
-                memoryRouter.learn(text, response)
-                updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
+        // Offline mode is only used when explicitly turned ON by the user
+        if (settingsManager.isOfflineMode) {
+            val response = "JARVIS is operating in offline mode. All on-device systems, hardware controls, and local memories are active."
+            engine.recordEpisode("assistant", response)
+            updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
+            return
+        }
+
+        if (!ensureBackendAuthentication()) {
+            val response = "Jarvis Cloud authentication is unavailable. Local device controls remain active."
+            engine.recordEpisode("assistant", response)
+            updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
+            return
+        }
+
+        val deviceSessionId = settingsManager.deviceId ?: authTokenManager.deviceId ?: "android-session"
+        val chatResult = suspendCancellableCoroutine<ChatResult> { continuation ->
+            apiClient.sendChat(promptText, deviceSessionId) { result ->
+                if (continuation.isActive) continuation.resume(result)
+            }
+        }
+        val response = chatResult.responseText ?: when {
+            // Only true transport failures should activate the offline fallback message.
+            chatResult.isNetworkFailure ->
+                "JARVIS is unable to reach the cloud server. Local device controls remain active."
+            chatResult.statusCode == 401 ->
+                "Jarvis Cloud authentication expired. Please try again while connected to the internet."
+            chatResult.errorMessage?.contains("authentication", ignoreCase = true) == true ->
+                "Jarvis Cloud authentication is unavailable. Local device controls remain active."
+            else -> "Jarvis Cloud returned an error (${chatResult.statusCode}). Local device controls remain active."
+        }
+        engine.recordEpisode("assistant", response)
+        if (chatResult.responseText != null) memoryRouter.learn(text, response)
+        updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
+    }
+
+    private suspend fun ensureBackendAuthentication(): Boolean {
+        val token = authTokenManager.accessToken
+        if (!token.isNullOrBlank() && !authTokenManager.isTokenExpired(token)) return true
+
+        val refreshed = authTokenManager.refreshToken?.let {
+            suspendCancellableCoroutine { continuation ->
+                apiClient.refreshAccessToken { newToken ->
+                    if (continuation.isActive) continuation.resume(!newToken.isNullOrBlank())
+                }
+            }
+        } ?: false
+        if (refreshed) return true
+
+        return suspendCancellableCoroutine { continuation ->
+            apiClient.registerDevice(
+                deviceName = settingsManager.deviceId ?: "android-device",
+                deviceModel = android.os.Build.MODEL ?: "unknown",
+                osVersion = "Android ${android.os.Build.VERSION.RELEASE}"
+            ) { tokens ->
+                if (continuation.isActive) continuation.resume(tokens != null)
             }
         }
     }
+
 }

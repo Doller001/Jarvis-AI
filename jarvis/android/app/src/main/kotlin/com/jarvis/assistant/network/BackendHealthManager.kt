@@ -22,18 +22,20 @@ enum class HealthStatus {
 }
 
 data class BackendHealth(
-    val status: HealthStatus = HealthStatus.OFFLINE,
-    val httpHealthy: Boolean = false,
+    val status: HealthStatus = HealthStatus.CONNECTED,
+    val httpHealthy: Boolean = true,
     val wsConnected: Boolean = false,
-    val isNetworkAvailable: Boolean = false,
+    val isNetworkAvailable: Boolean = true,
     val lastSuccessAt: Long? = null,
     val retryAttempt: Int = 0,
     val reason: String? = null,
-    val endpoint: String = "https://jarvis-ai-59qd.onrender.com"
+    val endpoint: String = "https://jarvis-ai-59qd.onrender.com",
+    val isOfflineMode: Boolean = false
 )
 
 /**
  * Single source of truth for Backend & Network connectivity.
+ * Defaults to Online mode. Offline mode only active when explicitly enabled.
  *
  * Coordinates:
  *  1. Android ConnectivityManager NetworkCallback (triggers instant reconnect on network restoration).
@@ -61,18 +63,49 @@ class BackendHealthManager(
     private var healthCheckJob: Job? = null
     private var retryAttempt = 0
 
-    fun start() {
+    fun start(isOfflineMode: Boolean = false) {
         val deviceId = context?.let { com.jarvis.assistant.settings.SettingsManager(it).deviceId }
         if (deviceId != null) {
             webSocketClient.sessionId = deviceId
         }
+        if (isOfflineMode) {
+            setOfflineMode(true)
+            return
+        }
         registerNetworkCallback()
         setupWebSocketListeners()
         startPeriodicHealthCheck()
+        checkHealthAndReconnect()
+    }
+
+    fun setOfflineMode(enabled: Boolean) {
+        if (enabled) {
+            healthCheckJob?.cancel()
+            webSocketClient.disconnect()
+            _health.value = _health.value.copy(
+                isOfflineMode = true,
+                status = HealthStatus.OFFLINE,
+                httpHealthy = false,
+                wsConnected = false,
+                reason = "Offline mode activated by user"
+            )
+        } else {
+            _health.value = _health.value.copy(
+                isOfflineMode = false,
+                isNetworkAvailable = true,
+                status = HealthStatus.CONNECTED,
+                reason = null
+            )
+            registerNetworkCallback()
+            setupWebSocketListeners()
+            startPeriodicHealthCheck()
+            checkHealthAndReconnect()
+        }
     }
 
     private fun registerNetworkCallback() {
         val ctx = context ?: return
+        if (networkCallback != null) return
         try {
             connectivityManager = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             val request = NetworkRequest.Builder()
@@ -81,6 +114,7 @@ class BackendHealthManager(
 
             networkCallback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
+                    if (_health.value.isOfflineMode) return
                     Log.i(TAG, "Internet network available — triggering immediate backend health check & reconnect")
                     _health.value = _health.value.copy(isNetworkAvailable = true)
                     DiagnosticEventBus.emit(
@@ -93,11 +127,12 @@ class BackendHealthManager(
                 }
 
                 override fun onLost(network: Network) {
+                    if (_health.value.isOfflineMode) return
                     Log.w(TAG, "Internet network lost")
                     _health.value = _health.value.copy(
                         isNetworkAvailable = false,
-                        status = HealthStatus.OFFLINE,
-                        reason = "Network connection lost"
+                        status = HealthStatus.CONNECTING,
+                        reason = "Network connection lost, waiting to reconnect"
                     )
                     DiagnosticEventBus.emit(
                         type = TelemetryEventType.NETWORK_LOST,
@@ -117,8 +152,10 @@ class BackendHealthManager(
 
     private fun setupWebSocketListeners() {
         webSocketClient.connectionManager.onStateChanged = { connState ->
-            val isWsConnected = connState == ConnectionState.CONNECTED
-            updateHealthState(wsConnected = isWsConnected)
+            if (!_health.value.isOfflineMode) {
+                val isWsConnected = connState == ConnectionState.CONNECTED
+                updateHealthState(wsConnected = isWsConnected)
+            }
         }
     }
 
@@ -128,14 +165,18 @@ class BackendHealthManager(
         apiClient.baseUrl = clean
         val wsUrl = clean.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
         webSocketClient.updateUrl(wsUrl)
-        checkHealthAndReconnect()
+        if (!_health.value.isOfflineMode) {
+            checkHealthAndReconnect()
+        }
         return true
     }
 
     fun checkHealthAndReconnect() {
+        if (_health.value.isOfflineMode) return
         scope.launch {
             val endpoint = _health.value.endpoint
             apiClient.pingBackend(endpoint) { pingResult ->
+                if (_health.value.isOfflineMode) return@pingBackend
                 val httpOk = pingResult.isSuccess
                 val lastSuccess = if (httpOk) System.currentTimeMillis() else _health.value.lastSuccessAt
                 updateHealthState(httpHealthy = httpOk, lastSuccess = lastSuccess, reason = if (!httpOk) pingResult.message else null)
@@ -153,11 +194,21 @@ class BackendHealthManager(
         lastSuccess: Long? = _health.value.lastSuccessAt,
         reason: String? = _health.value.reason
     ) {
+        if (_health.value.isOfflineMode) {
+            _health.value = _health.value.copy(
+                status = HealthStatus.OFFLINE,
+                httpHealthy = false,
+                wsConnected = false,
+                reason = "Offline mode activated by user"
+            )
+            return
+        }
+
         val status = when {
             httpHealthy && wsConnected -> HealthStatus.CONNECTED
-            httpHealthy || wsConnected -> HealthStatus.DEGRADED
+            httpHealthy || wsConnected -> HealthStatus.CONNECTED
             _health.value.isNetworkAvailable -> HealthStatus.CONNECTING
-            else -> HealthStatus.OFFLINE
+            else -> HealthStatus.CONNECTING
         }
 
         _health.value = _health.value.copy(
@@ -183,7 +234,7 @@ class BackendHealthManager(
         healthCheckJob?.cancel()
         healthCheckJob = scope.launch {
             while (isActive) {
-                if (_health.value.isNetworkAvailable) {
+                if (!_health.value.isOfflineMode && _health.value.isNetworkAvailable) {
                     checkHealthAndReconnect()
                 }
                 // Periodic probe every 30 seconds
@@ -207,6 +258,7 @@ class BackendHealthManager(
             try {
                 connectivityManager?.unregisterNetworkCallback(it)
             } catch (_: Exception) {}
+            networkCallback = null
         }
         webSocketClient.disconnect()
         scope.cancel()

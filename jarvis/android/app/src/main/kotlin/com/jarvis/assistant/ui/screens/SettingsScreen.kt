@@ -36,7 +36,8 @@ fun SettingsScreen(
     onToggleTts: (Boolean) -> Unit,
     onSelectSpeechRate: (Float) -> Unit,
     onSelectWakeSensitivity: (String) -> Unit,
-    onClearHistory: () -> Unit
+    onClearHistory: () -> Unit,
+    onToggleOfflineMode: (Boolean) -> Unit = {}
 ) {
     var urlInput by remember(uiState.backendUrl) { mutableStateOf(uiState.backendUrl) }
     var showClearDialog by remember { mutableStateOf(false) }
@@ -104,6 +105,92 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 0. Connectivity & Operation Mode Card
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = JarvisCard,
+                border = BorderStroke(1.dp, if (uiState.isOfflineMode) JarvisAmber else JarvisCyan),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Filled.NetworkCheck,
+                                contentDescription = null,
+                                tint = if (uiState.isOfflineMode) JarvisAmber else JarvisGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Connectivity Mode",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        ConnectionPill(uiState.connectionState)
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Text(
+                        if (uiState.isOfflineMode)
+                            "Offline Mode Active: JARVIS runs entirely on-device using local actions, offline wake-word, and memory without cloud LLMs."
+                        else
+                            "Online Mode Active (Default): Full cloud intelligence with multi-provider LLM reasoning, deep contextual queries, and hardware controls.",
+                        color = JarvisTextSecondary,
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (!uiState.isOfflineMode) JarvisBlue.copy(alpha = 0.25f) else JarvisDark,
+                            border = BorderStroke(1.dp, if (!uiState.isOfflineMode) JarvisCyan else JarvisGlow),
+                            onClick = { onToggleOfflineMode(false) },
+                            modifier = Modifier.weight(1f).height(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Online (Default)",
+                                    color = if (!uiState.isOfflineMode) JarvisCyan else JarvisTextSecondary,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (!uiState.isOfflineMode) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (uiState.isOfflineMode) JarvisAmber.copy(alpha = 0.25f) else JarvisDark,
+                            border = BorderStroke(1.dp, if (uiState.isOfflineMode) JarvisAmber else JarvisGlow),
+                            onClick = { onToggleOfflineMode(true) },
+                            modifier = Modifier.weight(1f).height(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Offline Mode",
+                                    color = if (uiState.isOfflineMode) JarvisAmber else JarvisTextSecondary,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (uiState.isOfflineMode) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // 1. Backend Gateway Configuration Card
             Surface(
                 shape = RoundedCornerShape(16.dp),

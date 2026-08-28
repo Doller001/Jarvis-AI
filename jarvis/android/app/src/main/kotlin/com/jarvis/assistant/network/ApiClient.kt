@@ -12,11 +12,16 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 data class PingResult(val isSuccess: Boolean, val latencyMs: Long, val message: String)
 data class AuthTokens(val accessToken: String, val refreshToken: String, val expiresIn: Int, val deviceId: String, val trusted: Boolean)
+data class ChatResult(
+    val responseText: String? = null,
+    val statusCode: Int? = null,
+    val errorMessage: String? = null,
+    val isNetworkFailure: Boolean = false
+)
 
 /**
  * Ultra-low latency, high-performance API client with JWT authentication.
@@ -34,7 +39,9 @@ class ApiClient(
             OkHttpClient.Builder()
                 .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
                 .connectTimeout(3000, TimeUnit.MILLISECONDS)
-                .readTimeout(5000, TimeUnit.MILLISECONDS)
+                // Cloud providers can take longer than the health endpoint,
+                // especially when Render wakes a sleeping instance.
+                .readTimeout(20, TimeUnit.SECONDS)
                 .writeTimeout(3000, TimeUnit.MILLISECONDS)
                 .retryOnConnectionFailure(true)
                 .build()
@@ -263,8 +270,15 @@ class ApiClient(
         }
     }
 
-    fun sendChat(text: String, sessionId: String, onResult: (String?) -> Unit) {
+    fun sendChat(text: String, sessionId: String, onResult: (ChatResult) -> Unit) {
         scope.launch {
+            val token = authTokenManager?.accessToken
+            if (token.isNullOrBlank() || authTokenManager?.isTokenExpired(token) != false) {
+                launch(Dispatchers.Main) {
+                    onResult(ChatResult(errorMessage = "Backend authentication is not ready."))
+                }
+                return@launch
+            }
             val cleanUrl = baseUrl.trim().trimEnd('/')
             val bodyJson = JSONObject().apply {
                 put("text", text)
@@ -293,14 +307,37 @@ class ApiClient(
                             val execRes = json.optJSONObject("execution_result")
                             responseText = execRes?.optString("result").orEmpty()
                         }
-                        launch(Dispatchers.Main) { onResult(if (responseText.isNotBlank()) responseText else null) }
+                        launch(Dispatchers.Main) {
+                            onResult(
+                                ChatResult(
+                                    responseText = responseText.ifBlank { null },
+                                    statusCode = response.code,
+                                    errorMessage = if (responseText.isBlank()) "Backend returned no answer." else null
+                                )
+                            )
+                        }
+                        return@launch
+                    } else {
+                        val errorBody = response.body?.string().orEmpty()
+                        Log.w(TAG, "Chat request failed: HTTP ${response.code} $errorBody")
+                        launch(Dispatchers.Main) {
+                            onResult(ChatResult(statusCode = response.code, errorMessage = "Backend returned HTTP ${response.code}."))
+                        }
                         return@launch
                     }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Chat request failed: ${e.message}")
+                launch(Dispatchers.Main) {
+                    onResult(
+                        ChatResult(
+                            errorMessage = e.message ?: "Network request failed.",
+                            isNetworkFailure = true
+                        )
+                    )
+                }
+                return@launch
             }
-            launch(Dispatchers.Main) { onResult(null) }
         }
     }
 
