@@ -1,16 +1,18 @@
 # JARVIS — Cognitive Voice Assistant for Android
 
-A fully offline-first, multi-attribute voice assistant built with Jetpack Compose that runs **completely on-device**. No cloud dependencies, no network permissions required. Supports **Hinglish and English** natively. Your phone becomes JARVIS — the quiet co-pilot that listens, remembers, and acts.
+A hybrid on-device & cloud-connected voice assistant built with Jetpack Compose. By default, JARVIS operates in **Online Mode** connected to Cloud LLM providers (NVIDIA Nemotron, Groq, OpenRouter, Gemini, Ollama) for rich conversational AI, while retaining full on-device hardware automation. Users can switch to **Offline Mode** at any time for 100% on-device local execution without internet. Supports **Hinglish and English** natively.
 
 ---
 
 ## What JARVIS Does (Features at a Glance)
 
-| Feature | What it does | Offline/Online |
-|---------|-------------|----------------|
+| Feature | What it does | Mode |
+|---------|-------------|------|
+| **Connectivity** | Online by default with cloud LLM reasoning; explicit Offline mode toggle | 🌐 Online Default / 📴 Offline Switchable |
 | **Wake Word** | "Hey JARVIS", "Jarvis", "ജാര്‍വിസ്" — microphone listens continuously | ✅ Offline (ONNX) |
-| **Voice Commands** | Control phone from voice — open apps, adjust settings, play music | ✅ Mostly Offline |
-| **Context Awareness** | Remembers past conversations, knows your routine | ✅ On-device SQLite |
+| **Voice Commands** | Control phone from voice — open apps, adjust settings, play music | ✅ On-Device Deterministic |
+| **Context Awareness** | Remembers past conversations, knows your routine | ✅ On-device SQLite + Vector Search |
+| **Cloud Brain** | Deep reasoning via NVIDIA, Groq, OpenRouter, Gemini, Ollama | 🌐 Cloud LLM Gateway |
 | **Device Control** | Torch, WiFi, Bluetooth, volume, brightness, DND, rotation lock | ✅ Offline |
 | **Smart Calling** | Call contacts with speakerphone: "Jarvis, Papa ko call lagao speaker par" | ✅ Offline |
 | **Auto Messaging** | WhatsApp messages, SMS — send by voice, no typing | ✅ Offline (intent-based) |
@@ -22,9 +24,9 @@ A fully offline-first, multi-attribute voice assistant built with Jetpack Compos
 | **Routine Management** | Morning routine, night routine — auto-run on schedule | ✅ Offline |
 | **Media Control** | Play/pause/next/prev, volume control, open music apps | ✅ Offline |
 | **Screen Reading** | "Screen padho" — reads on-screen content, suggests replies | ✅ Offline |
-| **Live Translation** | Translate Hinglish↔English or any language in real-time | ✅ Requires Google Translate API (optional) |
+| **Live Translation** | Translate Hinglish↔English or any language in real-time | ✅ Cloud API |
 | **Location-Based Reminders** | "Jab main market jaun, dhoodh lena yaad dilana" | ✅ Offline (GPS geofence) |
-| **Offline Mode** | Works without internet — everything runs on-device | ✅ Full Offline |
+| **Offline Mode** | 100% on-device operation switchable via Home Screen & Settings | ✅ Manual Toggle |
 | **Hands-Free Mode** | Always listening, no button press needed | ✅ Always On |
 | **UI Customization** | Futuristic neon hologram widget with voice status visualization | ✅ On-device |
 

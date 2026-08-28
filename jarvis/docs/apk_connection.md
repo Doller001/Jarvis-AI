@@ -8,32 +8,25 @@ This guide explains how to connect the Jarvis Android Application (APK) to the J
 
 | Deployment Environment | HTTP API Base URL | WebSocket Realtime URL |
 |---|---|---|
+| **Render Cloud / Production (Default)** | `https://jarvis-ai-59qd.onrender.com` | `wss://jarvis-ai-59qd.onrender.com/ws` |
 | **Android Emulator** (Local PC) | `http://10.0.2.2:8000` | `ws://10.0.2.2:8000/ws` |
 | **Physical Android Device** (Same Wi-Fi) | `http://<YOUR_PC_LOCAL_IP>:8000` | `ws://<YOUR_PC_LOCAL_IP>:8000/ws` |
-| **Render Cloud / Production** | `https://jarvis-backend.onrender.com` | `wss://jarvis-backend.onrender.com/ws` |
 | **Custom VPS / Docker** | `https://your-domain.com` | `wss://your-domain.com/ws` |
 
 ---
 
-## 1. Configuring URLs in Android Source Code
+## 1. Configuring URLs in Android Application
 
-### Option A: Direct Configuration in `ApiClient.kt` & `WebSocketClient.kt`
+### Option A: In-App Settings Screen (Recommended)
+Open **Settings & Config** inside the app:
+1. Tap the quick preset buttons (**Render Cloud**, **Emulator**, or **Localhost**) or type a custom Base URL.
+2. Tap **Test Ping** to measure real-time latency.
+3. Tap **Save & Apply** — the app immediately migrates both HTTP and WebSocket connections without reinstalling.
 
-In `jarvis/android/app/src/main/kotlin/com/jarvis/assistant/network/ApiClient.kt`:
+### Option B: Direct Configuration in `SettingsManager.kt` & Manifests
+The default endpoint is configured in `SettingsManager.kt`:
 ```kotlin
-// Android Emulator default: http://10.0.2.2:8000
-// Cloud Production default: https://jarvis-backend.onrender.com
-class ApiClient(val baseUrl: String = "https://jarvis-backend.onrender.com") { ... }
-```
-
-In `jarvis/android/app/src/main/kotlin/com/jarvis/assistant/network/WebSocketClient.kt`:
-```kotlin
-// Android Emulator default: ws://10.0.2.2:8000/ws
-// Cloud Production default: wss://jarvis-backend.onrender.com/ws
-class WebSocketClient(
-    val wsUrl: String = "wss://jarvis-backend.onrender.com/ws",
-    private val connectionManager: ConnectionManager = ConnectionManager()
-) { ... }
+const val DEFAULT_BACKEND_URL = "https://jarvis-ai-59qd.onrender.com"
 ```
 
 ---

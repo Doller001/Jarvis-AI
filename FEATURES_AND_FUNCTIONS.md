@@ -130,3 +130,16 @@
 | **P8.3** | **Extended Settings Sections** | `OpenSettings(section)` | Added: location, security, NFC, storage, airplane mode settings sections. |
 | **P8.4** | **Backend Tool Registry +20** | `tools/registry.py` | Added 20 new backend tool definitions: set_brightness, toggle_dnd, set_ringer_mode, toggle_rotation_lock, take_screenshot, run_routine, set_alarm, set_timer, set_reminder, get_location, navigate_to, read_calendar, get_daily_briefing, lock_screen, + more. |
 | **P8.5** | **Backend Executor Honesty** | `tools/executor.py` | `analyze_image` and `get_battery_level` now return `pending_device` status with `dispatch_to_device: true` instead of hardcoded mock strings. |
+
+---
+
+## 9. 🌐 Phase 3 Hybrid Connectivity & Voice Pipeline Hardening (2026-08-28)
+
+| # | Feature / Function | File / Class | Description & Operational Flow |
+|---|---|---|---|
+| **C9.1** | **Online Default Connectivity** | `BackendHealthManager.kt` / `SettingsManager.kt` | Automatically boots in Online mode, monitors Android network callbacks, and maintains live HTTP & WebSocket connections with cloud backend. |
+| **C9.2** | **Explicit Offline Mode Toggle** | `HomeScreen.kt` / `SettingsScreen.kt` | Dedicated UI switch on Home & Settings screens to transition JARVIS to 100% on-device local execution without cloud dependency. |
+| **C9.3** | **Structured Network Failure & Auth Recovery** | `ApiClient.kt` / `JarvisViewModel.kt` | Introduces `ChatResult` with status codes, token validity checks, and auto-registration recovery. |
+| **C9.4** | **Samsung/OEM SpeechRecognizer Teardown Guard** | `SpeechController.kt` | Prevents "not connected" platform crashes during active audio session transitions and cancellations. |
+| **C9.5** | **Microphone Ownership Arbitration** | `MicController.kt` / `LiveKitWakeWordEngine.kt` | Verifies component ownership tags so wake word background threads never release speech recognizer mic ownership. |
+| **C9.6** | **NVIDIA NIM LLM Cloud Integration** | `llm/providers.py` / `render.yaml` | Deploys NVIDIA Nemotron LLM as priority provider on Render cloud with declarative secrets and token redaction. |

@@ -87,11 +87,13 @@
 - OEM-aware background survival for 7 brands (Xiaomi, Samsung, Oppo/Realme, Vivo/iQoo, Huawei/Honor, OnePlus)
 - Floating overlay widget with holographic UI
 
-### Settings
-- Configurable backend URL
-- TTS on/off + speech rate
-- Wake word on/off + sensitivity
-- Auto-generated device ID
+### Settings & Connectivity
+- Online Connectivity Mode (Default) with auto-reconnecting backend health engine
+- Explicit Offline Mode toggle (switches JARVIS to 100% on-device local execution)
+- Configurable backend URL with live ping tests and presets
+- TTS on/off + speech rate controls
+- Wake word on/off + 3 sensitivity levels
+- Auto-generated device ID with JWT device authentication
 
 ---
 
