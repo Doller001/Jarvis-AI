@@ -30,12 +30,27 @@ android {
     }
 
     signingConfigs {
-        if (project.hasProperty("KEYSTORE_PATH")) {
-            create("release") {
-                storeFile = file(project.property("KEYSTORE_PATH") as String)
-                storePassword = project.property("KEYSTORE_PASSWORD") as String
-                keyAlias = project.property("KEY_ALIAS") as String
-                keyPassword = project.property("KEY_PASSWORD") as String
+        create("release") {
+            val keystorePath = (project.findProperty("KEYSTORE_PATH") as? String)
+                ?: System.getenv("JARVIS_KEYSTORE_PATH")
+                ?: "${rootProject.projectDir}/keystore/jarvis-release.jks"
+
+            val keystoreFile = file(keystorePath)
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = (project.findProperty("KEYSTORE_PASSWORD") as? String)
+                    ?: System.getenv("JARVIS_KEYSTORE_PASSWORD")
+                    ?: "jarvis123"
+                keyAlias = (project.findProperty("KEY_ALIAS") as? String)
+                    ?: System.getenv("JARVIS_KEY_ALIAS")
+                    ?: "jarvis-release"
+                keyPassword = (project.findProperty("KEY_PASSWORD") as? String)
+                    ?: System.getenv("JARVIS_KEY_PASSWORD")
+                    ?: "jarvis123"
+                enableV1Signing = true
+                enableV2Signing = true
+            } else {
+                initWith(getByName("debug"))
             }
         }
     }
@@ -44,11 +59,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = if (project.hasProperty("KEYSTORE_PATH")) {
-                signingConfigs.getByName("release")
-            } else {
-                null
-            }
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
