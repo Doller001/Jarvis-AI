@@ -17,6 +17,7 @@ class TextToSpeechEngine(private val context: Context? = null) {
     private var pendingSpeechRate: Float = 1.0f
     private val pendingQueue = java.util.concurrent.ConcurrentLinkedQueue<Pair<String, () -> Unit>>()
     private val utteranceCallbacks = java.util.concurrent.ConcurrentHashMap<String, () -> Unit>()
+    private var onInterrupted: (() -> Unit)? = null
 
     init {
         context?.let { ctx ->
@@ -42,7 +43,6 @@ class TextToSpeechEngine(private val context: Context? = null) {
     }
 
     private fun configureTts(engine: TextToSpeech) {
-        // Preferred locale cascade: en-IN -> device default -> en-US -> UK
         val candidates = listOf(
             Locale("en", "IN"),
             Locale.getDefault(),
@@ -122,7 +122,6 @@ class TextToSpeechEngine(private val context: Context? = null) {
         if (error) {
             items.forEach { it.second() }
         } else {
-            // Keep the last utterance to speak and invoke previous callbacks so state does not hang
             for (i in 0 until items.size - 1) {
                 items[i].second()
             }
@@ -168,7 +167,12 @@ class TextToSpeechEngine(private val context: Context? = null) {
         }
     }
 
-    fun stop() {
+    /**
+     * Immediate stop — clears pending queue, invokes all callbacks,
+     * stops TTS playback, and fires onInterrupted callback.
+     * Used for barge-in during TTS playback.
+     */
+    fun stopImmediately() {
         pendingQueue.clear()
         utteranceCallbacks.values.forEach { it.invoke() }
         utteranceCallbacks.clear()
@@ -177,6 +181,23 @@ class TextToSpeechEngine(private val context: Context? = null) {
         } catch (e: Exception) {
             Log.e(TAG, "Error stopping TTS", e)
         }
+        onInterrupted?.invoke()
+    }
+
+    fun setOnInterruptedListener(listener: () -> Unit) {
+        onInterrupted = listener
+    }
+
+    fun stop() {
+        pendingQueue.clear()
+        // Invoke callbacks AFTER stopping TTS (fix for ordering issue)
+        try {
+            tts?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping TTS", e)
+        }
+        utteranceCallbacks.values.forEach { it.invoke() }
+        utteranceCallbacks.clear()
     }
 
     fun shutdown() {

@@ -157,12 +157,9 @@ fun HomeScreen(
                 VoiceState.ACKNOWLEDGING  -> "YES BOSS..."
                 VoiceState.COMMAND_LISTENING -> "LISTENING..."
                 VoiceState.RECOVERING     -> "RECOVERING..."
-                VoiceState.WAKE           -> "SAY 'HEY JARVIS'"
-                VoiceState.LISTENING      -> "LISTENING..."
                 VoiceState.PROCESSING     -> "THINKING..."
                 VoiceState.SPEAKING       -> "SPEAKING..."
-                VoiceState.ERROR          -> "RECOVERING..."
-                VoiceState.IDLE           -> if (uiState.wakeListening) "LISTENING FOR WAKE WORD" else "TAP MIC TO SPEAK"
+                VoiceState.INTERRUPTING   -> "INTERRUPTING..."
             }
 
             Text(
@@ -281,10 +278,10 @@ fun HomeScreen(
 
 @Composable
 fun GlowingMicOrb(
-    voiceState: VoiceState = VoiceState.IDLE,
+        voiceState: VoiceState = VoiceState.DISABLED,
     onClick: () -> Unit = {}
 ) {
-    val isListening = voiceState == VoiceState.LISTENING || voiceState == VoiceState.WAKE
+        val isListening = voiceState == VoiceState.COMMAND_LISTENING || voiceState == VoiceState.WAKE_LISTENING
 
     // Do not keep a 60fps infinite animation running while idle.
     val scale by animateFloatAsState(

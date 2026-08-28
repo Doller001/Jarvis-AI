@@ -29,11 +29,26 @@ android {
         }
     }
 
+    signingConfigs {
+        if (project.hasProperty("KEYSTORE_PATH")) {
+            create("release") {
+                storeFile = file(project.property("KEYSTORE_PATH") as String)
+                storePassword = project.property("KEYSTORE_PASSWORD") as String
+                keyAlias = project.property("KEY_ALIAS") as String
+                keyPassword = project.property("KEY_PASSWORD") as String
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (project.hasProperty("KEYSTORE_PATH")) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -123,6 +138,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Encrypted storage for auth tokens
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Sherpa-ONNX / ONNX Runtime Mobile — runs the offline wake-word models (melspectrogram,
     // embedding_model, hey_jarvis) entirely on-device with zero external cloud dependencies.

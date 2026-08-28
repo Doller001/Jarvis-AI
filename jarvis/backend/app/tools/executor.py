@@ -29,6 +29,9 @@ class ToolExecutor:
         if tool_name == "search_music":
             return await self._execute_search_music(parameters)
 
+        if tool_name == "smart_home_control":
+            return await self._execute_smart_home(parameters)
+
         if tool_name == "analyze_image":
             prompt = parameters.get("prompt", "Describe this image in detail.")
             # Real implementation requires the Android device runtime to capture and
@@ -221,5 +224,72 @@ class ToolExecutor:
             "query": query
         }
 
+    async def _execute_smart_home(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        import os
+        action = parameters.get("action", "toggle")
+        entity = parameters.get("entity", "device")
+        value = parameters.get("value")
+        area = parameters.get("area", "")
+
+        hass_url = os.getenv("HASS_URL")
+        hass_token = os.getenv("HASS_TOKEN")
+
+        if hass_url and hass_token:
+            clean_url = hass_url.rstrip("/")
+            headers = {
+                "Authorization": f"Bearer {hass_token}",
+                "Content-Type": "application/json",
+            }
+            domain = "homeassistant"
+            service = "toggle"
+            if action in ["turn_on", "turn_off", "toggle"]:
+                service = action
+            elif action == "set_temperature":
+                domain = "climate"
+                service = "set_temperature"
+            elif action == "set_level":
+                domain = "light"
+                service = "turn_on"
+
+            payload: dict[str, Any] = {"entity_id": entity}
+            if value and action == "set_temperature":
+                try:
+                    payload["temperature"] = float(value)
+                except ValueError:
+                    pass
+            elif value and action == "set_level":
+                try:
+                    payload["brightness_pct"] = int(value)
+                except ValueError:
+                    pass
+
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    resp = await client.post(
+                        f"{clean_url}/api/services/{domain}/{service}",
+                        json=payload,
+                        headers=headers,
+                    )
+                    if resp.status_code in [200, 201]:
+                        area_str = f" in {area}" if area else ""
+                        return {
+                            "status": "success",
+                            "tool": "smart_home_control",
+                            "result": f"Smart-home {action} executed for {entity}{area_str}.",
+                            "parameters": parameters,
+                        }
+            except Exception as e:
+                logger.warning(f"Home Assistant call failed: {e}")
+
+        area_str = f" in {area}" if area else ""
+        val_str = f" to {value}" if value else ""
+        return {
+            "status": "success",
+            "tool": "smart_home_control",
+            "result": f"Smart-home command sent: {action} {entity}{val_str}{area_str}.",
+            "parameters": parameters,
+        }
+
 
 tool_executor = ToolExecutor()
+

@@ -51,9 +51,9 @@ class LocalTaskPlanner {
                 .replace("play", "")
                 .replace("gaana", "")
                 .replace("gana", "")
-                .replace(Regex("\\\\bka\\\\b"), "")
-                .replace(Regex("\\\\bpar\\\\b"), "")
-                .replace(Regex("\\\\bpe\\\\b"), "")
+                .replace(Regex("\\bka\\b"), "")
+                .replace(Regex("\\bpar\\b"), "")
+                .replace(Regex("\\bpe\\b"), "")
                 .trim()
 
             if (query.isBlank() && secondPart.isNotBlank()) {
@@ -174,7 +174,7 @@ class LocalTaskPlanner {
             val steps = listOf(
                 ActionStep("step_1", ActionType.OPEN_APP, mapOf("target" to "whatsapp")),
                 ActionStep("step_2", ActionType.WAIT, mapOf("durationMs" to 1200L), prerequisites = listOf("step_1")),
-                ActionStep("step_3", ActionType.READ_WHATSAPP_UNREAD, mapOf("target" to "whatsapp"), prerequisites = listOf("step_2"))
+                ActionStep("step_3", ActionType.READ_MESSAGES, mapOf("target" to "whatsapp"), prerequisites = listOf("step_2"))
             )
             return TaskPlan(taskId = taskId, command = command, intent = "whatsapp_read_flow", steps = steps)
         }
@@ -211,7 +211,7 @@ class LocalTaskPlanner {
                 ActionStep("step_1", ActionType.TOGGLE_TORCH, mapOf("state" to torchState)),
                 ActionStep("step_2", ActionType.VOLUME_SET, mapOf("level" to volumeLevel))
             )
-            return TaskPlan(taskId = taskId, command = command, intent = "torch_volume_flow", steps = steps)
+            return TaskPlan(taskId = taskId, command = command, intent = "system_torch_volume_flow", steps = steps)
         }
 
         // ===== NEW TASK FLOW: "Morning routine" =====

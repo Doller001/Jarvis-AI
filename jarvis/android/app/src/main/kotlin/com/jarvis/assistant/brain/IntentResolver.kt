@@ -115,7 +115,7 @@ class IntentResolver {
             return JarvisIntent.LocalConversational("JARVIS online. Good to see you, Sir. How may I assist you today?")
         }
         if (clean.contains("who are you") || clean.contains("kaun ho") || clean.contains("what is your name") || clean.contains("tumhara naam")) {
-            return JarvisIntent.LocalConversational("I am JARVIS, your personal AI cognitive assistant. I anticipate, I protect, and I execute.")
+            return JarvisIntent.LocalConversational("I am JARVIS, created by Minaty / Stark intelligence, your personal AI cognitive assistant. I anticipate, I protect, and I execute.")
         }
         if (clean.contains("who made you") || clean.contains("who created you") || clean.contains("kisne banaya") || clean.contains("creator")) {
             return JarvisIntent.LocalConversational("I was created as your personal cognitive assistant to manage device operations and automate tasks.")
@@ -281,10 +281,25 @@ class IntentResolver {
             return JarvisIntent.ReadCalendar(rawText)
         }
 
-        // 18. Location & Navigation
+        // 17.5 Airplane Mode
+        if (clean.contains("airplane mode on") || clean.contains("flight mode on") || clean.contains("aeroplane mode on")) {
+            return JarvisIntent.ToggleAirplaneMode("on")
+        }
+        if (clean.contains("airplane mode off") || clean.contains("flight mode off") || clean.contains("aeroplane mode off")) {
+            return JarvisIntent.ToggleAirplaneMode("off")
+        }
+        if (clean.contains("airplane mode") || clean.contains("flight mode") || clean.contains("aeroplane mode")) {
+            val st = if (clean.contains("off") || clean.contains("band")) "off" else "on"
+            return JarvisIntent.ToggleAirplaneMode(st)
+        }
+
+        // 18. Location & Navigation & Weather
         if (clean.contains("where am i") || clean.contains("my location") || clean.contains("current location") ||
             clean.contains("what is my location") || clean.contains("location batao") || clean.contains("main kahan hoon")) {
             return JarvisIntent.GetLocation(rawText)
+        }
+        if (clean.contains("weather") || clean.contains("mausam") || clean.contains("temperature") || clean.contains("barish") || clean.contains("aaj ka mausam")) {
+            return JarvisIntent.GetWeather(rawText)
         }
         if (clean.startsWith("navigate ") || clean.startsWith("directions to ") || clean.startsWith("route to ") ||
             clean.contains("navigate to") || clean.contains("jaane ka rasta") || clean.contains("take me to")) {
@@ -329,7 +344,7 @@ class IntentResolver {
             return JarvisIntent.ReadWhatsAppUnread(rawText)
         }
         if (clean.contains("whatsapp")) {
-            val (recipient, message) = parseRecipientAndMessage(clean, "whatsapp")
+            val (recipient, message) = parseRecipientAndMessage(clean, "whatsapp", rawText)
             return JarvisIntent.SendWhatsApp(recipient, message)
         }
 
@@ -338,7 +353,7 @@ class IntentResolver {
             return JarvisIntent.ReadSmsInbox(rawText)
         }
         if (clean.startsWith("sms ") || clean.startsWith("send sms") || clean.startsWith("send text") || clean.contains("ko sms karo")) {
-            val (recipient, message) = parseRecipientAndMessage(clean, "sms")
+            val (recipient, message) = parseRecipientAndMessage(clean, "sms", rawText)
             return JarvisIntent.SendSms(recipient, message)
         }
 
@@ -404,6 +419,9 @@ class IntentResolver {
 
         // 26. Basic Utilities
         if (clean.contains("time") || clean.contains("samay") || clean.contains("kitne baje")) return JarvisIntent.GetTime(rawText)
+        if (clean.contains("charging hai ya nahi") || clean.contains("is charging") || clean.contains("battery status") || clean.contains("charging status") || clean.contains("charging state")) {
+            return JarvisIntent.BatteryChargingStatus(rawText)
+        }
         if (clean.contains("battery") || clean.contains("charge") || clean.contains("charging")) return JarvisIntent.GetBattery(rawText)
         if (clean.contains("storage") || clean.contains("disk space") || clean.contains("phone memory")) return JarvisIntent.GetStorage(rawText)
         if (clean.contains("call log") || clean.contains("recent calls") || clean.contains("call history") || clean.contains("kiski call aayi")) return JarvisIntent.GetCallLog(rawText)
@@ -416,7 +434,18 @@ class IntentResolver {
         if (clean.contains("nfc settings")) return JarvisIntent.OpenSettings("nfc")
         if (clean.contains("storage settings") || clean.contains("device storage")) return JarvisIntent.OpenSettings("storage")
 
-        // 28. App Launching & Closing
+        // 28. App Launching, Discovery & Closing
+        if (clean == "apps list" || clean == "list apps" || clean == "all apps" || clean == "show apps" || clean == "installed apps") {
+            return JarvisIntent.ListApps(null)
+        }
+        if (clean.contains("music apps")) return JarvisIntent.ListApps("music")
+        if (clean.contains("game apps") || clean.contains("games apps")) return JarvisIntent.ListApps("games")
+        if (clean.endsWith(" apps") || clean.startsWith("apps ")) {
+            val cat = clean.replace("apps", "").replace("list", "").trim()
+            if (cat.isNotBlank() && cat !in listOf("open", "close", "launch", "kholo")) {
+                return JarvisIntent.ListApps(cat)
+            }
+        }
         if (clean.contains("close app") || clean.contains("app close") || clean.contains("band karo") ||
             clean.contains("close this") || clean.contains("close current") || clean.contains("go home") ||
             clean.contains("home screen") || clean == "exit" || clean == "quit" || clean == "minimize" ||
@@ -519,7 +548,7 @@ class IntentResolver {
         return JarvisIntent.SetTimer(secs)
     }
 
-    private fun parseRecipientAndMessage(clean: String, triggerWord: String): Pair<String, String> {
+    private fun parseRecipientAndMessage(clean: String, triggerWord: String, originalText: String = clean): Pair<String, String> {
         val text = clean.trim()
 
         // 1. Hindi pattern: "<contact> ko (whatsapp|sms) (pe|par)? <message> (bhejo|karo)?"
@@ -530,7 +559,11 @@ class IntentResolver {
             var msg = koMatch.groupValues[2].trim()
             msg = msg.replace(Regex("""\s+(?:bhejo|karo|send\s+karo)$"""), "").trim()
             if (rec.isNotBlank()) {
-                return Pair(rec, msg.ifBlank { "Hello" })
+                val startRec = originalText.indexOf(rec, ignoreCase = true)
+                val properRec = if (startRec >= 0) originalText.substring(startRec, startRec + rec.length) else rec
+                val startMsg = if (msg.isNotBlank()) originalText.indexOf(msg, ignoreCase = true) else -1
+                val properMsg = if (startMsg >= 0) originalText.substring(startMsg, startMsg + msg.length) else msg.ifBlank { "Hello" }
+                return Pair(properRec, properMsg)
             }
         }
 
@@ -541,7 +574,11 @@ class IntentResolver {
             val rec = waPeMatch.groupValues[1].trim()
             val msg = waPeMatch.groupValues[2].replace(Regex("""\s+(?:bhejo|karo)$"""), "").trim()
             if (rec.isNotBlank()) {
-                return Pair(rec, msg.ifBlank { "Hello" })
+                val startRec = originalText.indexOf(rec, ignoreCase = true)
+                val properRec = if (startRec >= 0) originalText.substring(startRec, startRec + rec.length) else rec
+                val startMsg = if (msg.isNotBlank()) originalText.indexOf(msg, ignoreCase = true) else -1
+                val properMsg = if (startMsg >= 0) originalText.substring(startMsg, startMsg + msg.length) else msg.ifBlank { "Hello" }
+                return Pair(properRec, properMsg)
             }
         }
 
@@ -567,6 +604,13 @@ class IntentResolver {
         } else {
             "Hello"
         }
-        return Pair(recipient, message)
+
+        val startRec = originalText.indexOf(recipient, ignoreCase = true)
+        val properRec = if (startRec >= 0) originalText.substring(startRec, startRec + recipient.length) else recipient
+
+        val startMsg = if (message != "Hello") originalText.indexOf(message, ignoreCase = true) else -1
+        val properMsg = if (startMsg >= 0) originalText.substring(startMsg, startMsg + message.length) else message
+
+        return Pair(properRec, properMsg)
     }
 }

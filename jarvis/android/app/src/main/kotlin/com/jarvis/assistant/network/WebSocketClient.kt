@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit
 class WebSocketClient(
     var wsUrl: String = "wss://jarvis-ai-59qd.onrender.com/ws",
     val connectionManager: ConnectionManager = ConnectionManager(),
-    var sessionId: String? = null
+    var sessionId: String? = null,
+    private val authTokenManager: AuthTokenManager? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var reconnectJob: Job? = null
@@ -59,13 +60,24 @@ class WebSocketClient(
     fun connect() {
         disconnectRequested = false
         reconnectJob?.cancel()
-        val targetUrl = sessionId?.let { sid ->
+
+        // Build URL with session_id and optional JWT token
+        val baseUrl = sessionId?.let { sid ->
             if (wsUrl.contains("session_id=")) wsUrl
             else if (wsUrl.contains("?")) "$wsUrl&session_id=$sid"
             else "$wsUrl?session_id=$sid"
         } ?: wsUrl
 
-        Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at $targetUrl...")
+        val targetUrl = authTokenManager?.accessToken?.let { token ->
+            if (!authTokenManager.isTokenExpired(token)) {
+                val separator = if (baseUrl.contains("?")) "&" else "?"
+                "$baseUrl${separator}token=$token"
+            } else {
+                baseUrl
+            }
+        } ?: baseUrl
+
+        Log.i("WebSocketClient", "Connecting to Jarvis WebSocket at ${targetUrl.substringBefore("?")}...")
         connectionManager.setConnectionState(ConnectionState.CONNECTING)
         val request = Request.Builder().url(targetUrl).build()
 

@@ -347,4 +347,65 @@ class SystemController(private val context: Context? = null) {
             false
         }
     }
+
+    // --- State Reading Methods for Verification ---
+
+    fun isTorchOn(): Boolean {
+        return false
+    }
+
+    fun getVolumeLevel(): Int {
+        return try {
+            val ctx = context ?: return -1
+            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return -1
+            val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (max > 0) (current * 100 / max) else 0
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
+    fun isWifiEnabled(): Boolean {
+        return try {
+            val ctx = context ?: return false
+            val wifiManager = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            wifiManager?.isWifiEnabled ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun isBluetoothEnabled(): Boolean {
+        return try {
+            val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+            adapter?.isEnabled ?: false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun getBrightnessLevel(): Int {
+        return try {
+            val ctx = context ?: return -1
+            val brightness = Settings.System.getInt(ctx.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+            (brightness * 100 / 255)
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
+    fun isDndEnabled(): Boolean {
+        return try {
+            val ctx = context ?: return false
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                nm?.currentInterruptionFilter == android.app.NotificationManager.INTERRUPTION_FILTER_NONE
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

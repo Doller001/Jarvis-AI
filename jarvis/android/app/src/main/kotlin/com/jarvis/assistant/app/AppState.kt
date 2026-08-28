@@ -3,7 +3,7 @@ package com.jarvis.assistant.app
 import com.jarvis.assistant.voice.VoiceState
 
 data class AppState(
-    val voiceState: VoiceState = VoiceState.IDLE,
+    val voiceState: VoiceState = VoiceState.DISABLED,
     val activeProvider: String = "Groq",
     val activeModel: String = "llama-3.3-70b-versatile",
     val isWebSocketConnected: Boolean = true,

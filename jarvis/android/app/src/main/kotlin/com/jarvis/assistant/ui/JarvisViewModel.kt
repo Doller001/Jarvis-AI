@@ -11,6 +11,7 @@ import com.jarvis.assistant.execution.TaskExecutionCoordinator
 import com.jarvis.assistant.llm.ProviderManager
 import com.jarvis.assistant.memory.MessageLog
 import com.jarvis.assistant.network.*
+import com.jarvis.assistant.network.AuthTokenManager
 import com.jarvis.assistant.permissions.PermissionManager
 import com.jarvis.assistant.permissions.PermissionState
 import com.jarvis.assistant.services.JarvisForegroundService
@@ -26,7 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class JarvisUiState(
-    val voiceState: VoiceState = VoiceState.IDLE,
+    val voiceState: VoiceState = VoiceState.DISABLED,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val runtimeState: RuntimeState = RuntimeState.OFFLINE,
     val permissionState: PermissionState = PermissionState(),
@@ -58,8 +59,10 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     private val providerManager = ProviderManager()
     private val memoryRouter by lazy { com.jarvis.assistant.memory.MemoryDecisionRouter(application) }
     private val coordinator by lazy { TaskExecutionCoordinator(application) }
-    private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl)
-    private val backendHealthManager = BackendHealthManager(application, apiClient)
+    private val authTokenManager = AuthTokenManager(application)
+    private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl, authTokenManager = authTokenManager)
+    private val webSocketClient = WebSocketClient(authTokenManager = authTokenManager)
+    private val backendHealthManager = BackendHealthManager(application, apiClient, webSocketClient, authTokenManager)
 
     private val _uiState = MutableStateFlow(
         JarvisUiState(
@@ -77,6 +80,18 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             val messages = memoryRouter.getEngine().getRecentEpisodes()
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(messages = messages) }
+            }
+        }
+
+        // Register device and obtain JWT tokens if not already authenticated
+        if (!authTokenManager.isAuthenticated) {
+            val deviceName = settingsManager.deviceId ?: "android-device"
+            val deviceModel = android.os.Build.MODEL ?: "unknown"
+            val osVersion = "Android ${android.os.Build.VERSION.RELEASE}"
+            apiClient.registerDevice(deviceName, deviceModel, osVersion) { tokens ->
+                if (tokens != null) {
+                    android.util.Log.i("JarvisViewModel", "Device registered: ${tokens.deviceId}")
+                }
             }
         }
 
@@ -98,7 +113,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             sendUtterance(text)
         }
         JarvisForegroundService.onResponseDone = {
-            _uiState.update { it.copy(voiceState = VoiceState.IDLE) }
+            _uiState.update { it.copy(voiceState = VoiceState.DISABLED) }
         }
         JarvisForegroundService.onStateChanged = { state ->
             _uiState.update { it.copy(voiceState = state) }

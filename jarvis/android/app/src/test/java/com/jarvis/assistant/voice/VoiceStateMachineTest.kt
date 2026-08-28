@@ -3,133 +3,150 @@ package com.jarvis.assistant.voice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 class VoiceStateMachineTest {
 
-    // ── Happy path: push-to-talk (no wake word) ───────────────────────────
+    private lateinit var sm: VoiceStateMachine
 
-    @Test
-    fun `happy path IDLE to LISTENING to PROCESSING to SPEAKING to IDLE`() {
-        val sm = VoiceStateMachine()
-        assertEquals(VoiceState.IDLE, sm.state)
-        assertTrue(sm.isIdle)
-        assertTrue(sm.transition(VoiceState.LISTENING))
-        assertTrue(sm.isListening)
-        assertTrue(sm.transition(VoiceState.PROCESSING))
-        assertTrue(sm.transition(VoiceState.SPEAKING))
-        assertTrue(sm.transition(VoiceState.IDLE))
-        assertEquals(VoiceState.IDLE, sm.state)
+    @Before
+    fun setup() {
+        sm = VoiceStateMachine()
     }
 
     @Test
-    fun `direct SPEAKING from IDLE is legal for typed or cloud responses`() {
-        val sm = VoiceStateMachine()
-        assertTrue(sm.transition(VoiceState.SPEAKING))
-        assertEquals(VoiceState.SPEAKING, sm.state)
-        assertTrue(sm.transition(VoiceState.IDLE))
-    }
-
-    // ── Happy path: wake-word flow ────────────────────────────────────────
-
-    @Test
-    fun `full wake-word cycle DISABLED to WAKE_LISTENING to ACKNOWLEDGING to COMMAND_LISTENING to PROCESSING to SPEAKING to WAKE_LISTENING`() {
-        val sm = VoiceStateMachine(VoiceState.DISABLED)
-        assertTrue(sm.transition(VoiceState.WAKE_LISTENING))
-        assertTrue(sm.isWakeListening)
-        assertTrue(sm.transition(VoiceState.ACKNOWLEDGING))
-        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
-        assertTrue(sm.isCommandListening)
-        assertFalse(sm.isWakeListening)   // CRITICAL: not wake mode anymore
-        assertTrue(sm.transition(VoiceState.PROCESSING))
-        assertTrue(sm.transition(VoiceState.SPEAKING))
-        assertTrue(sm.transition(VoiceState.WAKE_LISTENING))
-        assertTrue(sm.isWakeListening)
-    }
-
-    // ── Critical rule: wake events must be REJECTED in non-wake states ────
-
-    @Test
-    fun `COMMAND_LISTENING does not accept WAKE_LISTENING transition from outside`() {
-        // The state machine from COMMAND_LISTENING should NOT go back to WAKE_LISTENING
-        // in a single hop (only allowed via PROCESSING or error recovery).
-        // This verifies the state machine rejects illegal transitions.
-        val sm = VoiceStateMachine(VoiceState.COMMAND_LISTENING)
-        // COMMAND_LISTENING → WAKE_LISTENING is legal (abort command, re-arm wake).
-        // But COMMAND_LISTENING → ACKNOWLEDGING is not legal.
-        assertFalse(sm.transition(VoiceState.ACKNOWLEDGING))
-        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
-    }
-
-    @Test
-    fun `SPEAKING cannot transition to COMMAND_LISTENING (prevents TTS feedback loop)`() {
-        val sm = VoiceStateMachine(VoiceState.SPEAKING)
-        // Phase 8 critical: SPEAKING → COMMAND_LISTENING is FORBIDDEN.
-        assertFalse(sm.transition(VoiceState.COMMAND_LISTENING))
-        assertEquals(VoiceState.SPEAKING, sm.state)
-    }
-
-    @Test
-    fun `DISABLED rejects wake event (ACKNOWLEDGING transition)`() {
-        val sm = VoiceStateMachine(VoiceState.DISABLED)
-        assertFalse(sm.transition(VoiceState.ACKNOWLEDGING))
+    fun `initial state is DISABLED`() {
         assertEquals(VoiceState.DISABLED, sm.state)
     }
 
     @Test
-    fun `PROCESSING rejects ACKNOWLEDGING (mid-cycle wake ignored)`() {
-        val sm = VoiceStateMachine(VoiceState.PROCESSING)
-        assertFalse(sm.transition(VoiceState.ACKNOWLEDGING))
+    fun `DISABLED can transition to WAKE_LISTENING`() {
+        assertTrue(sm.transition(VoiceState.WAKE_LISTENING))
+        assertEquals(VoiceState.WAKE_LISTENING, sm.state)
+    }
+
+    @Test
+    fun `WAKE_LISTENING can transition to ACKNOWLEDGING`() {
+        sm.transition(VoiceState.WAKE_LISTENING)
+        assertTrue(sm.transition(VoiceState.ACKNOWLEDGING))
+        assertEquals(VoiceState.ACKNOWLEDGING, sm.state)
+    }
+
+    @Test
+    fun `ACKNOWLEDGING can transition to COMMAND_LISTENING`() {
+        sm.transition(VoiceState.WAKE_LISTENING)
+        sm.transition(VoiceState.ACKNOWLEDGING)
+        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
+        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
+    }
+
+    @Test
+    fun `COMMAND_LISTENING can transition to PROCESSING`() {
+        sm.transition(VoiceState.WAKE_LISTENING)
+        sm.transition(VoiceState.ACKNOWLEDGING)
+        sm.transition(VoiceState.COMMAND_LISTENING)
+        assertTrue(sm.transition(VoiceState.PROCESSING))
         assertEquals(VoiceState.PROCESSING, sm.state)
     }
 
-    // ── Error and recovery ────────────────────────────────────────────────
-
     @Test
-    fun `error recovers to IDLE`() {
-        val sm = VoiceStateMachine()
-        sm.transition(VoiceState.LISTENING)
-        assertTrue(sm.transition(VoiceState.ERROR))
-        assertTrue(sm.recoverFromError())
-        assertEquals(VoiceState.IDLE, sm.state)
+    fun `PROCESSING can transition to SPEAKING`() {
+        sm.transition(VoiceState.WAKE_LISTENING)
+        sm.transition(VoiceState.ACKNOWLEDGING)
+        sm.transition(VoiceState.COMMAND_LISTENING)
+        sm.transition(VoiceState.PROCESSING)
+        assertTrue(sm.transition(VoiceState.SPEAKING))
+        assertEquals(VoiceState.SPEAKING, sm.state)
     }
 
     @Test
-    fun `RECOVERING can go to WAKE_LISTENING or DISABLED`() {
-        val sm1 = VoiceStateMachine(VoiceState.RECOVERING)
-        assertTrue(sm1.transition(VoiceState.WAKE_LISTENING))
-
-        val sm2 = VoiceStateMachine(VoiceState.RECOVERING)
-        assertTrue(sm2.transition(VoiceState.DISABLED))
+    fun `SPEAKING can transition to INTERRUPTING`() {
+        sm.forceState(VoiceState.SPEAKING)
+        assertTrue(sm.transition(VoiceState.INTERRUPTING))
+        assertEquals(VoiceState.INTERRUPTING, sm.state)
     }
 
     @Test
-    fun `any state can return to IDLE via recoverFromError`() {
-        listOf(
-            VoiceState.WAKE_LISTENING, VoiceState.ACKNOWLEDGING,
-            VoiceState.COMMAND_LISTENING, VoiceState.PROCESSING,
-            VoiceState.SPEAKING, VoiceState.RECOVERING, VoiceState.ERROR
-        ).forEach { startState ->
-            val sm = VoiceStateMachine(startState)
-            assertTrue("Should recover from $startState", sm.recoverFromError())
-            assertEquals(VoiceState.IDLE, sm.state)
-        }
+    fun `INTERRUPTING can transition to COMMAND_LISTENING`() {
+        sm.forceState(VoiceState.INTERRUPTING)
+        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
+        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
     }
 
-    // ── isWakeListening / isCommandListening helpers ──────────────────────
+    @Test
+    fun `SPEAKING can transition to WAKE_LISTENING`() {
+        sm.forceState(VoiceState.SPEAKING)
+        assertTrue(sm.transition(VoiceState.WAKE_LISTENING))
+        assertEquals(VoiceState.WAKE_LISTENING, sm.state)
+    }
 
     @Test
-    fun `isWakeListening is true for WAKE_LISTENING and WAKE alias`() {
+    fun `WAKE_LISTENING can transition to DISABLED`() {
+        sm.transition(VoiceState.WAKE_LISTENING)
+        assertTrue(sm.transition(VoiceState.DISABLED))
+        assertEquals(VoiceState.DISABLED, sm.state)
+    }
+
+    @Test
+    fun `error state transitions to RECOVERING then WAKE_LISTENING`() {
+        sm.forceState(VoiceState.COMMAND_LISTENING)
+        assertTrue(sm.transition(VoiceState.RECOVERING))
+        assertEquals(VoiceState.RECOVERING, sm.state)
+        assertTrue(sm.transition(VoiceState.WAKE_LISTENING))
+        assertEquals(VoiceState.WAKE_LISTENING, sm.state)
+    }
+
+    @Test
+    fun `forceState bypasses transition table`() {
+        sm.forceState(VoiceState.SPEAKING)
+        assertEquals(VoiceState.SPEAKING, sm.state)
+        sm.forceState(VoiceState.INTERRUPTING)
+        assertEquals(VoiceState.INTERRUPTING, sm.state)
+    }
+
+    @Test
+    fun `recoverTo bypasses transition table`() {
+        sm.forceState(VoiceState.SPEAKING)
+        assertTrue(sm.recoverTo(VoiceState.WAKE_LISTENING))
+        assertEquals(VoiceState.WAKE_LISTENING, sm.state)
+    }
+
+    @Test
+    fun `isWakeListening helper`() {
         assertTrue(VoiceStateMachine(VoiceState.WAKE_LISTENING).isWakeListening)
-        assertTrue(VoiceStateMachine(VoiceState.WAKE).isWakeListening)
         assertFalse(VoiceStateMachine(VoiceState.COMMAND_LISTENING).isWakeListening)
-        assertFalse(VoiceStateMachine(VoiceState.ACKNOWLEDGING).isWakeListening)
     }
 
     @Test
-    fun `isCommandListening is true for COMMAND_LISTENING and LISTENING alias`() {
+    fun `isCommandListening helper`() {
         assertTrue(VoiceStateMachine(VoiceState.COMMAND_LISTENING).isCommandListening)
-        assertTrue(VoiceStateMachine(VoiceState.LISTENING).isCommandListening)
         assertFalse(VoiceStateMachine(VoiceState.WAKE_LISTENING).isCommandListening)
+    }
+
+    @Test
+    fun `full happy path cycle`() {
+        assertEquals(VoiceState.DISABLED, sm.state)
+        sm.transition(VoiceState.WAKE_LISTENING)
+        assertEquals(VoiceState.WAKE_LISTENING, sm.state)
+        sm.transition(VoiceState.ACKNOWLEDGING)
+        assertEquals(VoiceState.ACKNOWLEDGING, sm.state)
+        sm.transition(VoiceState.COMMAND_LISTENING)
+        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
+        sm.transition(VoiceState.PROCESSING)
+        assertEquals(VoiceState.PROCESSING, sm.state)
+        sm.transition(VoiceState.SPEAKING)
+        assertEquals(VoiceState.SPEAKING, sm.state)
+        sm.transition(VoiceState.WAKE_LISTENING)
+        assertEquals(VoiceState.WAKE_LISTENING, sm.state)
+    }
+
+    @Test
+    fun `interrupt path`() {
+        sm.forceState(VoiceState.SPEAKING)
+        sm.transition(VoiceState.INTERRUPTING)
+        assertEquals(VoiceState.INTERRUPTING, sm.state)
+        sm.transition(VoiceState.COMMAND_LISTENING)
+        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
     }
 }

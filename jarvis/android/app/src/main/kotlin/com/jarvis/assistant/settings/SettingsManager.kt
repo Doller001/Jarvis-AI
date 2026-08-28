@@ -13,12 +13,14 @@ class SettingsManager(context: Context) {
         const val KEY_SPEECH_RATE = "key_speech_rate"
         const val KEY_WAKE_ENABLED = "key_wake_enabled"
         const val KEY_WAKE_SENSITIVITY = "key_wake_sensitivity"
+        const val KEY_AUTO_START_ON_BOOT = "key_auto_start_on_boot"
 
         const val DEFAULT_BACKEND_URL = "https://jarvis-ai-59qd.onrender.com"
         const val DEFAULT_TTS_ENABLED = true
         const val DEFAULT_SPEECH_RATE = 1.0f
         // Sensitivity: "Low"=0.5f, "Balanced"=0.8f, "High"=1.0f
         const val DEFAULT_WAKE_SENSITIVITY = "Balanced"
+        const val DEFAULT_AUTO_START_ON_BOOT = false
     }
 
     var backendUrl: String
@@ -48,6 +50,10 @@ class SettingsManager(context: Context) {
     var wakeSensitivity: String
         get() = prefs.getString(KEY_WAKE_SENSITIVITY, DEFAULT_WAKE_SENSITIVITY) ?: DEFAULT_WAKE_SENSITIVITY
         set(value) = prefs.edit().putString(KEY_WAKE_SENSITIVITY, value).apply()
+
+    var autoStartOnBoot: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_START_ON_BOOT, DEFAULT_AUTO_START_ON_BOOT)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_START_ON_BOOT, value).apply()
 
     val deviceId: String
         get() {

@@ -16,19 +16,20 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 data class PingResult(val isSuccess: Boolean, val latencyMs: Long, val message: String)
+data class AuthTokens(val accessToken: String, val refreshToken: String, val expiresIn: Int, val deviceId: String, val trusted: Boolean)
 
 /**
- * Ultra-low latency, high-performance API client.
- * Uses OkHttp with HTTP/2 multiplexing, connection pooling (10 idle connections, 5-min keep-alive),
- * and pre-warmed sockets to eliminate TCP/TLS handshake latency.
+ * Ultra-low latency, high-performance API client with JWT authentication.
  */
-class ApiClient(var baseUrl: String = "https://jarvis-ai-59qd.onrender.com") {
+class ApiClient(
+    var baseUrl: String = "https://jarvis-ai-59qd.onrender.com",
+    private val authTokenManager: AuthTokenManager? = null
+) {
 
     companion object {
         private const val TAG = "ApiClient"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-        // Shared singleton connection pool & HTTP/2 client for all requests
         private val sharedClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
@@ -41,6 +42,16 @@ class ApiClient(var baseUrl: String = "https://jarvis-ai-59qd.onrender.com") {
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private fun addAuthHeaders(builder: Request.Builder) {
+        builder.header("Connection", "keep-alive")
+        builder.header("Accept", "application/json")
+        authTokenManager?.accessToken?.let { token ->
+            if (!authTokenManager.isTokenExpired(token)) {
+                builder.header("Authorization", "Bearer $token")
+            }
+        }
+    }
 
     fun pingBackend(urlToTest: String = baseUrl, onResult: (PingResult) -> Unit) {
         scope.launch {
@@ -73,13 +84,108 @@ class ApiClient(var baseUrl: String = "https://jarvis-ai-59qd.onrender.com") {
         }
     }
 
+    fun registerDevice(
+        deviceName: String,
+        deviceModel: String,
+        osVersion: String,
+        onResult: (AuthTokens?) -> Unit
+    ) {
+        scope.launch {
+            val cleanUrl = baseUrl.trim().trimEnd('/')
+            val bodyJson = JSONObject().apply {
+                put("device_name", deviceName)
+                put("device_model", deviceModel)
+                put("os_version", osVersion)
+                authTokenManager?.deviceId?.let { put("device_id", it) }
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/auth/token")
+                .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+                .header("Connection", "keep-alive")
+                .header("Accept", "application/json")
+                .build()
+
+            try {
+                sharedClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string().orEmpty()
+                        val json = JSONObject(body)
+                        val tokens = AuthTokens(
+                            accessToken = json.getString("access_token"),
+                            refreshToken = json.getString("refresh_token"),
+                            expiresIn = json.getInt("expires_in"),
+                            deviceId = json.getString("device_id"),
+                            trusted = json.optBoolean("trusted", false)
+                        )
+                        authTokenManager?.saveTokens(
+                            tokens.accessToken,
+                            tokens.refreshToken,
+                            tokens.deviceId,
+                            tokens.trusted
+                        )
+                        launch(Dispatchers.Main) { onResult(tokens) }
+                    } else {
+                        Log.w(TAG, "Device registration failed: ${response.code}")
+                        launch(Dispatchers.Main) { onResult(null) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Device registration failed: ${e.message}")
+                launch(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
+    fun refreshAccessToken(onResult: (String?) -> Unit) {
+        scope.launch {
+            val refresh = authTokenManager?.refreshToken
+            if (refresh == null) {
+                launch(Dispatchers.Main) { onResult(null) }
+                return@launch
+            }
+
+            val cleanUrl = baseUrl.trim().trimEnd('/')
+            val bodyJson = JSONObject().apply {
+                put("refresh_token", refresh)
+            }.toString()
+
+            val request = Request.Builder()
+                .url("$cleanUrl/api/v1/auth/refresh")
+                .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+                .header("Connection", "keep-alive")
+                .build()
+
+            try {
+                sharedClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string().orEmpty()
+                        val json = JSONObject(body)
+                        val newAccess = json.getString("access_token")
+                        val newRefresh = json.getString("refresh_token")
+                        val deviceId = json.getString("device_id")
+                        val trusted = json.optBoolean("trusted", false)
+                        authTokenManager?.saveTokens(newAccess, newRefresh, deviceId, trusted)
+                        launch(Dispatchers.Main) { onResult(newAccess) }
+                    } else {
+                        Log.w(TAG, "Token refresh failed: ${response.code}")
+                        authTokenManager?.clearTokens()
+                        launch(Dispatchers.Main) { onResult(null) }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Token refresh failed: ${e.message}")
+                launch(Dispatchers.Main) { onResult(null) }
+            }
+        }
+    }
+
     fun fetchAvailableProviders(onResult: (List<String>) -> Unit) {
         scope.launch {
             val cleanUrl = baseUrl.trim().trimEnd('/')
             val request = Request.Builder()
                 .url("$cleanUrl/api/v1/providers")
-                .header("Connection", "keep-alive")
-                .header("Accept", "application/json")
+                .also { addAuthHeaders(it) }
                 .build()
 
             try {
@@ -142,7 +248,7 @@ class ApiClient(var baseUrl: String = "https://jarvis-ai-59qd.onrender.com") {
             val request = Request.Builder()
                 .url("$cleanUrl/api/v1/providers/select")
                 .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-                .header("Connection", "keep-alive")
+                .also { addAuthHeaders(it) }
                 .build()
 
             try {
@@ -169,8 +275,7 @@ class ApiClient(var baseUrl: String = "https://jarvis-ai-59qd.onrender.com") {
             val request = Request.Builder()
                 .url("$cleanUrl/api/v1/chat")
                 .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-                .header("Connection", "keep-alive")
-                .header("Accept", "application/json")
+                .also { addAuthHeaders(it) }
                 .build()
 
             try {

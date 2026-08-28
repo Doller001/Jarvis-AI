@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class MessageRouter:
-    async def route_message(self, session_id: str, raw_data: dict[str, Any]) -> None:
+    async def route_message(self, session_id: str, raw_data: dict[str, Any], device_id: str | None = None) -> None:
         if not isinstance(raw_data, dict):
             return
 

@@ -43,8 +43,8 @@ fun ConversationScreen(
 ) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
-    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.LISTENING ||
-            uiState.voiceState == com.jarvis.assistant.voice.VoiceState.WAKE
+    val isListeningNow = uiState.voiceState == com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING ||
+            uiState.voiceState == com.jarvis.assistant.voice.VoiceState.WAKE_LISTENING
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()

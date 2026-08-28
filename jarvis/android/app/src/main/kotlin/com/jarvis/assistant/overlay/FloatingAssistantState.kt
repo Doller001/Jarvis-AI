@@ -8,7 +8,7 @@ import com.jarvis.assistant.voice.VoiceState
  */
 data class FloatingAssistantState(
     val visible: Boolean = false,
-    val voiceState: VoiceState = VoiceState.IDLE,
+    val voiceState: VoiceState = VoiceState.DISABLED,
     val wakeEnabled: Boolean = false,
     val userQuery: String = "",
     val response: String = "",

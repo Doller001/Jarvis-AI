@@ -154,10 +154,10 @@ private fun BubbleBubble(
                     .clip(CircleShape)
                     .background(
                         color = when (voiceState) {
-                            VoiceState.WAKE_LISTENING, VoiceState.WAKE, VoiceState.IDLE -> Cyan.copy(alpha = 0.6f)
+                            VoiceState.WAKE_LISTENING -> Cyan.copy(alpha = 0.6f)
                             VoiceState.PROCESSING -> Cyan.copy(alpha = 0.9f)
                             VoiceState.SPEAKING -> Cyan.copy(alpha = 1f)
-                            VoiceState.DISABLED, VoiceState.ERROR, VoiceState.RECOVERING -> Color.Gray.copy(alpha = 0.4f)
+                            VoiceState.DISABLED, VoiceState.RECOVERING -> Color.Gray.copy(alpha = 0.4f)
                             else -> Cyan.copy(alpha = 0.5f)
                         }
                     )
@@ -359,7 +359,7 @@ private fun ExpandedPanel(
                         .clip(CircleShape)
                         .background(
                             when (state.voiceState) {
-                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING ->
+                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING ->
                                     Cyan.copy(alpha = 0.15f)
                                 VoiceState.PROCESSING ->
                                     Cyan.copy(alpha = 0.10f)
@@ -371,7 +371,7 @@ private fun ExpandedPanel(
                         .border(
                             width = 1.5.dp,
                             color = when (state.voiceState) {
-                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> Cyan
+                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING -> Cyan
                                 VoiceState.SPEAKING -> Cyan.copy(alpha = 0.6f)
                                 VoiceState.PROCESSING -> Cyan.copy(alpha = 0.5f)
                                 else -> Color.White.copy(alpha = 0.12f)
@@ -384,12 +384,12 @@ private fun ExpandedPanel(
                         imageVector = if (state.voiceState == VoiceState.SPEAKING)
                             Icons.Default.MicNone else Icons.Default.Mic,
                         contentDescription = "Mic",
-                        tint = when (state.voiceState) {
-                            VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> Cyan
-                            VoiceState.SPEAKING -> Cyan.copy(alpha = 0.7f)
-                            VoiceState.PROCESSING -> Cyan.copy(alpha = 0.5f)
-                            else -> TextPrimary.copy(alpha = 0.6f)
-                        },
+                            tint = when (state.voiceState) {
+                                VoiceState.WAKE_LISTENING, VoiceState.COMMAND_LISTENING -> Cyan
+                                VoiceState.SPEAKING -> Cyan.copy(alpha = 0.7f)
+                                VoiceState.PROCESSING -> Cyan.copy(alpha = 0.5f)
+                                else -> TextPrimary.copy(alpha = 0.6f)
+                            },
                         modifier = Modifier.size(if (state.voiceState == VoiceState.SPEAKING) 20.dp else 22.dp)
                     )
                 }
@@ -456,14 +456,11 @@ private fun OverlayActionButton(
 
 private fun stateLabel(state: VoiceState): String = when (state) {
     VoiceState.DISABLED         -> "WAKE WORD OFF"
-    VoiceState.IDLE             -> "READY"
-    VoiceState.WAKE_LISTENING,
-    VoiceState.WAKE             -> "LISTENING FOR HEY JARVIS"
+    VoiceState.WAKE_LISTENING   -> "LISTENING FOR HEY JARVIS"
     VoiceState.ACKNOWLEDGING    -> "ACKNOWLEDGING"
-    VoiceState.COMMAND_LISTENING,
-    VoiceState.LISTENING        -> "LISTENING…"
-    VoiceState.PROCESSING       -> "THINKING…"
-    VoiceState.SPEAKING         -> "SPEAKING…"
-    VoiceState.RECOVERING,
-    VoiceState.ERROR            -> "RECOVERING…"
+    VoiceState.COMMAND_LISTENING -> "LISTENING..."
+    VoiceState.PROCESSING       -> "THINKING..."
+    VoiceState.SPEAKING         -> "SPEAKING..."
+    VoiceState.INTERRUPTING     -> "INTERRUPTING..."
+    VoiceState.RECOVERING       -> "RECOVERING..."
 }

@@ -27,9 +27,8 @@ fun JarvisMicButton(
 ) {
     val cyan = Color(0xFF00F3FF)
     val isActive = voiceState == VoiceState.COMMAND_LISTENING ||
-                   voiceState == VoiceState.LISTENING ||
-                   voiceState == VoiceState.WAKE_LISTENING ||
-                   voiceState == VoiceState.WAKE ||
+                   voiceState == VoiceState.COMMAND_LISTENING ||
+                    voiceState == VoiceState.WAKE_LISTENING ||
                    voiceState == VoiceState.ACKNOWLEDGING
 
     val infiniteTransition = rememberInfiniteTransition(label = "mic")

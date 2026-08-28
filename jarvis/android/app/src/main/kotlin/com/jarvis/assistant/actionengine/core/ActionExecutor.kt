@@ -251,19 +251,91 @@ class ActionExecutor(private val context: Context? = null) {
                 )
             }
             ActionType.TOGGLE_TORCH -> {
+                // Real verification: read actual torch state
                 val expectedState = step.parameters["state"] as? String ?: "on"
+                val actualState = systemController.isTorchOn()
+                val expected = expectedState == "on"
+                val passed = actualState == expected
                 ActionVerification(
-                    passed = true,
-                    evidence = mapOf("torchState" to expectedState)
+                    passed = passed,
+                    evidence = mapOf(
+                        "expectedTorch" to expectedState,
+                        "actualTorch" to if (actualState) "on" else "off"
+                    ),
+                    reason = if (!passed) "Torch state mismatch: expected $expectedState, got ${if (actualState) "on" else "off"}" else null
                 )
             }
             ActionType.VOLUME_SET -> {
+                // Real verification: read actual volume level
                 val targetLevel = (step.parameters["level"] as? Number)?.toInt() ?: 50
-                val am = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-                val currentVol = am?.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val actualLevel = systemController.getVolumeLevel()
+                val passed = actualLevel in (targetLevel - 5)..(targetLevel + 5)  // Allow 5% tolerance
                 ActionVerification(
-                    passed = true,
-                    evidence = mapOf("targetLevel" to targetLevel, "actualStreamVolume" to (currentVol ?: targetLevel))
+                    passed = passed,
+                    evidence = mapOf(
+                        "targetLevel" to targetLevel,
+                        "actualLevel" to actualLevel
+                    ),
+                    reason = if (!passed) "Volume mismatch: expected ~$targetLevel%, got $actualLevel%" else null
+                )
+            }
+            ActionType.TOGGLE_WIFI -> {
+                // Real verification: read actual wifi state
+                val expectedState = step.parameters["state"] as? String ?: "on"
+                val actualState = systemController.isWifiEnabled()
+                val expected = expectedState == "on"
+                val passed = actualState == expected
+                ActionVerification(
+                    passed = passed,
+                    evidence = mapOf(
+                        "expectedWifi" to expectedState,
+                        "actualWifi" to if (actualState) "on" else "off"
+                    ),
+                    reason = if (!passed) "WiFi state mismatch" else null
+                )
+            }
+            ActionType.TOGGLE_BLUETOOTH -> {
+                // Real verification: read actual bluetooth state
+                val expectedState = step.parameters["state"] as? String ?: "on"
+                val actualState = systemController.isBluetoothEnabled()
+                val expected = expectedState == "on"
+                val passed = actualState == expected
+                ActionVerification(
+                    passed = passed,
+                    evidence = mapOf(
+                        "expectedBluetooth" to expectedState,
+                        "actualBluetooth" to if (actualState) "on" else "off"
+                    ),
+                    reason = if (!passed) "Bluetooth state mismatch" else null
+                )
+            }
+            ActionType.BRIGHTNESS_SET, ActionType.SET_BRIGHTNESS -> {
+                // Real verification: read actual brightness level
+                val targetLevel = (step.parameters["level"] as? Number)?.toInt() ?: 50
+                val actualLevel = systemController.getBrightnessLevel()
+                val passed = actualLevel in (targetLevel - 10)..(targetLevel + 10)  // Allow 10% tolerance
+                ActionVerification(
+                    passed = passed,
+                    evidence = mapOf(
+                        "targetLevel" to targetLevel,
+                        "actualLevel" to actualLevel
+                    ),
+                    reason = if (!passed) "Brightness mismatch: expected ~$targetLevel%, got $actualLevel%" else null
+                )
+            }
+            ActionType.TOGGLE_DND -> {
+                // Real verification: read actual DND state
+                val expectedState = step.parameters["state"] as? String ?: "on"
+                val actualState = systemController.isDndEnabled()
+                val expected = expectedState == "on"
+                val passed = actualState == expected
+                ActionVerification(
+                    passed = passed,
+                    evidence = mapOf(
+                        "expectedDnd" to expectedState,
+                        "actualDnd" to if (actualState) "on" else "off"
+                    ),
+                    reason = if (!passed) "DND state mismatch" else null
                 )
             }
             ActionType.WAIT -> {

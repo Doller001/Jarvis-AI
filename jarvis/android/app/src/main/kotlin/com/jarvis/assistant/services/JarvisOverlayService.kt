@@ -168,13 +168,13 @@ class JarvisOverlayService : Service(),
 
     private fun handleMicTap() {
         when (overlayState.value.voiceState) {
-            VoiceState.WAKE_LISTENING, VoiceState.WAKE, VoiceState.IDLE, VoiceState.DISABLED ->
+            VoiceState.WAKE_LISTENING, VoiceState.DISABLED ->
                 JarvisForegroundService.startCommandListening?.invoke()
-            VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> {
+            VoiceState.COMMAND_LISTENING -> {
                 // Currently listening
             }
             VoiceState.SPEAKING -> {
-                JarvisForegroundService.speak?.invoke("")
+                JarvisForegroundService.interruptVoice?.invoke()
             }
             else -> {}
         }

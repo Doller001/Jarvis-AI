@@ -1,5 +1,6 @@
 """
 Task Planner and Risk Policy for Jarvis Multi-Action Execution Engine.
+Now uses canonical actions and capability policy.
 """
 
 import re
@@ -12,6 +13,7 @@ from app.agent.execution_models import (
     PlannedAction,
 )
 from app.agent.intent_resolver import intent_resolver
+from app.security.capability import CapabilityDecision, capability_manager
 from app.tools.registry import tool_registry
 
 RISKY_ACTIONS = {
@@ -137,12 +139,21 @@ class TaskPlanner:
             resolved = intent_resolver.resolve(utterance)
             if resolved:
                 cmd_id = f"cmd-{uuid.uuid4().hex[:6]}"
+
+                # Check capability policy
+                capability = capability_manager.check_capability(resolved.intent)
+                requires_confirmation = (
+                    resolved.requires_confirmation
+                    or not risk_policy.is_auto_executable(resolved.intent)
+                    or capability.decision == CapabilityDecision.CONFIRM
+                )
+
                 actions.append(
                     PlannedAction(
                         id=cmd_id,
                         tool=resolved.intent,
                         parameters=resolved.entities,
-                        requires_confirmation=resolved.requires_confirmation or not risk_policy.is_auto_executable(resolved.intent)
+                        requires_confirmation=requires_confirmation
                     )
                 )
 

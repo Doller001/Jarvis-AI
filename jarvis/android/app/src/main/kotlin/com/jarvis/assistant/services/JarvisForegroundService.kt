@@ -23,8 +23,8 @@ import kotlinx.coroutines.launch
 /**
  * Foreground service that owns VoiceRuntime and TaskExecutionCoordinator.
  *
- * Phase 2 fix: Authoritative lifecycle and wake controller.
- * On ACTION_STOP, completely stops runtime, releases microphone, removes notification, and exits.
+ * Manages voice lifecycle, wake word detection, and background command execution.
+ * Supports interrupt handling for TTS barge-in.
  */
 class JarvisForegroundService : Service() {
     private lateinit var voiceRuntime: VoiceRuntime
@@ -48,10 +48,12 @@ class JarvisForegroundService : Service() {
         var setWakeSensitivity: ((String) -> Unit)? = null
         var startCommandListening: (() -> Unit)? = null
         var setSpeechRate: ((Float) -> Unit)? = null
+        var interruptVoice: (() -> Unit)? = null
 
         const val ACTION_START = "com.jarvis.assistant.START"
-        const val ACTION_STOP  = "com.jarvis.assistant.STOP"
+        const val ACTION_STOP = "com.jarvis.assistant.STOP"
         const val ACTION_LISTEN_FOR_COMMAND = "com.jarvis.assistant.LISTEN_FOR_COMMAND"
+        const val ACTION_INTERRUPT = "com.jarvis.assistant.INTERRUPT"
     }
 
     override fun onCreate() {
@@ -78,6 +80,9 @@ class JarvisForegroundService : Service() {
         setSpeechRate = { rate ->
             voiceRuntime.setSpeechRate(rate)
         }
+        interruptVoice = {
+            voiceRuntime.interrupt()
+        }
 
         DiagnosticEventBus.emit(
             type = TelemetryEventType.SERVICE_CREATED,
@@ -91,6 +96,13 @@ class JarvisForegroundService : Service() {
         if (intent?.action == ACTION_STOP) {
             shutdownRuntime("ACTION_STOP requested")
             return START_NOT_STICKY
+        }
+
+        if (intent?.action == ACTION_INTERRUPT) {
+            if (::voiceRuntime.isInitialized) {
+                voiceRuntime.interrupt()
+            }
+            return START_STICKY
         }
 
         val wasRunning = isRunning
@@ -145,7 +157,10 @@ class JarvisForegroundService : Service() {
                             is ExecutionOutcome.Failure -> outcome.spokenResponse
                             is ExecutionOutcome.RouteToCloud -> "Command received. Connecting to cloud intelligence."
                         }
-                        voiceRuntime.speakResponse(responseText)
+                        // Fixed: speakResponse now always calls completion callback
+                        voiceRuntime.speakResponse(responseText) {
+                            Log.d(TAG, "Headless TTS completed for: '${responseText.take(30)}...'")
+                        }
                     }
                 }
             }
@@ -182,14 +197,14 @@ class JarvisForegroundService : Service() {
 
     private fun updateNotification(state: VoiceState) {
         val text = when (state) {
-            VoiceState.DISABLED           -> "Wake word OFF"
-            VoiceState.WAKE_LISTENING, VoiceState.WAKE -> "Listening for 'Hey Jarvis'"
-            VoiceState.ACKNOWLEDGING      -> "Acknowledging…"
-            VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> "Listening for command…"
-            VoiceState.PROCESSING         -> "Processing…"
-            VoiceState.SPEAKING           -> "Speaking…"
-            VoiceState.RECOVERING, VoiceState.ERROR -> "Recovering…"
-            VoiceState.IDLE               -> "JARVIS Assistant Active"
+            VoiceState.DISABLED -> "Wake word OFF"
+            VoiceState.WAKE_LISTENING -> "Listening for 'Hey Jarvis'"
+            VoiceState.ACKNOWLEDGING -> "Acknowledging..."
+            VoiceState.COMMAND_LISTENING -> "Listening for command..."
+            VoiceState.PROCESSING -> "Processing..."
+            VoiceState.SPEAKING -> "Speaking..."
+            VoiceState.INTERRUPTING -> "Interrupting..."
+            VoiceState.RECOVERING -> "Recovering..."
         }
         val manager = getSystemService(NotificationManager::class.java)
         manager?.notify(1001, buildForegroundNotification().setContentText(text).build())
@@ -234,17 +249,18 @@ class JarvisForegroundService : Service() {
         )
         if (::voiceRuntime.isInitialized) voiceRuntime.release()
         serviceScope.cancel()
-        onUtterance          = null
-        onResponseDone       = null
-        onWakeToggled        = null
-        onStateChanged       = null
+        onUtterance = null
+        onResponseDone = null
+        onWakeToggled = null
+        onStateChanged = null
         onEnvironmentChanged = null
-        onAudioMetrics       = null
-        speak                = null
-        toggleWakeListening  = null
-        setWakeSensitivity   = null
+        onAudioMetrics = null
+        speak = null
+        toggleWakeListening = null
+        setWakeSensitivity = null
         startCommandListening = null
-        setSpeechRate        = null
+        setSpeechRate = null
+        interruptVoice = null
         super.onDestroy()
     }
 

@@ -10,10 +10,16 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: ENVIRONMENT
+        value: production
       - key: JARVIS_DB_PATH
         value: jarvis_memory.db
       - key: ALLOWED_ORIGINS
-        value: "*"
+        value: "https://jarvis-ai-59qd.onrender.com,http://localhost:3000,http://127.0.0.1:3000"
+      - key: JARVIS_JWT_SECRET
+        sync: false
+      - key: REDIS_URL
+        sync: false
       - key: GROQ_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
@@ -22,3 +28,8 @@ services:
         sync: false
       - key: OLLAMA_BASE_URL
         value: http://localhost:11434
+
+  - type: redis
+    name: jarvis-redis
+    plan: free
+    ipAllowList: []

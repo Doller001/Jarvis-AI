@@ -71,7 +71,7 @@ fun ListeningOrb(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null
 ) {
-    val isActive = voiceState == com.jarvis.assistant.voice.VoiceState.LISTENING
+    val isActive = voiceState == com.jarvis.assistant.voice.VoiceState.COMMAND_LISTENING
     val isSpeaking = voiceState == com.jarvis.assistant.voice.VoiceState.SPEAKING
     val isProcessing = voiceState == com.jarvis.assistant.voice.VoiceState.PROCESSING
 

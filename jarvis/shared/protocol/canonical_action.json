@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CanonicalAction",
+  "description": "Unified action model shared by Android and backend for cross-platform execution.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique action ID, e.g. 'action_a1b2c3d4'"
+    },
+    "type": {
+      "type": "string",
+      "description": "Namespace.action identifier, e.g. 'device.toggle_torch', 'app.open', 'automation.click'",
+      "pattern": "^[a-z]+\\.[a-z_]+$"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Action-specific parameters",
+      "additionalProperties": true
+    },
+    "requires_confirmation": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether user confirmation is required before execution"
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "default": 8000,
+      "description": "Maximum time to wait for execution and verification"
+    },
+    "retry": {
+      "type": "object",
+      "description": "Retry configuration",
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "default": 2,
+          "description": "Maximum number of attempts (including initial)"
+        },
+        "backoff_ms": {
+          "type": "integer",
+          "default": 500,
+          "description": "Base backoff delay between retries"
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "description": "Expected state after execution for verification",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Verification type: 'device_state', 'app_foreground', 'media_playing', 'none'",
+          "enum": ["device_state", "app_foreground", "media_playing", "screen_contains", "none"]
+        },
+        "expected": {
+          "type": "object",
+          "description": "Expected state values to verify against",
+          "additionalProperties": true
+        }
+      }
+    },
+    "depends_on": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of action IDs that must complete before this action executes"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata (e.g., intent, user utterance context)",
+      "additionalProperties": true
+    }
+  },
+  "required": ["id", "type"]
+}

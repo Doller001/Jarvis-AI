@@ -39,20 +39,20 @@ fun JarvisHologram(
 ) {
     val rotateDuration = when (voiceState) {
         VoiceState.PROCESSING -> 3000
-        VoiceState.ACKNOWLEDGING, VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> 5000
+        VoiceState.ACKNOWLEDGING, VoiceState.COMMAND_LISTENING -> 5000
         VoiceState.SPEAKING -> 4000
-        VoiceState.WAKE_LISTENING, VoiceState.WAKE -> 6500
+        VoiceState.WAKE_LISTENING -> 6500
         else -> 9000
     }
     val pulseDuration = when (voiceState) {
         VoiceState.SPEAKING -> 700
         VoiceState.PROCESSING -> 900
-        VoiceState.COMMAND_LISTENING, VoiceState.LISTENING -> 1100
-        VoiceState.WAKE_LISTENING, VoiceState.WAKE -> 1600
+        VoiceState.COMMAND_LISTENING -> 1100
+        VoiceState.WAKE_LISTENING -> 1600
         else -> 2200
     }
     val ringAlpha = when (voiceState) {
-        VoiceState.DISABLED, VoiceState.IDLE -> 0.45f
+        VoiceState.DISABLED -> 0.45f
         else -> 0.90f
     }
 

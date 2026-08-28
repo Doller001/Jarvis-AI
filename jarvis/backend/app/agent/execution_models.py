@@ -9,15 +9,18 @@ from typing import Any
 
 class ActionStatus:
     CREATED = "CREATED"
-    DISPATCHED = "DISPATCHED"
-    EXECUTING = "EXECUTING"
-    EXECUTED = "EXECUTED"
-    VERIFIED = "VERIFIED"
+    DISPATCHED = "DISPATCHED"      # Command sent to device, not yet received
+    RECEIVED = "RECEIVED"          # Device received command
+    EXECUTING = "EXECUTING"        # Device is executing
+    EXECUTED = "EXECUTED"          # Device executed (not yet verified)
+    VERIFYING = "VERIFYING"        # Verifying state
+    VERIFIED = "VERIFIED"          # State confirmed
     DISPATCH_FAILED = "DISPATCH_FAILED"
     EXECUTION_FAILED = "EXECUTION_FAILED"
     VERIFICATION_FAILED = "VERIFICATION_FAILED"
     TIMEOUT = "TIMEOUT"
     CANCELLED = "CANCELLED"
+    DEVICE_DISCONNECTED = "DEVICE_DISCONNECTED"
 
 
 @dataclass

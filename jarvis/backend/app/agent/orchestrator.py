@@ -89,7 +89,8 @@ class JarvisBrain:
             primary_action = plan.actions[0].tool if plan.actions else "unknown"
             primary_params = plan.actions[0].parameters if plan.actions else {}
 
-            return {
+            # Build verification-aware response
+            response = {
                 "type": "command_result",
                 "request_id": request_id,
                 "session_id": session_id,
@@ -103,6 +104,24 @@ class JarvisBrain:
                 "verified_actions": report.verified_actions,
                 "duration_ms": report.total_duration_ms
             }
+
+            # Add verification details for user feedback
+            if report.status == "success":
+                response["verification_status"] = "verified"
+                response["verification_message"] = f"{primary_action.replace('_', ' ').title()} completed and verified."
+            elif report.status == "partial_failure":
+                response["verification_status"] = "partial"
+                failed_action = next((a for a in report.actions if a.get("status") != "verified"), None)
+                if failed_action:
+                    response["verification_message"] = f"Action '{failed_action.get('tool')}' could not be verified."
+            elif report.status == "failed":
+                response["verification_status"] = "failed"
+                response["verification_message"] = report.message
+            else:
+                response["verification_status"] = "unknown"
+                response["verification_message"] = "Action status is unknown."
+
+            return response
 
         # 2. Conversational / LLM Reasoning Path
         try:

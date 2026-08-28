@@ -3,7 +3,7 @@ API Routes for System Tools, Health Diagnostics, and Jarvis Status.
 """
 
 import asyncio
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.agent.orchestrator import jarvis_brain
@@ -11,6 +11,8 @@ from app.db.supabase_client import supabase_client
 from app.llm.gateway import llm_gateway
 from app.memory.memory_manager import memory_manager
 from app.retrieval.music_index import music_index
+from app.security.auth import require_auth
+from app.security.jwt_manager import TokenPayload
 from app.tools.registry import tool_registry
 
 api_router = APIRouter(prefix="/api/v1", tags=["System API"])
@@ -67,7 +69,10 @@ async def music_status():
 
 
 @api_router.post("/music/search")
-async def music_search(req: MusicSearchRequest):
+async def music_search(
+    req: MusicSearchRequest,
+    token: TokenPayload = Depends(require_auth),
+):
     """Semantic song search over the local music vector DB."""
     return await asyncio.to_thread(
         music_index.search,
@@ -77,7 +82,7 @@ async def music_search(req: MusicSearchRequest):
 
 
 @api_router.get("/tools")
-async def list_tools():
+async def list_tools(token: TokenPayload = Depends(require_auth)):
     return {"tools": [t.model_dump() for t in tool_registry.list_tools()]}
 
 
@@ -89,7 +94,10 @@ async def supabase_db_status():
 
 
 @api_router.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(
+    req: ChatRequest,
+    token: TokenPayload = Depends(require_auth),
+):
     return await jarvis_brain.process_utterance(
         text=req.text,
         session_id=req.session_id,

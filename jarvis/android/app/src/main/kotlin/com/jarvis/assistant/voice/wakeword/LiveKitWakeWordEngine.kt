@@ -184,8 +184,20 @@ class LiveKitWakeWordEngine(
     }
 
     /**
-     * Hands the mic to the command recognizer.
-     * Prevents self-join if called from the audio thread and stops capture safely.
+     * Non-blocking pause — sets flag and releases AudioRecord without joining thread.
+     * Thread will exit naturally on next loop iteration. Used for fast wake→STT transition.
+     */
+    fun pauseAsync() {
+        if (!isMonitoring) return
+        pausedForCommand = true
+        releaseAudioRecord()
+        detector.pause()
+        Log.i(TAG, "Wake-word paused (async) — microphone released for command mode")
+    }
+
+    /**
+     * Synchronous pause — waits for capture thread to exit.
+     * Used when guaranteed mic release is needed before proceeding.
      */
     fun pause() {
         if (!isMonitoring) return
@@ -196,7 +208,7 @@ class LiveKitWakeWordEngine(
         if (threadToJoin != null && threadToJoin.isAlive && Thread.currentThread() != threadToJoin) {
             try {
                 threadToJoin.interrupt()
-                threadToJoin.join(150)
+                threadToJoin.join(50)
             } catch (_: Exception) {}
         }
         releaseAudioRecord()

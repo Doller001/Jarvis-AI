@@ -18,6 +18,12 @@ local.properties
 .idea/
 *.iml
 
+# Signing & Security
+*.keystore
+*.jks
+keystore.properties
+device_registry.json
+
 # OS / Environment
 .build-env/
 .DS_Store

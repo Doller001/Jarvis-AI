@@ -5,7 +5,7 @@ import android.util.Log
 
 /**
  * Diagnostic logger and error translator for the Jarvis voice pipeline.
- * Phase 11: Added forensic wake-candidate logging with full decision context.
+ * Includes session generation tracking and latency measurements.
  */
 object VoiceDiagnostics {
     private const val TAG = "VoiceDiagnostics"
@@ -19,7 +19,7 @@ object VoiceDiagnostics {
     }
 
     fun logRms(rmsdB: Float) {
-        // Suppress per-frame RMS logs to eliminate I/O and CPU overhead
+        // Per-frame RMS logs suppressed to eliminate I/O and CPU overhead
     }
 
     fun logBegin() {
@@ -47,18 +47,10 @@ object VoiceDiagnostics {
         Log.i(TAG, "[VOICE_DIAG] MIC_STATE: $state")
     }
 
-    /**
-     * Phase 11: Forensic wake-candidate log.
-     * Emitted for EVERY inference window so post-mortem analysis can explain
-     * exactly why "Yes Boss" did or did not happen.
-     *
-     * Example ACCEPT:
-     *   [WAKE] score=0.78 threshold=0.60 hits=3/5 rms=0.042 noise=0.012 decision=ACCEPT
-     *
-     * Example REJECT:
-     *   [WAKE] score=0.43 threshold=0.60 hits=1/5 rms=0.035 noise=0.012
-     *          decision=REJECT reason=TEMPORAL_GATE(hits=1/3)
-     */
+    fun logSessionGeneration(generation: Long) {
+        Log.i(TAG, "[VOICE_DIAG] SESSION_GEN: $generation")
+    }
+
     fun logWakeCandidate(
         score: Float,
         threshold: Float,
@@ -84,6 +76,36 @@ object VoiceDiagnostics {
         } else {
             Log.v(TAG, "[VOICE_DIAG] $msg")
         }
+    }
+
+    // Latency measurement methods
+    fun logWakeDetectionLatency(latencyMs: Long) {
+        Log.i(TAG, "[VOICE_DIAG] LATENCY wake_detection=${latencyMs}ms")
+    }
+
+    fun logMicHandoffLatency(latencyMs: Long) {
+        Log.i(TAG, "[VOICE_DIAG] LATENCY mic_handoff=${latencyMs}ms")
+    }
+
+    fun logSttStartupLatency(latencyMs: Long) {
+        Log.i(TAG, "[VOICE_DIAG] LATENCY stt_startup=${latencyMs}ms")
+    }
+
+    fun logWakeToSttLatency(latencyMs: Long) {
+        Log.i(TAG, "[VOICE_DIAG] LATENCY wake_to_stt=${latencyMs}ms")
+    }
+
+    fun logInterruptDetectionLatency(latencyMs: Long) {
+        Log.i(TAG, "[VOICE_DIAG] LATENCY interrupt_detection=${latencyMs}ms")
+    }
+
+    fun logInterruptToTtsStopLatency(latencyMs: Long) {
+        Log.i(TAG, "[VOICE_DIAG] LATENCY interrupt_to_tts_stop=${latencyMs}ms")
+    }
+
+    // Lifecycle events
+    fun logLifecycleEvent(event: String) {
+        Log.i(TAG, "[VOICE_DIAG] LIFECYCLE: $event")
     }
 
     fun getErrorDetails(errorCode: Int): Pair<String, String> {

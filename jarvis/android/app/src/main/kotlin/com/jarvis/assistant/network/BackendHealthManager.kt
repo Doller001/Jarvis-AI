@@ -44,7 +44,8 @@ data class BackendHealth(
 class BackendHealthManager(
     private val context: Context?,
     private val apiClient: ApiClient = ApiClient(),
-    private val webSocketClient: WebSocketClient = WebSocketClient()
+    private val webSocketClient: WebSocketClient = WebSocketClient(),
+    private val authTokenManager: AuthTokenManager? = null
 ) {
     companion object {
         private const val TAG = "BackendHealthManager"

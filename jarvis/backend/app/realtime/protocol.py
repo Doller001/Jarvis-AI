@@ -5,6 +5,8 @@ Realtime WebSocket protocol definitions for Jarvis with explicit Device Command 
 from typing import Any
 from pydantic import BaseModel, Field
 
+from app.realtime.canonical_protocol import CanonicalAction, RetryConfig, VerificationConfig
+
 
 class WireEventType:
     CONNECT = "connect"
@@ -12,6 +14,8 @@ class WireEventType:
     CONFIRMATION = "confirmation"
     CONFIRMATION_REQUEST = "confirmation_request"
     DEVICE_COMMAND = "device_command"
+    CANONICAL_ACTION = "canonical_action"
+    ACTION_GRAPH = "action_graph"
     DEVICE_RESULT = "device_result"
     CANCEL_REQUEST = "cancel_request"
     CANCEL_RESULT = "cancel_result"
@@ -74,3 +78,17 @@ class ServerErrorPayload(BaseModel):
     request_id: str | None = None
     code: str
     message: str
+
+
+class ActionGraphPayload(BaseModel):
+    """Action graph sent from backend to Android for execution."""
+    type: str = WireEventType.ACTION_GRAPH
+    request_id: str
+    actions: list[CanonicalAction]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        base = super().model_dump(**kwargs)
+        # Ensure canonical actions are properly serialized
+        base["actions"] = [a.model_dump() for a in self.actions]
+        return base

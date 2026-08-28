@@ -11,10 +11,10 @@ class MicControllerTest {
     @Test
     fun `exclusive ownership is granted to first applicant`() {
         val controller = MicController(context = null)
-        assertTrue(controller.isMicAvailable())
+        assertTrue(controller.isAvailable())
         assertNull(controller.getCurrentOwner())
         assertTrue(controller.acquireMic(MicController.OWNER_STT))
-        assertFalse(controller.isMicAvailable())
+        assertFalse(controller.isAvailable())
         assertEquals(MicController.OWNER_STT, controller.getCurrentOwner())
     }
 
@@ -30,13 +30,11 @@ class MicControllerTest {
     fun `WAKE and STT cannot hold mic simultaneously`() {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
-        // STT must be denied while WAKE holds the mic.
         assertFalse(controller.acquireMic(MicController.OWNER_STT))
         assertEquals(MicController.OWNER_WAKE, controller.getCurrentOwner())
 
-        // After WAKE releases, STT can acquire.
         controller.releaseMic(MicController.OWNER_WAKE)
-        assertTrue(controller.isMicAvailable())
+        assertTrue(controller.isAvailable())
         assertTrue(controller.acquireMic(MicController.OWNER_STT))
         assertEquals(MicController.OWNER_STT, controller.getCurrentOwner())
     }
@@ -46,7 +44,7 @@ class MicControllerTest {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
         controller.releaseMic(MicController.OWNER_WAKE)
-        assertTrue(controller.isMicAvailable())
+        assertTrue(controller.isAvailable())
         assertTrue(controller.acquireMic(MicController.OWNER_STT))
         assertEquals(MicController.OWNER_STT, controller.getCurrentOwner())
     }
@@ -55,8 +53,8 @@ class MicControllerTest {
     fun `releasing from non-owner does not steal mic`() {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
-        controller.releaseMic(MicController.OWNER_STT)  // wrong owner
-        assertFalse(controller.isMicAvailable())
+        controller.releaseMic(MicController.OWNER_STT)
+        assertFalse(controller.isAvailable())
         assertEquals(MicController.OWNER_WAKE, controller.getCurrentOwner())
     }
 
@@ -65,7 +63,7 @@ class MicControllerTest {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
         controller.releaseAny()
-        assertTrue(controller.isMicAvailable())
+        assertTrue(controller.isAvailable())
         assertNull(controller.getCurrentOwner())
     }
 
@@ -73,7 +71,6 @@ class MicControllerTest {
     fun `forceAcquire overrides current owner`() {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
-        // forceAcquire should succeed even when WAKE holds the mic.
         assertTrue(controller.forceAcquire(MicController.OWNER_STT))
         assertEquals(MicController.OWNER_STT, controller.getCurrentOwner())
     }
@@ -82,16 +79,32 @@ class MicControllerTest {
     fun `same owner can re-acquire without contention`() {
         val controller = MicController(context = null)
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
-        // Re-acquiring as the same owner is idempotent.
         assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
         assertEquals(MicController.OWNER_WAKE, controller.getCurrentOwner())
     }
 
     @Test
-    fun `isOwnershipValid always true (exclusivity enforced by acquireMic)`() {
+    fun `transferOwnership succeeds when from matches current`() {
         val controller = MicController(context = null)
-        assertTrue(controller.isOwnershipValid())
+        assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
+        assertTrue(controller.transferOwnership(MicController.OWNER_WAKE, MicController.OWNER_STT))
+        assertEquals(MicController.OWNER_STT, controller.getCurrentOwner())
+    }
+
+    @Test
+    fun `transferOwnership fails when from does not match`() {
+        val controller = MicController(context = null)
+        assertTrue(controller.acquireMic(MicController.OWNER_WAKE))
+        assertFalse(controller.transferOwnership(MicController.OWNER_STT, MicController.OWNER_INTERRUPT))
+        assertEquals(MicController.OWNER_WAKE, controller.getCurrentOwner())
+    }
+
+    @Test
+    fun `isOwnedBy checks specific owner`() {
+        val controller = MicController(context = null)
+        assertFalse(controller.isOwnedBy(MicController.OWNER_WAKE))
         controller.acquireMic(MicController.OWNER_WAKE)
-        assertTrue(controller.isOwnershipValid())
+        assertTrue(controller.isOwnedBy(MicController.OWNER_WAKE))
+        assertFalse(controller.isOwnedBy(MicController.OWNER_STT))
     }
 }

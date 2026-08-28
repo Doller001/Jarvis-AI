@@ -77,7 +77,8 @@ class ExecutionOrchestrator:
             # 3. Execution Dispatch
             action_result = await self._execute_single_action(plan.session_id, plan.request_id, action)
 
-            if action_result.verified:
+            # Update status based on actual verification result
+            if action_result.status == ActionStatus.VERIFIED:
                 action.status = ActionStatus.VERIFIED
                 completed_step_ids.add(action.id)
                 verified_count += 1
@@ -88,8 +89,29 @@ class ExecutionOrchestrator:
                     "data": action_result.data
                 })
                 logger.info(f"[VERIFY] request={plan.request_id} command={action.id} tool={action.tool} status=VERIFIED")
+            elif action_result.status == ActionStatus.EXECUTED:
+                # Device executed but verification failed or pending
+                action.status = ActionStatus.EXECUTED
+                executed_action_results.append({
+                    "command_id": action.id,
+                    "tool": action.tool,
+                    "status": ActionStatus.EXECUTED,
+                    "data": action_result.data,
+                    "warning": "Action executed but verification incomplete"
+                })
+                logger.warning(f"[EXEC] request={plan.request_id} command={action.id} tool={action.tool} executed but not verified")
+            elif action_result.status == ActionStatus.DISPATCHED:
+                # Command sent but device hasn't confirmed receipt
+                action.status = ActionStatus.DISPATCHED
+                executed_action_results.append({
+                    "command_id": action.id,
+                    "tool": action.tool,
+                    "status": ActionStatus.DISPATCHED,
+                    "warning": "Command dispatched, awaiting device confirmation"
+                })
+                logger.info(f"[EXEC] request={plan.request_id} command={action.id} tool={action.tool} dispatched")
             else:
-                action.status = action_result.status or ActionStatus.VERIFICATION_FAILED
+                action.status = action_result.status or ActionStatus.EXECUTION_FAILED
                 action.error = action_result.error_message or "Action execution or verification failed"
                 executed_action_results.append({
                     "command_id": action.id,
