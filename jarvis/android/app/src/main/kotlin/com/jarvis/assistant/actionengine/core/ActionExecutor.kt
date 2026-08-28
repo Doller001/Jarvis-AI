@@ -101,27 +101,6 @@ class ActionExecutor(private val context: Context? = null) {
         )
 
         for (step in plan.steps) {
-            if (step.requiresConfirmation || step.action.requiresConfirmation) {
-                val failure = Failure(
-                    code = FailureCode.USER_CANCELLED,
-                    message = "Confirmation required before ${step.action.description.lowercase()}",
-                    stepId = step.actionId,
-                    recoverable = false,
-                    retryable = false
-                )
-                val verification = ActionVerification(passed = false, reason = "Confirmation required")
-                val result = ActionResult(
-                    actionId = step.actionId,
-                    executionSuccess = false,
-                    verification = verification,
-                    taskState = TaskState.CANCELLED,
-                    failure = failure
-                )
-                results.add(result)
-                plan.currentState = TaskState.CANCELLED
-                onStepUpdate?.invoke(step, result)
-                return results
-            }
 
             if (!step.isReady(completedStepIds)) {
                 Log.w(TAG, "Step ${step.actionId} prerequisites not met: ${step.prerequisites}")

@@ -191,46 +191,65 @@ class NotificationController(private val context: Context? = null) {
 class ContactsController(private val context: Context? = null) {
     fun lookupPhoneNumber(name: String): String? {
         val ctx = context ?: return null
-        return try {
-            val resolver: ContentResolver = ctx.contentResolver
-            val cursor = resolver.query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
-                arrayOf("%$name%"),
-                null
-            )
-            cursor?.use {
-                if (it.moveToFirst()) {
-                    it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
-                } else null
-            }
-        } catch (e: Exception) {
-            Log.e("ContactsController", "Failed to query phone number for $name", e)
-            null
+        val clean = name.trim().lowercase()
+        val searchNames = when (clean) {
+            "mom", "maa", "mummy", "mother", "ammi" -> listOf("mom", "maa", "mummy", "mother", "ammi")
+            "dad", "papa", "father", "abbu", "daddy" -> listOf("papa", "dad", "father", "abbu", "daddy")
+            else -> listOf(clean)
         }
+
+        for (queryName in searchNames) {
+            try {
+                val resolver: ContentResolver = ctx.contentResolver
+                val cursor = resolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER),
+                    "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                    arrayOf("%$queryName%"),
+                    null
+                )
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val num = it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
+                        if (num.isNotBlank()) return num
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ContactsController", "Failed to query phone number for $queryName", e)
+            }
+        }
+        return null
     }
 
     fun lookupContact(name: String): String {
         val ctx = context ?: return "Contact: $name"
-        try {
-            val resolver: ContentResolver = ctx.contentResolver
-            val cursor = resolver.query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
-                "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
-                arrayOf("%$name%"),
-                null
-            )
-            cursor?.use {
-                if (it.moveToFirst()) {
-                    val number = it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
-                    val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
-                    return "$displayName ($number)"
+        val clean = name.trim().lowercase()
+        val searchNames = when (clean) {
+            "mom", "maa", "mummy", "mother", "ammi" -> listOf("mom", "maa", "mummy", "mother", "ammi")
+            "dad", "papa", "father", "abbu", "daddy" -> listOf("papa", "dad", "father", "abbu", "daddy")
+            else -> listOf(clean)
+        }
+
+        for (queryName in searchNames) {
+            try {
+                val resolver: ContentResolver = ctx.contentResolver
+                val cursor = resolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
+                    "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?",
+                    arrayOf("%$queryName%"),
+                    null
+                )
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val number = it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER))
+                        val displayName = it.getString(it.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME))
+                        return "$displayName ($number)"
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e("ContactsController", "Failed to query contacts for $queryName", e)
             }
-        } catch (e: Exception) {
-            Log.e("ContactsController", "Failed to query contacts for $name", e)
         }
         return "Contact: $name"
     }
@@ -287,7 +306,7 @@ class SmsController(private val context: Context? = null) {
         val cleanTarget = targetNumber.replace("[^0-9+]".toRegex(), "").ifEmpty { targetNumber }
         return try {
             val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                ctx.getSystemService(SmsManager::class.java)
+                ctx.getSystemService(SmsManager::class.java) ?: SmsManager.getDefault()
             } else {
                 @Suppress("DEPRECATION")
                 SmsManager.getDefault()
@@ -320,30 +339,69 @@ class SmsController(private val context: Context? = null) {
             contactNameOrPhone
         }
         val cleanNumber = phone.replace("[^0-9]".toRegex(), "")
-        return try {
-            val uri = if (cleanNumber.length >= 7) {
-                Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber&text=${Uri.encode(message)}")
-            } else {
-                Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode(message)}")
+        val targetPhone = if (cleanNumber.length == 10) "91$cleanNumber" else cleanNumber
+        val uri = if (targetPhone.length >= 7) {
+            Uri.parse("https://api.whatsapp.com/send?phone=$targetPhone&text=${Uri.encode(message)}")
+        } else {
+            Uri.parse("https://api.whatsapp.com/send?text=${Uri.encode(message)}")
+        }
+
+        val started = try {
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                setPackage("com.whatsapp")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
+            ctx.startActivity(intent)
+            true
+        } catch (_: Exception) {
             try {
-                val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-                    setPackage("com.whatsapp")
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                ctx.startActivity(intent)
-                true
-            } catch (_: Exception) {
-                // Fallback for WhatsApp Business (com.whatsapp.w4b) or browser
                 val fallbackIntent = Intent(Intent.ACTION_VIEW, uri).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
                 ctx.startActivity(fallbackIntent)
                 true
+            } catch (ex: Exception) {
+                Log.e("SmsController", "Failed to start WhatsApp intent", ex)
+                false
             }
-        } catch (e: Exception) {
-            Log.e("SmsController", "Failed to send WhatsApp message", e)
-            false
         }
+
+        if (started) {
+            // Auto-click WhatsApp Send button as the end action
+            Thread {
+                try {
+                    val acc = com.jarvis.assistant.accessibility.AccessibilityController()
+                    val sendIds = listOf(
+                        "com.whatsapp:id/send",
+                        "com.whatsapp.w4b:id/send",
+                        "com.whatsapp:id/conversation_send_button"
+                    )
+                    val sendLabels = listOf("Send", "send", "भेजें", "bhejo")
+                    var sent = false
+                    for (attempt in 1..10) {
+                        Thread.sleep(350)
+                        for (id in sendIds) {
+                            if (acc.tapById(id)) {
+                                sent = true
+                                break
+                            }
+                        }
+                        if (sent) break
+                        for (label in sendLabels) {
+                            if (acc.tap(label)) {
+                                sent = true
+                                break
+                            }
+                        }
+                        if (sent) break
+                    }
+                    Log.i("SmsController", "WhatsApp auto-click send result: $sent")
+                } catch (e: Exception) {
+                    Log.w("SmsController", "Accessibility auto-send error", e)
+                }
+            }.start()
+        }
+
+        return started
     }
 }

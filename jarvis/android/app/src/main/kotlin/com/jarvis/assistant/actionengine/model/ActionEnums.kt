@@ -35,6 +35,7 @@ enum class ActionType(
     READ_SCREEN("Extract visible text/content from screen", RiskLevel.LOW),
     READ_SCREEN_AND_REPLY("Read screen and suggest replies", RiskLevel.LOW),
     READ_NOTIFICATIONS("Read notification list", RiskLevel.LOW),
+    READ_MESSAGES("Read messages and notifications", RiskLevel.LOW),
     READ_SMS_INBOX("Read SMS inbox", RiskLevel.LOW, requiresPermission = "android.permission.READ_SMS"),
     READ_WHATSAPP_UNREAD("Read WhatsApp notifications", RiskLevel.LOW),
 
@@ -49,6 +50,7 @@ enum class ActionType(
     VOLUME_UP("Increase volume", RiskLevel.LOW),
     VOLUME_DOWN("Decrease volume", RiskLevel.LOW),
     BRIGHTNESS_SET("Set screen brightness percentage", RiskLevel.LOW),
+    SET_BRIGHTNESS("Set screen brightness percentage", RiskLevel.LOW),
     BRIGHTNESS_UP("Increase brightness", RiskLevel.LOW),
     BRIGHTNESS_DOWN("Decrease brightness", RiskLevel.LOW),
     TOGGLE_TORCH("Toggle flashlight", RiskLevel.LOW),

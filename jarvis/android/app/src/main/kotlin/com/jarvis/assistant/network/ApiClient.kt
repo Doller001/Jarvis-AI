@@ -22,7 +22,7 @@ data class PingResult(val isSuccess: Boolean, val latencyMs: Long, val message: 
  * Uses OkHttp with HTTP/2 multiplexing, connection pooling (10 idle connections, 5-min keep-alive),
  * and pre-warmed sockets to eliminate TCP/TLS handshake latency.
  */
-class ApiClient(var baseUrl: String = "https://and9-1.onrender.com") {
+class ApiClient(var baseUrl: String = "https://jarvis-ai-59qd.onrender.com") {
 
     companion object {
         private const val TAG = "ApiClient"

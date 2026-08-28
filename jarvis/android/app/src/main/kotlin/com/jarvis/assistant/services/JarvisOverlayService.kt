@@ -126,6 +126,7 @@ class JarvisOverlayService : Service(),
                 com.jarvis.assistant.ui.theme.JarvisTheme {
                     JarvisFloatingOverlay(
                         state = overlayState.value,
+                        onToggleExpand = { },
                         onClose = { hideOverlay() },
                         onMicTap = { handleMicTap() },
                         onConfirm = { handleConfirm() },

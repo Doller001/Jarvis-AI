@@ -5,12 +5,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -36,6 +41,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.filled.Check
 import com.jarvis.assistant.overlay.FloatingAssistantState
 import com.jarvis.assistant.voice.VoiceState
 
@@ -119,11 +126,11 @@ private fun BubbleBubble(
             .fillMaxWidth()
             .fillMaxHeight()
             .pointerInput(Unit) {
-                detectTapGestures { offset ->
+                detectTapGestures(onTap = { _ ->
                     // Center-of-bubble tap → expand
                     // Only expand if tap is within the bubble region (we approximate: center area)
                     onTap()
-                }
+                })
             }
     ) {
         // Bubble pill
@@ -243,9 +250,9 @@ private fun ExpandedPanel(
                     .clip(RoundedCornerShape(2.dp))
                     .background(Color.White.copy(alpha = 0.25f))
                     .pointerInput(Unit) {
-                        detectTapGestures { _ ->
+                        detectTapGestures(onTap = { _ ->
                             // minimal — real drag handled by OverlayWindowManager
-                        }
+                        })
                     }
             )
 
@@ -292,7 +299,7 @@ private fun ExpandedPanel(
             }
 
             Text(
-                text = stateLabel,
+                text = stateLabel(state.voiceState),
                 color = TextLabel,
                 fontSize = 9.sp,
                 letterSpacing = 0.08.sp,
@@ -400,19 +407,19 @@ private fun ExpandedPanel(
         if (state.requiresConfirmation) {
             Row(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.End)
                     .padding(top = 4.dp)
                     .size(20.dp)
                     .clip(CircleShape)
                     .background(Color.Red.copy(alpha = 0.8f)),
-                contentAlignment = Alignment.Center
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
                 Icon(
                     imageVector = Icons.Default.NotificationsActive,
                     contentDescription = "Notification",
                     tint = Color.White,
                     modifier = Modifier.size(10.dp),
-                    alpha = 1f
                 )
             }
         }
@@ -422,7 +429,8 @@ private fun ExpandedPanel(
 @Composable
 private fun IconButton(
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit = {}
 ) {
     Box(
         modifier = modifier
@@ -431,7 +439,19 @@ private fun IconButton(
             .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
-    ) {}
+    ) { content() }
+}
+
+@Composable
+private fun OverlayActionButton(
+    label: String,
+    icon: ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(44.dp)) {
+        Icon(icon, contentDescription = label, tint = if (enabled) Cyan else TextPrimary.copy(alpha = 0.35f))
+    }
 }
 
 private fun stateLabel(state: VoiceState): String = when (state) {

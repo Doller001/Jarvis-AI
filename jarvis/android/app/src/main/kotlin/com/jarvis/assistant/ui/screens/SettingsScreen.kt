@@ -42,7 +42,7 @@ fun SettingsScreen(
     var showClearDialog by remember { mutableStateOf(false) }
 
     val presets = listOf(
-        "Render Cloud" to "https://and9-1.onrender.com",
+        "Render Cloud" to "https://jarvis-ai-59qd.onrender.com",
         "Emulator (10.0.2.2)" to "http://10.0.2.2:8000",
         "Localhost (127.0.0.1)" to "http://127.0.0.1:8000"
     )

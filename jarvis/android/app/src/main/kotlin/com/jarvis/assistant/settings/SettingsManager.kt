@@ -14,7 +14,7 @@ class SettingsManager(context: Context) {
         const val KEY_WAKE_ENABLED = "key_wake_enabled"
         const val KEY_WAKE_SENSITIVITY = "key_wake_sensitivity"
 
-        const val DEFAULT_BACKEND_URL = "http://127.0.0.1:8000"
+        const val DEFAULT_BACKEND_URL = "https://jarvis-ai-59qd.onrender.com"
         const val DEFAULT_TTS_ENABLED = true
         const val DEFAULT_SPEECH_RATE = 1.0f
         // Sensitivity: "Low"=0.5f, "Balanced"=0.8f, "High"=1.0f
@@ -22,7 +22,15 @@ class SettingsManager(context: Context) {
     }
 
     var backendUrl: String
-        get() = prefs.getString(KEY_BACKEND_URL, DEFAULT_BACKEND_URL) ?: DEFAULT_BACKEND_URL
+        get() {
+            val stored = prefs.getString(KEY_BACKEND_URL, null)?.trim()
+            // Migrate endpoints shipped by older APKs, but retain any endpoint
+            // the user explicitly configured.
+            return when (stored) {
+                null, "", "http://127.0.0.1:8000", "https://and9-1.onrender.com" -> DEFAULT_BACKEND_URL
+                else -> stored
+            }
+        }
         set(value) = prefs.edit().putString(KEY_BACKEND_URL, value.trim()).apply()
 
     var isTtsEnabled: Boolean

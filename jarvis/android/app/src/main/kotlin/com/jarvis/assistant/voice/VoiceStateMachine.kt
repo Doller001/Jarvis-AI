@@ -100,6 +100,7 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.IDLE) {
 
         VoiceState.WAKE_LISTENING ->
             to == VoiceState.ACKNOWLEDGING || to == VoiceState.COMMAND_LISTENING ||
+            to == VoiceState.PROCESSING || to == VoiceState.SPEAKING ||
             to == VoiceState.DISABLED || to == VoiceState.IDLE ||
             to == VoiceState.ERROR || to == VoiceState.RECOVERING
 

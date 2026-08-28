@@ -210,6 +210,16 @@ class AppController(private val context: Context? = null) {
                 }
                 if (ctx.packageManager.queryIntentActivities(intent, 0).isNotEmpty()) {
                     ctx.startActivity(intent)
+                    // Auto-tap first video result after search loads
+                    Thread {
+                        try {
+                            Thread.sleep(1500)
+                            val clicked = accessibilityController.tapFirstVideoResult()
+                            Log.i(TAG, "YouTube auto-play first result click: $clicked")
+                        } catch (ex: Exception) {
+                            Log.w(TAG, "YouTube auto-play tap failed", ex)
+                        }
+                    }.start()
                     return true
                 }
                 // Web YouTube fallback

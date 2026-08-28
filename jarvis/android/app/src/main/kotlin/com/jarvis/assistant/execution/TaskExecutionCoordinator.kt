@@ -25,13 +25,15 @@ sealed class ExecutionOutcome {
  * Guarantees:
  *  1. Side-effecting commands NEVER get bypassed by cached conversational CAG memories.
  *  2. Multi-step actions only report success when all steps pass real verification.
- *  3. Full diagnostic telemetry emitted for all execution stages.
+ *  3. Confirmation state machine tracks user yes/no responses for sensitive operations.
+ *  4. Full diagnostic telemetry emitted for all execution stages.
  */
 class TaskExecutionCoordinator(
     private val context: Context? = null,
     private val brain: JarvisBrain = JarvisBrain(),
     private val commandExecutor: CommandExecutor = CommandExecutor(context),
-    private val actionExecutor: ActionExecutor = ActionExecutor(context)
+    private val actionExecutor: ActionExecutor = ActionExecutor(context),
+    private val confirmationManager: ConfirmationManager = ConfirmationManager()
 ) {
     companion object {
         private const val TAG = "TaskExecutionCoordinator"
@@ -45,16 +47,47 @@ class TaskExecutionCoordinator(
         val text = utterance.trim()
         Log.i(TAG, "Coordinating execution for utterance: '$text'")
 
+        // 1. Check if there is an active pending confirmation waiting for user response
+        if (confirmationManager.hasPending()) {
+            when (confirmationManager.evaluateResponse(text)) {
+                ConfirmationDecision.Confirmed -> {
+                    val intent = confirmationManager.getPending()!!
+                    confirmationManager.clear()
+                    Log.i(TAG, "User confirmed action: ${intent.javaClass.simpleName}")
+                    val result = commandExecutor.execute(intent)
+                    val spoken = brain.formatResponse(intent, result)
+                    val duration = System.currentTimeMillis() - startTime
+                    DiagnosticEventBus.emit(
+                        type = TelemetryEventType.TASK_COMPLETED,
+                        component = TAG,
+                        durationMs = duration,
+                        success = true,
+                        details = mapOf("intent" to intent.javaClass.simpleName, "result" to result, "confirmed" to true)
+                    )
+                    return ExecutionOutcome.Success(spoken, isLocalAction = true)
+                }
+                ConfirmationDecision.Cancelled -> {
+                    confirmationManager.clear()
+                    Log.i(TAG, "User cancelled pending action")
+                    return ExecutionOutcome.Success("Action cancelled, Sir.", isLocalAction = true)
+                }
+                ConfirmationDecision.NotAConfirmation -> {
+                    // User spoke a fresh command; clear pending and continue with new command
+                    confirmationManager.clear()
+                }
+            }
+        }
+
         DiagnosticEventBus.emit(
             type = TelemetryEventType.TASK_START,
             component = TAG,
             details = mapOf("utterance" to text)
         )
 
-        // 1. Check if input is a side-effecting command or conversational query
+        // 2. Check if input is a side-effecting command or conversational query
         val isSideEffecting = isSideEffectingCommand(text)
 
-        // 2. If conversational and memoryRouter has high confidence CAG exact hit, use cached knowledge
+        // 3. If conversational and memoryRouter has high confidence CAG exact hit, use cached knowledge
         if (!isSideEffecting && memoryRouter != null) {
             val routed = memoryRouter.route(text)
             if (routed.source == RouteSource.FAST_CAG_EXACT || routed.source == RouteSource.FAST_CAG_NEAR) {
@@ -63,10 +96,10 @@ class TaskExecutionCoordinator(
             }
         }
 
-        // 3. Plan command via JarvisBrain
+        // 4. Plan command via JarvisBrain
         val plan = brain.processCommand(text)
 
-        // 4. Handle plan intent
+        // 5. Handle plan intent
         return when (val intent = plan.intent) {
             is JarvisIntent.MultiStepTask -> {
                 executeMultiStepPlan(intent.plan)
@@ -77,8 +110,8 @@ class TaskExecutionCoordinator(
             }
             else -> {
                 if (plan.requiresConfirmation) {
-                    val prompt = "Confirmation required: ${plan.confirmationPrompt}"
-                    ExecutionOutcome.ConfirmationRequired(prompt)
+                    confirmationManager.setPending(intent)
+                    ExecutionOutcome.ConfirmationRequired(plan.confirmationPrompt)
                 } else {
                     val result = commandExecutor.execute(intent)
                     val spoken = brain.formatResponse(intent, result)
@@ -115,7 +148,9 @@ class TaskExecutionCoordinator(
         val sideEffectPrefixes = listOf(
             "open ", "close ", "launch ", "start ", "turn ", "play ", "pause ", "stop ",
             "set ", "volume ", "torch ", "wifi ", "bluetooth ", "call ", "sms ", "send ",
-            "take ", "click ", "capture ", "kholo", "band", "chalao", "bajao", "lagao"
+            "take ", "click ", "capture ", "kholo", "band", "chalao", "bajao", "lagao",
+            "dnd ", "silent", "vibrate", "rotate", "lock ", "alarm", "timer", "remind",
+            "navigate", "search ", "copy ", "read "
         )
         return sideEffectPrefixes.any { lower.contains(it) } ||
                lower.contains(" and ") || lower.contains(" aur ") || lower.contains(" then ")

@@ -51,6 +51,7 @@ Thumbs.db
 **/build/
 **/app/build/
 *.aar
+*.apk
 local.properties
 .build-env/
 

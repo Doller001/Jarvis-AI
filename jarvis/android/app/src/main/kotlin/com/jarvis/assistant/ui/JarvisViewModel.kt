@@ -36,7 +36,7 @@ data class JarvisUiState(
     val lastUtterance: String = "",
     val lastResponse: String = "JARVIS online. Good to see you, Minaty. What shall we build today?",
     val messages: List<MessageLog> = emptyList(),
-    val backendUrl: String = "https://and9-1.onrender.com",
+    val backendUrl: String = "https://jarvis-ai-59qd.onrender.com",
     val providers: List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama"),
     val providersLoading: Boolean = false,
     val isTtsEnabled: Boolean = true,

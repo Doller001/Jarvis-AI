@@ -1,5 +1,6 @@
 package com.jarvis.assistant.device
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
@@ -43,8 +44,42 @@ class SystemController(private val context: Context? = null) {
         }
     }
 
+    fun adjustVolumeRelative(directionUp: Boolean): Int {
+        Log.i("SystemController", "Adjusting volume relative: up=$directionUp")
+        return try {
+            val ctx = context ?: return -1
+            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return -1
+            val direction = if (directionUp) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+            val current = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+            val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (max > 0) (current * 100 / max) else 50
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to adjust volume", e)
+            -1
+        }
+    }
+
+    fun muteVolume(mute: Boolean): Boolean {
+        Log.i("SystemController", "Muting volume: $mute")
+        return try {
+            val ctx = context ?: return false
+            val audioManager = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+            if (mute) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, AudioManager.FLAG_SHOW_UI)
+            } else {
+                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, max / 2, AudioManager.FLAG_SHOW_UI)
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("SystemController", "Failed to mute volume", e)
+            false
+        }
+    }
+
     fun toggleWifi(enable: Boolean): Boolean {
-        Log.i("SystemController", "Toggling Wi-Fi -> $enable")
+        Log.i("SystemController", "Opening Wi-Fi settings for toggle -> $enable")
         return try {
             val ctx = context ?: return false
             val intent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
@@ -59,7 +94,7 @@ class SystemController(private val context: Context? = null) {
     }
 
     fun toggleBluetooth(enable: Boolean): Boolean {
-        Log.i("SystemController", "Toggling Bluetooth -> $enable")
+        Log.i("SystemController", "Opening Bluetooth settings for toggle -> $enable")
         return try {
             val ctx = context ?: return false
             val intent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
@@ -74,13 +109,13 @@ class SystemController(private val context: Context? = null) {
     }
 
     fun getTime(): String {
-        val sdf = SimpleDateFormat("HH:mm, EEEE, MMM d, yyyy", Locale.getDefault())
+        val sdf = SimpleDateFormat("h:mm a, EEEE, MMM d, yyyy", Locale.getDefault())
         return sdf.format(Date())
     }
 
     fun getBatteryLevel(): String {
         return try {
-            val ctx = context ?: return "85% (Simulated)"
+            val ctx = context ?: return "85%"
             val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
             val level = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 85
             "$level%"
@@ -133,14 +168,11 @@ class SystemController(private val context: Context? = null) {
         }
     }
 
-    // ===== NEW: Brightness control =====
     fun setBrightness(levelPercentage: Int): Boolean {
         Log.i("SystemController", "Setting brightness to $levelPercentage%")
         return try {
             val ctx = context ?: return false
             val resolved = levelPercentage.coerceIn(0, 100)
-            // Try app-level brightness via layout params (works only for own window);
-            // for system-wide we use Settings.System if WRITE_SETTINGS is granted.
             if (Settings.System.canWrite(ctx)) {
                 val b = (resolved * 255 / 100)
                 Settings.System.putInt(
@@ -150,7 +182,6 @@ class SystemController(private val context: Context? = null) {
                 )
                 true
             } else {
-                // Fallback: open display settings so the user can adjust
                 openSettings("display")
                 true
             }
@@ -160,70 +191,107 @@ class SystemController(private val context: Context? = null) {
         }
     }
 
-    // ===== NEW: Ringer mode (silent / vibrate / normal) =====
     fun setRingerMode(mode: String): Boolean {
         Log.i("SystemController", "Setting ringer mode to $mode")
+        val ctx = context ?: return false
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+
         return try {
-            val ctx = context ?: return false
-            val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
             when (mode.lowercase()) {
-                "silent" -> am.ringerMode = AudioManager.RINGER_MODE_SILENT
-                "vibrate" -> am.ringerMode = AudioManager.RINGER_MODE_VIBRATE
-                else -> am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                "silent" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm?.isNotificationPolicyAccessGranted == false) {
+                        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        ctx.startActivity(intent)
+                        false
+                    } else {
+                        am.ringerMode = AudioManager.RINGER_MODE_SILENT
+                        true
+                    }
+                }
+                "vibrate" -> {
+                    am.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                    true
+                }
+                else -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm?.isNotificationPolicyAccessGranted == false && am.ringerMode == AudioManager.RINGER_MODE_SILENT) {
+                        val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        ctx.startActivity(intent)
+                        false
+                    } else {
+                        am.ringerMode = AudioManager.RINGER_MODE_NORMAL
+                        true
+                    }
+                }
             }
-            true
         } catch (e: Exception) {
             Log.e("SystemController", "Failed to set ringer mode", e)
             false
         }
     }
 
-    // ===== NEW: Do Not Disturb toggle =====
     fun setDnd(enable: Boolean): Boolean {
         Log.i("SystemController", "Setting DND -> $enable")
+        val ctx = context ?: return false
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            ?: return false
+
         return try {
-            val ctx = context ?: return false
-            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
-                ?: return false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (!nm.isNotificationPolicyAccessGranted) {
-                    // Guide user to grant DND access
                     val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     ctx.startActivity(intent)
-                    return true
+                    return false
                 }
                 nm.setInterruptionFilter(
-                    if (enable) android.app.NotificationManager.INTERRUPTION_FILTER_NONE
-                    else android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+                    if (enable) NotificationManager.INTERRUPTION_FILTER_NONE
+                    else NotificationManager.INTERRUPTION_FILTER_ALL
                 )
+                true
+            } else {
+                false
             }
-            true
         } catch (e: Exception) {
             Log.e("SystemController", "Failed to set DND", e)
             false
         }
     }
 
-    // ===== NEW: Screen rotation lock =====
     fun setRotationLock(enable: Boolean): Boolean {
         Log.i("SystemController", "Setting rotation lock -> $enable")
+        val ctx = context ?: return false
         return try {
-            val ctx = context ?: return false
-            Settings.System.putInt(
-                ctx.contentResolver,
-                Settings.System.ACCELEROMETER_ROTATION,
-                if (enable) 0 else 1
-            )
-            true
+            if (Settings.System.canWrite(ctx)) {
+                Settings.System.putInt(
+                    ctx.contentResolver,
+                    Settings.System.ACCELEROMETER_ROTATION,
+                    if (enable) 0 else 1
+                )
+                true
+            } else {
+                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                    data = android.net.Uri.parse("package:${ctx.packageName}")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                if (intent.resolveActivity(ctx.packageManager) != null) {
+                    ctx.startActivity(intent)
+                } else {
+                    openSettings("display")
+                }
+                false
+            }
         } catch (e: Exception) {
             Log.e("SystemController", "Failed to set rotation lock", e)
             false
         }
     }
 
-    // ===== NEW: Battery charging + health info =====
     fun getBatteryDetailed(): String {
         val ctx = context ?: return "Battery info unavailable"
         return try {
@@ -235,21 +303,18 @@ class SystemController(private val context: Context? = null) {
                 BatteryManager.BATTERY_STATUS_FULL -> "plugged in"
                 else -> "on battery"
             }
-            val temp = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_TEMPERATURE) / 10f
-            "Battery $level% — $plugged${if (charging) ", actively charging" else ""}, temperature ${temp}C"
+            "Battery $level% — $plugged${if (charging) ", actively charging" else ""}"
         } catch (e: Exception) {
             "Battery level: 85%"
         }
     }
 
-    // ===== NEW: Bluetooth device connect =====
     fun connectBluetoothDevice(deviceName: String = ""): Boolean {
         Log.i("SystemController", "Connecting Bluetooth device: '$deviceName'")
         return try {
             val ctx = context ?: return false
             val adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter() ?: return false
             if (deviceName.isBlank()) {
-                // Just open BT settings if no specific device
                 openSettings("bluetooth")
                 return true
             }
@@ -257,13 +322,8 @@ class SystemController(private val context: Context? = null) {
                 d.name?.contains(deviceName, ignoreCase = true) == true
             }
             if (device != null) {
-                // Attempt A2DP / HEADSET connection via reflection-free API where possible
                 try {
-                    val intent = Intent().apply {
-                        action = android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED
-                    }
-                    // Use Bluetooth A2DP sink proxy if available
-                    val a2dp = adapter.getProfileProxy(ctx, object : android.bluetooth.BluetoothProfile.ServiceListener {
+                    adapter.getProfileProxy(ctx, object : android.bluetooth.BluetoothProfile.ServiceListener {
                         override fun onServiceConnected(profile: Int, proxy: android.bluetooth.BluetoothProfile) {
                             try {
                                 val clazz = Class.forName("android.bluetooth.BluetoothA2dp")
@@ -275,8 +335,6 @@ class SystemController(private val context: Context? = null) {
                     }, android.bluetooth.BluetoothProfile.A2DP)
                     true
                 } catch (e: Exception) {
-                    Log.w("SystemController", "BT connect via profile failed", e)
-                    // Fallback: open BT settings
                     openSettings("bluetooth")
                     true
                 }

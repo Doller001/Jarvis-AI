@@ -23,18 +23,18 @@ class ClipboardController(private val context: Context? = null) {
 
     fun readClipboard(): String {
         return try {
-            val ctx = context ?: return "Clipboard unavailable"
-            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return "Clipboard unavailable"
+            val ctx = context ?: return "Clipboard service unavailable"
+            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return "Clipboard service unavailable"
             val clip = cm.primaryClip
             if (clip != null && clip.itemCount > 0) {
                 val txt = clip.getItemAt(0).text?.toString().orEmpty()
-                if (txt.isNotBlank()) "Clipboard contains: $txt" else "Clipboard is empty"
+                if (txt.isNotBlank()) "Clipboard contains: '$txt', Sir." else "Your clipboard is currently empty, Sir."
             } else {
-                "Clipboard is empty"
+                "Your clipboard is currently empty, Sir."
             }
         } catch (e: Exception) {
             Log.e("ClipboardController", "Failed to read clipboard", e)
-            "Clipboard unavailable"
+            "Clipboard unavailable, Sir."
         }
     }
 }

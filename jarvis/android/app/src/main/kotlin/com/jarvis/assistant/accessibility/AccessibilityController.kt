@@ -155,4 +155,14 @@ class AccessibilityController(private val service: AccessibilityService? = null)
             collectScreenText(node.getChild(i), sb)
         }
     }
+
+    fun takeScreenshot(): Boolean {
+        Log.i("AccessibilityController", "Taking screenshot via AccessibilityService")
+        val service = activeService ?: return false
+        return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT)
+        } else {
+            false
+        }
+    }
 }

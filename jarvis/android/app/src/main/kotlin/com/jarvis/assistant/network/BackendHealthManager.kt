@@ -29,7 +29,7 @@ data class BackendHealth(
     val lastSuccessAt: Long? = null,
     val retryAttempt: Int = 0,
     val reason: String? = null,
-    val endpoint: String = "http://127.0.0.1:8000"
+    val endpoint: String = "https://jarvis-ai-59qd.onrender.com"
 )
 
 /**
@@ -48,7 +48,7 @@ class BackendHealthManager(
 ) {
     companion object {
         private const val TAG = "BackendHealthManager"
-        private const val DEFAULT_ENDPOINT = "http://127.0.0.1:8000"
+        private const val DEFAULT_ENDPOINT = "https://jarvis-ai-59qd.onrender.com"
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

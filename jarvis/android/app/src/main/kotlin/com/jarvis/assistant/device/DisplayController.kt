@@ -2,43 +2,35 @@ package com.jarvis.assistant.device
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import android.provider.MediaStore
 import android.util.Log
+import com.jarvis.assistant.accessibility.AccessibilityController
 
 class DisplayController(private val context: Context? = null) {
 
+    private val accessibilityController = AccessibilityController()
+
     /**
-     * Capture a screenshot. On Android 9+ this requires a MediaProjection session
-     * which needs a user consent dialog — we can't do it silently. Instead we open
-     * the system screenshot shortcut where supported, or guide the user.
-     *
-     * For a fully hands-free capture, the foreground service would need to request
-     * MediaProjection permission at runtime. Here we trigger the OS screenshot when
-     * the device supports the accessibility / gesture path, otherwise instruct.
+     * Capture a screenshot.
+     * Primary: Uses AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT (API 28+, Android 9+).
+     * Fallback: System screenshot broadcast or opening settings.
      */
     fun takeScreenshot(): Boolean {
         Log.i("DisplayController", "Attempting screenshot")
+        if (accessibilityController.takeScreenshot()) {
+            return true
+        }
+
+        val ctx = context ?: return false
         return try {
-            val ctx = context ?: return false
-            // Use the system screenshot intent (works on many OEMs via accessibility /
-            // on Android 9-11 there's a hidden takescreenshot broadcast; on newer we
-            // rely on the user granting MediaProjection, handled elsewhere).
             val intent = Intent("com.android.systemui.screenshot").apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             if (intent.resolveActivity(ctx.packageManager) != null) {
                 ctx.sendBroadcast(intent)
-                return true
+                true
+            } else {
+                false
             }
-            // Fallback: open the screenshot action via quick settings intent
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val qs = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-                ctx.startActivity(qs)
-            }
-            true
         } catch (e: Exception) {
             Log.e("DisplayController", "Screenshot failed", e)
             false
