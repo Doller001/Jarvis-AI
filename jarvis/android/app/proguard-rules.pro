@@ -59,3 +59,10 @@
 -keep interface ai.onnxruntime.** { *; }
 -dontwarn ai.onnxruntime.**
 
+# 7. AndroidX Security Crypto & Tink
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn com.google.crypto.tink.**
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+
+
