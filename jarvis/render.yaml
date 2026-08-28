@@ -6,19 +6,21 @@ services:
     dockerContext: backend
     region: singapore
     plan: free
-    healthCheckPath: /health
+    healthCheckPath: /health/ready
     envVars:
       - key: PORT
         value: 8000
       - key: ENVIRONMENT
         value: production
-      - key: JARVIS_DB_PATH
-        value: jarvis_memory.db
       - key: ALLOWED_ORIGINS
         value: "https://jarvis-ai-59qd.onrender.com,http://localhost:3000,http://127.0.0.1:3000"
       - key: JARVIS_JWT_SECRET
         sync: false
+      - key: DATABASE_URL
+        sync: false
       - key: REDIS_URL
+        sync: false
+      - key: NVIDIA_API_KEY
         sync: false
       - key: GROQ_API_KEY
         sync: false
@@ -26,12 +28,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
-      # The backend defaults to NVIDIA when this credential is present.
-      # Set the value in Render's Environment dashboard; never commit it.
-      - key: NVIDIA_API_KEY
-        sync: false
-      - key: OLLAMA_BASE_URL
-        value: http://localhost:11434
+      - key: OLLAMA_ENABLED
+        value: "false"
 
   - type: redis
     name: jarvis-redis

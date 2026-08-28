@@ -15,10 +15,21 @@ import android.speech.SpeechRecognizer as AndroidSpeechRecognizer
 import android.util.Log
 import java.util.Locale
 
+enum class TriggerReason {
+    WakeWordConfirmed,
+    ManualButton,
+    BargeInInterrupt
+}
+
+data class CommandListeningRequest(
+    val reason: TriggerReason,
+    val sessionId: Long
+)
+
 /**
  * High-reliability speech recognition controller.
- * Enforces Single Mic Owner architecture, provides full callback diagnostics,
- * and manages audio focus and recognition lifecycle with on-device fallback.
+ * Enforces Single Mic Owner architecture, strict TriggerReason gating,
+ * session generation tracking, and clean teardown.
  */
 class SpeechController(
     private val context: Context? = null,
@@ -26,27 +37,24 @@ class SpeechController(
 ) {
     companion object {
         private const val TAG = "SpeechController"
-        private const val OWNER_TAG = "SpeechController"
+        const val OWNER_TAG = MicController.OWNER_STT
     }
 
     @Volatile
     private var isListening = false
     @Volatile
     private var errorDelivered = false
+    @Volatile
+    private var activeSessionId: Long = 0L
+
     private var speechRecognizer: AndroidSpeechRecognizer? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var lastRecognizedText = ""
     private val audioManager: AudioManager? = context?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
 
-    // NOTE: Audio focus is intentionally NOT requested here. On several OEM
-    // ROMs (notably Samsung OneUI) acquiring AUDIOFOCUS with a speech/guidance
-    // usage silently mutes or re-routes the capture stream, so the
-    // SpeechRecognizer receives ~0 audio energy and always returns
-    // ERROR_NO_MATCH. The standard Android recognizer manages its own audio
-    // session; leaving focus alone makes listening work out of the box.
     private fun requestAudioFocus() {
-        // No-op by design (see note above).
+        // Managed by platform SpeechRecognizer
     }
 
     private fun abandonAudioFocus() {
@@ -62,9 +70,10 @@ class SpeechController(
     }
 
     /**
-     * Starts listening with strict permission, availability, and mic-ownership gating.
+     * Starts listening with strict permission, availability, trigger validation, and mic-ownership gating.
      */
     fun startListening(
+        request: CommandListeningRequest,
         onResult: (String) -> Unit,
         onError: (errorCode: Int, errorMessage: String) -> Unit,
         onRmsChanged: ((Float) -> Unit)? = null
@@ -74,6 +83,9 @@ class SpeechController(
             onError(AndroidSpeechRecognizer.ERROR_CLIENT, "Application context is null.")
             return
         }
+
+        activeSessionId = request.sessionId
+        Log.i(TAG, "Speech listening requested: reason=${request.reason}, sessionId=${request.sessionId}")
 
         // 1. Permission Gate
         if (!micController.hasPermission()) {
@@ -85,7 +97,7 @@ class SpeechController(
             return
         }
 
-        // 2. Recognition Availability Gate (check standard or on-device)
+        // 2. Recognition Availability Gate
         val isStandardAvailable = AndroidSpeechRecognizer.isRecognitionAvailable(ctx)
         val isOnDeviceAvailable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AndroidSpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)
@@ -103,10 +115,24 @@ class SpeechController(
         }
 
         // 3. Mic Ownership Gate (Single Mic Owner Architecture)
-        micController.forceAcquire(OWNER_TAG)
+        if (!micController.acquireMic(OWNER_TAG)) {
+            val currentOwner = micController.getCurrentOwner()
+            Log.w(TAG, "Cannot acquire mic for STT — currently held by $currentOwner")
+            onError(
+                AndroidSpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                "Microphone busy (held by $currentOwner)"
+            )
+            return
+        }
 
         mainHandler.post {
             try {
+                if (activeSessionId != request.sessionId) {
+                    Log.w(TAG, "Session superseded before recognition start (${request.sessionId} vs $activeSessionId)")
+                    micController.releaseMic(OWNER_TAG)
+                    return@post
+                }
+
                 isListening = true
                 errorDelivered = false
                 lastRecognizedText = ""
@@ -119,12 +145,6 @@ class SpeechController(
                     speechRecognizer?.destroy()
                 } catch (_: Exception) {}
 
-                // Always use the standard (cloud/Google) SpeechRecognizer.
-                // On several OEM ROMs (notably Samsung OneUI / Android 13) the
-                // on-device recognizer reports isOnDeviceRecognitionAvailable()
-                // == true but the actual model is NOT installed, so it captures
-                // zero audio and always returns ERROR_NO_MATCH. The standard
-                // recognizer is the reliable path that actually delivers audio.
                 speechRecognizer = AndroidSpeechRecognizer.createSpeechRecognizer(ctx)
 
                 val defaultLocale = Locale.getDefault()
@@ -138,7 +158,6 @@ class SpeechController(
                     putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, ctx.packageName)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    // Calibrated speech input thresholds for responsive low-latency finalization
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
                     putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 800L)
@@ -146,37 +165,41 @@ class SpeechController(
 
                 speechRecognizer?.setRecognitionListener(object : RecognitionListener {
                     override fun onReadyForSpeech(params: Bundle?) {
-                        VoiceDiagnostics.logReady()
+                        if (activeSessionId == request.sessionId) VoiceDiagnostics.logReady()
                     }
 
                     override fun onBeginningOfSpeech() {
-                        VoiceDiagnostics.logBegin()
+                        if (activeSessionId == request.sessionId) VoiceDiagnostics.logBegin()
                     }
 
                     override fun onRmsChanged(rmsdB: Float) {
-                        VoiceDiagnostics.logRms(rmsdB)
-                        onRmsChanged?.invoke(rmsdB)
+                        if (activeSessionId == request.sessionId) {
+                            VoiceDiagnostics.logRms(rmsdB)
+                            onRmsChanged?.invoke(rmsdB)
+                        }
                     }
 
                     override fun onBufferReceived(buffer: ByteArray?) {}
 
                     override fun onEndOfSpeech() {
-                        VoiceDiagnostics.logEnd()
+                        if (activeSessionId == request.sessionId) VoiceDiagnostics.logEnd()
                     }
 
                     override fun onError(error: Int) {
-                    // Guard against duplicate delivery: a subsequent
-                    // cancel()/destroy() after an already-reported error can
-                    // fire ERROR_CLIENT again — suppress it.
-                    if (errorDelivered) {
-                        Log.d(TAG, "onError($error) ignored — already delivered")
-                        return
-                    }
-                    isListening = false
-                    errorDelivered = true
-                    abandonAudioFocus()
-                    micController.releaseMic(OWNER_TAG)
-                    VoiceDiagnostics.logError(error)
+                        if (activeSessionId != request.sessionId) {
+                            Log.d(TAG, "Discarding stale STT onError($error) for session ${request.sessionId}")
+                            return
+                        }
+                        if (errorDelivered) {
+                            Log.d(TAG, "onError($error) ignored — already delivered")
+                            return
+                        }
+                        isListening = false
+                        errorDelivered = true
+                        abandonAudioFocus()
+                        micController.releaseMic(OWNER_TAG)
+                        VoiceDiagnostics.logError(error)
+
 
                     val (_, detailedMessage) = VoiceDiagnostics.getErrorDetails(error)
 

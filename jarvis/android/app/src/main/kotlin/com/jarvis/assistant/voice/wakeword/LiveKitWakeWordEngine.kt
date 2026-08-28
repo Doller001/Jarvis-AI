@@ -187,9 +187,10 @@ class LiveKitWakeWordEngine(
         }
     }
 
+    val isAudioRecordReleased: Boolean get() = synchronized(stateLock) { audioRecord == null }
+
     /**
-     * Non-blocking pause — sets flag and releases AudioRecord without joining thread.
-     * Thread will exit naturally on next loop iteration. Used for fast wake→STT transition.
+     * Non-blocking pause — sets flag and releases AudioRecord.
      */
     fun pauseAsync() {
         if (!isMonitoring) return
@@ -200,24 +201,23 @@ class LiveKitWakeWordEngine(
     }
 
     /**
-     * Synchronous pause — waits for capture thread to exit.
-     * Used when guaranteed mic release is needed before proceeding.
+     * Synchronous pause — guarantees capture thread is stopped and AudioRecord is released.
      */
     fun pause() {
         if (!isMonitoring) return
         pausedForCommand = true
+        releaseAudioRecord()
 
         val threadToJoin = captureThread
         captureThread = null
         if (threadToJoin != null && threadToJoin.isAlive && Thread.currentThread() != threadToJoin) {
             try {
                 threadToJoin.interrupt()
-                threadToJoin.join(50)
+                threadToJoin.join(300)
             } catch (_: Exception) {}
         }
-        releaseAudioRecord()
         detector.pause()
-        Log.i(TAG, "Wake-word paused — microphone released for command mode")
+        Log.i(TAG, "Wake-word paused (sync) — microphone guaranteed released")
     }
 
     /**

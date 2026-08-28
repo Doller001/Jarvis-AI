@@ -63,7 +63,8 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     private val memoryRouter by lazy { com.jarvis.assistant.memory.MemoryDecisionRouter(application) }
     private val coordinator by lazy { TaskExecutionCoordinator(application) }
     private val authTokenManager = AuthTokenManager(application)
-    private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl, authTokenManager = authTokenManager)
+    private val authRepository = AuthRepository(application, authTokenManager, settingsManager, ApiClient.sharedClient)
+    private val apiClient = ApiClient(baseUrl = settingsManager.backendUrl, authTokenManager = authTokenManager, authRepository = authRepository)
     private val webSocketClient = WebSocketClient(authTokenManager = authTokenManager)
     private val backendHealthManager = BackendHealthManager(application, apiClient, webSocketClient, authTokenManager)
 
@@ -85,19 +86,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             val messages = memoryRouter.getEngine().getRecentEpisodes()
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(messages = messages) }
-            }
-        }
-
-        // Register device and obtain JWT tokens if not already authenticated
-        if (!authTokenManager.isAuthenticated) {
-            val deviceName = settingsManager.deviceId ?: "android-device"
-            val deviceModel = android.os.Build.MODEL ?: "unknown"
-            val osVersion = "Android ${android.os.Build.VERSION.RELEASE}"
-            apiClient.registerDevice(deviceName, deviceModel, osVersion) { tokens ->
-                if (tokens != null) {
-                    android.util.Log.i("JarvisViewModel", "Device registered: ${tokens.deviceId}")
-                    backendHealthManager.checkHealthAndReconnect()
-                }
             }
         }
 

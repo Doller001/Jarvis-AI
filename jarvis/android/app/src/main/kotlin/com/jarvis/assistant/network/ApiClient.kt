@@ -12,6 +12,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 data class PingResult(val isSuccess: Boolean, val latencyMs: Long, val message: String)
@@ -24,23 +25,22 @@ data class ChatResult(
 )
 
 /**
- * Ultra-low latency, high-performance API client with JWT authentication.
+ * Ultra-low latency, high-performance API client with automated JWT authentication & 401 recovery.
  */
 class ApiClient(
     var baseUrl: String = "https://jarvis-ai-59qd.onrender.com",
-    private val authTokenManager: AuthTokenManager? = null
+    private val authTokenManager: AuthTokenManager? = null,
+    private val authRepository: AuthRepository? = null
 ) {
 
     companion object {
         private const val TAG = "ApiClient"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-        private val sharedClient: OkHttpClient by lazy {
+        val sharedClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .connectionPool(ConnectionPool(10, 5, TimeUnit.MINUTES))
                 .connectTimeout(3000, TimeUnit.MILLISECONDS)
-                // Cloud providers can take longer than the health endpoint,
-                // especially when Render wakes a sleeping instance.
                 .readTimeout(20, TimeUnit.SECONDS)
                 .writeTimeout(3000, TimeUnit.MILLISECONDS)
                 .retryOnConnectionFailure(true)
@@ -68,6 +68,7 @@ class ApiClient(
                 .url("$cleanUrl/api/v1/health")
                 .header("Connection", "keep-alive")
                 .header("Accept", "application/json")
+                .header("X-Request-ID", "ping-${UUID.randomUUID()}")
                 .build()
 
             try {
@@ -111,6 +112,7 @@ class ApiClient(
                 .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
                 .header("Connection", "keep-alive")
                 .header("Accept", "application/json")
+                .header("X-Request-ID", "reg-${UUID.randomUUID()}")
                 .build()
 
             try {
@@ -161,6 +163,7 @@ class ApiClient(
                 .url("$cleanUrl/api/v1/auth/refresh")
                 .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
                 .header("Connection", "keep-alive")
+                .header("X-Request-ID", "ref-${UUID.randomUUID()}")
                 .build()
 
             try {
@@ -176,7 +179,6 @@ class ApiClient(
                         launch(Dispatchers.Main) { onResult(newAccess) }
                     } else {
                         Log.w(TAG, "Token refresh failed: ${response.code}")
-                        authTokenManager?.clearTokens()
                         launch(Dispatchers.Main) { onResult(null) }
                     }
                 }
@@ -192,6 +194,7 @@ class ApiClient(
             val cleanUrl = baseUrl.trim().trimEnd('/')
             val request = Request.Builder()
                 .url("$cleanUrl/api/v1/providers")
+                .header("X-Request-ID", "prov-${UUID.randomUUID()}")
                 .also { addAuthHeaders(it) }
                 .build()
 
@@ -250,6 +253,7 @@ class ApiClient(
             val bodyJson = JSONObject().apply {
                 put("provider", provider)
                 put("model", model)
+                put("request_id", "sel-${UUID.randomUUID()}")
             }.toString()
 
             val request = Request.Builder()
@@ -272,30 +276,46 @@ class ApiClient(
 
     fun sendChat(text: String, sessionId: String, onResult: (ChatResult) -> Unit) {
         scope.launch {
-            val token = authTokenManager?.accessToken
-            if (token.isNullOrBlank() || authTokenManager?.isTokenExpired(token) != false) {
-                launch(Dispatchers.Main) {
-                    onResult(ChatResult(errorMessage = "Backend authentication is not ready."))
-                }
-                return@launch
-            }
             val cleanUrl = baseUrl.trim().trimEnd('/')
+            val reqId = "req-chat-${UUID.randomUUID()}"
             val bodyJson = JSONObject().apply {
                 put("text", text)
                 put("session_id", sessionId)
-                put("request_id", "android-${System.currentTimeMillis()}")
+                put("request_id", reqId)
             }.toString()
 
-            val request = Request.Builder()
-                .url("$cleanUrl/api/v1/chat")
-                .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
-                .also { addAuthHeaders(it) }
-                .build()
+            val requestBuilder: (String) -> Request = { accessToken ->
+                Request.Builder()
+                    .url("$cleanUrl/api/v1/chat")
+                    .post(bodyJson.toRequestBody(JSON_MEDIA_TYPE))
+                    .header("Authorization", "Bearer $accessToken")
+                    .header("Connection", "keep-alive")
+                    .header("Accept", "application/json")
+                    .header("X-Request-ID", reqId)
+                    .build()
+            }
 
             try {
-                sharedClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        val body = response.body?.string().orEmpty()
+                val response = if (authRepository != null) {
+                    authRepository.executeAuthenticatedRequest(baseUrl, requestBuilder)
+                } else {
+                    val token = authTokenManager?.accessToken
+                    if (token != null) {
+                        sharedClient.newCall(requestBuilder(token)).execute()
+                    } else null
+                }
+
+                if (response == null) {
+                    launch(Dispatchers.Main) {
+                        onResult(ChatResult(errorMessage = "Backend connection or authentication recovery failed.", isNetworkFailure = true))
+                    }
+                    return@launch
+                }
+
+                response.use { resp ->
+                    val code = resp.code
+                    if (resp.isSuccessful) {
+                        val body = resp.body?.string().orEmpty()
                         val json = JSONObject(body)
                         var responseText = json.optString("response_text")
                             .ifBlank { json.optString("result") }
@@ -311,35 +331,34 @@ class ApiClient(
                             onResult(
                                 ChatResult(
                                     responseText = responseText.ifBlank { null },
-                                    statusCode = response.code,
+                                    statusCode = code,
                                     errorMessage = if (responseText.isBlank()) "Backend returned no answer." else null
                                 )
                             )
                         }
-                        return@launch
                     } else {
-                        val errorBody = response.body?.string().orEmpty()
-                        Log.w(TAG, "Chat request failed: HTTP ${response.code} $errorBody")
-                        launch(Dispatchers.Main) {
-                            onResult(ChatResult(statusCode = response.code, errorMessage = "Backend returned HTTP ${response.code}."))
+                        val errorBody = resp.body?.string().orEmpty()
+                        Log.w(TAG, "Chat request failed: HTTP $code $errorBody")
+                        val errorMsg = try {
+                            val errJson = JSONObject(errorBody).optJSONObject("error")
+                            errJson?.optString("message") ?: "Backend returned HTTP $code"
+                        } catch (_: Exception) {
+                            "Backend returned HTTP $code"
                         }
-                        return@launch
+                        launch(Dispatchers.Main) {
+                            onResult(ChatResult(statusCode = code, errorMessage = errorMsg))
+                        }
                     }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Chat request failed: ${e.message}")
                 launch(Dispatchers.Main) {
-                    onResult(
-                        ChatResult(
-                            errorMessage = e.message ?: "Network request failed.",
-                            isNetworkFailure = true
-                        )
-                    )
+                    onResult(ChatResult(errorMessage = e.message ?: "Network request failed.", isNetworkFailure = true))
                 }
-                return@launch
             }
         }
     }
 
     private fun defaultProviders(): List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama")
 }
+

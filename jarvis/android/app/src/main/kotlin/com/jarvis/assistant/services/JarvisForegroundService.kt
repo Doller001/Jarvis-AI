@@ -75,7 +75,7 @@ class JarvisForegroundService : Service() {
             voiceRuntime.setWakeSensitivity(label)
         }
         startCommandListening = {
-            voiceRuntime.startListeningForCommand()
+            voiceRuntime.startManualCommand()
         }
         setSpeechRate = { rate ->
             voiceRuntime.setSpeechRate(rate)
@@ -96,6 +96,13 @@ class JarvisForegroundService : Service() {
         if (intent?.action == ACTION_STOP) {
             shutdownRuntime("ACTION_STOP requested")
             return START_NOT_STICKY
+        }
+
+        if (intent?.action == ACTION_LISTEN_FOR_COMMAND) {
+            if (::voiceRuntime.isInitialized) {
+                voiceRuntime.startManualCommand()
+            }
+            return START_STICKY
         }
 
         if (intent?.action == ACTION_INTERRUPT) {

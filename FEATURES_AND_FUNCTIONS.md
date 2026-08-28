@@ -143,3 +143,19 @@
 | **C9.4** | **Samsung/OEM SpeechRecognizer Teardown Guard** | `SpeechController.kt` | Prevents "not connected" platform crashes during active audio session transitions and cancellations. |
 | **C9.5** | **Microphone Ownership Arbitration** | `MicController.kt` / `LiveKitWakeWordEngine.kt` | Verifies component ownership tags so wake word background threads never release speech recognizer mic ownership. |
 | **C9.6** | **NVIDIA NIM LLM Cloud Integration** | `llm/providers.py` / `render.yaml` | Deploys NVIDIA Nemotron LLM as priority provider on Render cloud with declarative secrets and token redaction. |
+
+---
+
+## 10. 🛡️ Phase 4 Complete Architecture, Voice, Auth & Deployment Rebuild (2026-08-28)
+
+| # | Feature / Function | File / Class | Description & Operational Flow |
+|---|---|---|---|
+| **R10.1** | **Proactive Auth & Deterministic 401 Recovery** | `AuthRepository.kt` | Proactive token refresh when `< 2 mins` left; deterministic 401 recovery loop (1x token refresh, 1x device re-registration fallback) with zero infinite loops. |
+| **R10.2** | **PostgreSQL Persistent Device & Session Store** | `device_registry.py` / `SupabaseClient.py` | Stores registered devices and SHA-256 hashed refresh tokens in PostgreSQL `devices` and `auth_sessions` tables; detects token reuse and rotates sessions on every refresh. |
+| **R10.3** | **Deterministic Voice State Machine** | `VoiceStateMachine.kt` | Synchronized transitions with explicit legal manual mic activation (`ManualCommandStart` from `DISABLED`) and safe returns to `DISABLED` when wake word is off. |
+| **R10.4** | **Hard STT Trigger Guards & Session Discard** | `SpeechController.kt` / `VoiceRuntime.kt` | Requires `CommandListeningRequest(reason, sessionId)`; rejects unprompted background starts; discards stale callbacks from superseded voice sessions. |
+| **R10.5** | **Synchronous Wake-to-STT AudioRecord Handoff** | `LiveKitWakeWordEngine.kt` | `pause()` guarantees AudioRecord is completely stopped and capture thread joined before granting `OWNER_STT` mic ownership. |
+| **R10.6** | **Canonical Single-Blueprint Render Deployment** | `jarvis/render.yaml` & `Dockerfile` | Deleted redundant root `/render.yaml` and `/Dockerfile`; canonical multi-stage Dockerfile binding dynamically to `${PORT:-8000}` with `/health/live` probe. |
+| **R10.7** | **OpenAI Compatible Endpoints & Universal Chat Aliases** | `openai_compat.py` | Full OpenAI format chat completions (`/v1/chat/completions`, `/models`) and universal aliases (`/chat`, `/ask`, `/query`, `/generate`, `/completions`, `/message`). |
+| **R10.8** | **Production Release Signing Enforcement** | `app/build.gradle.kts` | Release builds strictly require production keystore configuration without falling back to debug keystore. |
+

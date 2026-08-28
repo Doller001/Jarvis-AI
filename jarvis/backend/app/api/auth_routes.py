@@ -1,8 +1,6 @@
-"""
-Auth API routes for device registration and token management.
-"""
-
 import logging
+import secrets
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -26,6 +24,10 @@ class DeviceRegistrationRequest(BaseModel):
 
 class TokenRefreshRequest(BaseModel):
     refresh_token: str
+
+
+class RevokeTokenRequest(BaseModel):
+    device_id: str
 
 
 class DeviceRegistrationResponse(BaseModel):
@@ -89,8 +91,18 @@ async def exchange_token(req: DeviceRegistrationRequest) -> dict[str, Any]:
         device_id=req.device_id,
     )
 
+    session_id = f"sess-{secrets.token_hex(8)}"
     token_pair = jwt_manager.create_token_pair(
         device_id=identity.device_id,
+        session_id=session_id,
+    )
+
+    # Store hashed session
+    device_registry.create_session(
+        session_id=session_id,
+        device_id=identity.device_id,
+        refresh_token=token_pair.refresh_token,
+        expires_at=time.time() + (30 * 86400)
     )
 
     return {
@@ -107,14 +119,29 @@ async def exchange_token(req: DeviceRegistrationRequest) -> dict[str, Any]:
 async def refresh_token(req: TokenRefreshRequest) -> dict[str, Any]:
     payload = jwt_manager.validate_token(req.refresh_token)
     if payload is None or payload.token_type != "refresh":
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
-
-    new_access = jwt_manager.refresh_access_token(req.refresh_token)
-    if new_access is None:
-        raise HTTPException(status_code=401, detail="Refresh failed")
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     device = device_registry.get_device(payload.sub)
-    new_refresh = jwt_manager.create_refresh_token(device_id=payload.sub)
+    if not device:
+        raise HTTPException(status_code=401, detail="Unknown device")
+
+    old_session_id = payload.session_id or f"legacy-{payload.sub}"
+    new_session_id = f"sess-{secrets.token_hex(8)}"
+    new_access = jwt_manager.create_access_token(device_id=payload.sub, session_id=new_session_id)
+    new_refresh = jwt_manager.create_refresh_token(device_id=payload.sub, session_id=new_session_id)
+
+    # Rotate session with hash validation
+    rotated = device_registry.validate_and_rotate_session(
+        old_session_id=old_session_id,
+        new_session_id=new_session_id,
+        device_id=payload.sub,
+        old_refresh_token=req.refresh_token,
+        new_refresh_token=new_refresh,
+        expires_at=time.time() + (30 * 86400)
+    )
+
+    if not rotated:
+        raise HTTPException(status_code=401, detail="Refresh token reuse or revocation detected")
 
     return {
         "access_token": new_access,
@@ -124,6 +151,12 @@ async def refresh_token(req: TokenRefreshRequest) -> dict[str, Any]:
         "device_id": payload.sub,
         "trusted": device.trusted if device else False,
     }
+
+
+@auth_router.post("/revoke")
+async def revoke_tokens(req: RevokeTokenRequest) -> dict[str, Any]:
+    device_registry.revoke_device_sessions(req.device_id)
+    return {"status": "revoked", "device_id": req.device_id}
 
 
 @auth_router.get("/devices")
@@ -140,3 +173,4 @@ async def list_devices() -> list[dict[str, Any]]:
         }
         for d in devices
     ]
+

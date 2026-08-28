@@ -9,7 +9,10 @@ import kotlin.concurrent.withLock
  *
  * States:
  *   DISABLED → WAKE_LISTENING → ACKNOWLEDGING → COMMAND_LISTENING
- *            → PROCESSING → SPEAKING → WAKE_LISTENING
+ *            → PROCESSING → SPEAKING → WAKE_LISTENING / DISABLED
+ *
+ * Manual command path:
+ *   DISABLED / WAKE_LISTENING + ManualCommandStart → COMMAND_LISTENING
  *
  * Interrupt path:
  *   SPEAKING → INTERRUPTING → COMMAND_LISTENING
@@ -29,6 +32,17 @@ enum class VoiceState {
     RECOVERING
 }
 
+sealed class VoiceEvent {
+    object ManualCommandStart : VoiceEvent()
+    object WakeDetected : VoiceEvent()
+    object WakeAcknowledged : VoiceEvent()
+    object SpeechComplete : VoiceEvent()
+    object TtsDone : VoiceEvent()
+    object Interrupt : VoiceEvent()
+    object TimeoutOrError : VoiceEvent()
+    object RecoveryDone : VoiceEvent()
+}
+
 class VoiceStateMachine(initial: VoiceState = VoiceState.DISABLED) {
 
     companion object {
@@ -36,38 +50,43 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.DISABLED) {
 
         private val TRANSITIONS: Map<VoiceState, Set<VoiceState>> = mapOf(
             VoiceState.DISABLED to setOf(
-                VoiceState.WAKE_LISTENING
+                VoiceState.WAKE_LISTENING,
+                VoiceState.COMMAND_LISTENING // Manual Command Button
             ),
             VoiceState.WAKE_LISTENING to setOf(
                 VoiceState.ACKNOWLEDGING,
-                // A user can start a command directly from the UI without a
-                // preceding wake-word acknowledgement.
-                VoiceState.COMMAND_LISTENING,
+                VoiceState.COMMAND_LISTENING, // Manual Command Button or Direct Trigger
                 VoiceState.DISABLED
             ),
             VoiceState.ACKNOWLEDGING to setOf(
                 VoiceState.COMMAND_LISTENING,
                 VoiceState.WAKE_LISTENING,
+                VoiceState.DISABLED,
                 VoiceState.RECOVERING
             ),
             VoiceState.COMMAND_LISTENING to setOf(
                 VoiceState.PROCESSING,
                 VoiceState.WAKE_LISTENING,
+                VoiceState.DISABLED,
                 VoiceState.RECOVERING
             ),
             VoiceState.PROCESSING to setOf(
                 VoiceState.SPEAKING,
+                VoiceState.WAKE_LISTENING,
+                VoiceState.DISABLED,
                 VoiceState.INTERRUPTING,
                 VoiceState.RECOVERING
             ),
             VoiceState.SPEAKING to setOf(
                 VoiceState.WAKE_LISTENING,
+                VoiceState.DISABLED,
                 VoiceState.INTERRUPTING,
                 VoiceState.RECOVERING
             ),
             VoiceState.INTERRUPTING to setOf(
                 VoiceState.COMMAND_LISTENING,
                 VoiceState.WAKE_LISTENING,
+                VoiceState.DISABLED,
                 VoiceState.RECOVERING
             ),
             VoiceState.RECOVERING to setOf(
@@ -115,3 +134,4 @@ class VoiceStateMachine(initial: VoiceState = VoiceState.DISABLED) {
         Log.w(TAG, "FORCE [$prev → $to]")
     }
 }
+

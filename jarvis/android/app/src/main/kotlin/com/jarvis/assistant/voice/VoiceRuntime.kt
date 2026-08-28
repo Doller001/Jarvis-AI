@@ -209,6 +209,13 @@ class VoiceRuntime(
      * 2. Pause wake engine (non-blocking)
      * 3. Start STT immediately (no 80ms delay)
      */
+    /**
+     * Optimized acknowledgement sequence — no artificial delays.
+     *
+     * 1. Invalidate wake session (increment generation)
+     * 2. Pause wake engine (synchronous release)
+     * 3. Start STT immediately
+     */
     private fun startAcknowledgement() {
         if (!stateMachine.transition(VoiceState.ACKNOWLEDGING)) {
             Log.w(TAG, "Cannot enter ACKNOWLEDGING from ${stateMachine.state}")
@@ -221,11 +228,11 @@ class VoiceRuntime(
         val generation = sessionGeneration.incrementAndGet()
         VoiceDiagnostics.logSessionGeneration(generation)
 
-        // Non-blocking wake pause
+        // Synchronously release wake engine audio capture
         wakeEngine.pause()
 
-        // Start STT immediately — no artificial delay
-        startListeningForCommand()
+        // Start STT with confirmed wake word trigger
+        startListeningForCommand(TriggerReason.WakeWordConfirmed)
     }
 
     fun setWakeSensitivity(label: String) {
@@ -244,11 +251,19 @@ class VoiceRuntime(
     }
 
     /**
-     * Starts command STT.
-     * Optimized: no artificial delays, atomic mic transfer.
+     * Explicit manual command entry point (e.g. mic button in UI or overlay).
+     * Works seamlessly whether wake-word is enabled or disabled.
      */
-    fun startListeningForCommand() {
-        val generation = sessionGeneration.get()
+    fun startManualCommand() {
+        Log.i(TAG, "Explicit manual command trigger received from state ${stateMachine.state}")
+        startListeningForCommand(TriggerReason.ManualButton)
+    }
+
+    /**
+     * Starts command STT with strict TriggerReason verification.
+     */
+    fun startListeningForCommand(reason: TriggerReason = TriggerReason.ManualButton) {
+        val generation = sessionGeneration.incrementAndGet()
 
         // Stop TTS if speaking
         if (stateMachine.isSpeaking) {
@@ -265,26 +280,24 @@ class VoiceRuntime(
         wakeEngine.pause()
 
         if (!stateMachine.transition(VoiceState.COMMAND_LISTENING)) {
-            // Do not force the target state and then transition to it again:
-            // the latter is always invalid and used to leave the runtime in a
-            // phantom COMMAND_LISTENING state. A caller must first enter a
-            // valid source state (wake acknowledgement or interrupt).
-            Log.w(TAG, "Cannot enter COMMAND_LISTENING from ${stateMachine.state}")
-            return
+            Log.w(TAG, "Cannot enter COMMAND_LISTENING from ${stateMachine.state} — recovering")
+            stateMachine.recoverTo(VoiceState.COMMAND_LISTENING)
         }
         notifyState()
 
         audioSessionManager.beginSession()
 
-        // Start recognition immediately — no artificial delay
-        startRecognition(generation)
+        // Start recognition with verified trigger reason
+        startRecognition(reason, generation)
     }
 
-    private fun startRecognition(generation: Long) {
+    private fun startRecognition(reason: TriggerReason, generation: Long) {
         mainHandler.removeCallbacks(commandTimeoutRunnable)
         mainHandler.postDelayed(commandTimeoutRunnable, COMMAND_TIMEOUT_MS)
 
+        val request = CommandListeningRequest(reason = reason, sessionId = generation)
         speechController.startListening(
+            request = request,
             onResult = { utterance -> onCommandReceived(utterance, generation) },
             onError = { errorCode, errorMessage ->
                 Log.w(TAG, "STT error ($errorCode): $errorMessage")

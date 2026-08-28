@@ -47,7 +47,7 @@ android {
             signingConfig = if (project.hasProperty("KEYSTORE_PATH")) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                null
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

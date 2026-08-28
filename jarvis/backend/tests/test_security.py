@@ -46,3 +46,53 @@ def test_redacting_formatter_safely_redacts_keys_and_standalone_tokens():
     )
     assert "[REDACTED_API_KEY]" in formatter.format(record2)
     assert "gsk_" not in formatter.format(record2)
+
+
+def test_jwt_manager_and_session_rotation():
+    from app.security.jwt_manager import jwt_manager
+    from app.security.device_registry import device_registry
+
+    # 1. Register device
+    dev = device_registry.register_device("Pixel Test", "GPJ41", "Android 14", "test-dev-1")
+    assert dev.device_id == "test-dev-1"
+
+    # 2. Create token pair with session
+    session_id = "sess-test-1"
+    token_pair = jwt_manager.create_token_pair("test-dev-1", session_id=session_id)
+    assert token_pair.access_token is not None
+    assert token_pair.refresh_token is not None
+
+    # Record session
+    device_registry.create_session(session_id, "test-dev-1", token_pair.refresh_token, expires_at=9999999999)
+
+    # 3. Validate access token
+    payload = jwt_manager.validate_token(token_pair.access_token)
+    assert payload is not None
+    assert payload.sub == "test-dev-1"
+    assert payload.token_type == "access"
+    assert payload.jti is not None
+
+    # 4. Rotate session
+    new_session_id = "sess-test-2"
+    new_refresh = jwt_manager.create_refresh_token("test-dev-1", session_id=new_session_id)
+    success = device_registry.validate_and_rotate_session(
+        old_session_id=session_id,
+        new_session_id=new_session_id,
+        device_id="test-dev-1",
+        old_refresh_token=token_pair.refresh_token,
+        new_refresh_token=new_refresh,
+        expires_at=9999999999
+    )
+    assert success is True
+
+    # 5. Replay old token -> must fail
+    replay_success = device_registry.validate_and_rotate_session(
+        old_session_id=session_id,
+        new_session_id="sess-test-3",
+        device_id="test-dev-1",
+        old_refresh_token=token_pair.refresh_token,
+        new_refresh_token="new-refresh-token",
+        expires_at=9999999999
+    )
+    assert replay_success is False
+

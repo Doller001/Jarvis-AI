@@ -156,4 +156,26 @@ class VoiceStateMachineTest {
         sm.transition(VoiceState.COMMAND_LISTENING)
         assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
     }
+
+    @Test
+    fun `DISABLED can transition directly to COMMAND_LISTENING for manual command button`() {
+        assertEquals(VoiceState.DISABLED, sm.state)
+        assertTrue(sm.transition(VoiceState.COMMAND_LISTENING))
+        assertEquals(VoiceState.COMMAND_LISTENING, sm.state)
+    }
+
+    @Test
+    fun `SPEAKING can transition to DISABLED when wake is off`() {
+        sm.forceState(VoiceState.SPEAKING)
+        assertTrue(sm.transition(VoiceState.DISABLED))
+        assertEquals(VoiceState.DISABLED, sm.state)
+    }
+
+    @Test
+    fun `COMMAND_LISTENING can transition to DISABLED on timeout when wake is off`() {
+        sm.forceState(VoiceState.COMMAND_LISTENING)
+        assertTrue(sm.transition(VoiceState.DISABLED))
+        assertEquals(VoiceState.DISABLED, sm.state)
+    }
 }
+

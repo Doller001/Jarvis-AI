@@ -5,6 +5,7 @@ Handles access/refresh token creation, validation, and refresh.
 
 import logging
 import os
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -13,7 +14,8 @@ import jwt
 
 logger = logging.getLogger("jarvis.security.jwt")
 
-JWT_SECRET = os.getenv("JARVIS_JWT_SECRET", "jarvis-dev-secret-change-in-production")
+DEFAULT_DEV_SECRET = "jarvis-dev-secret-change-in-production"
+JWT_SECRET = os.getenv("JARVIS_JWT_SECRET", DEFAULT_DEV_SECRET)
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_MINUTES = int(os.getenv("JWT_ACCESS_TTL_MINUTES", "15"))
 REFRESH_TOKEN_TTL_DAYS = int(os.getenv("JWT_REFRESH_TTL_DAYS", "30"))
@@ -25,6 +27,7 @@ class TokenPayload:
     iat: float        # issued at
     exp: float        # expiration
     token_type: str   # "access" or "refresh"
+    jti: str | None = None
     session_id: str | None = None
     roles: list[str] | None = None
 
@@ -34,21 +37,24 @@ class TokenPair:
     access_token: str
     refresh_token: str
     expires_in: int  # seconds until access token expires
+    session_id: str
 
 
 class JWTManager:
-    """Manages JWT access and refresh tokens for device authentication."""
+    """Manages JWT access and refresh tokens for device authentication with rotation."""
 
     def __init__(self, secret: str | None = None, algorithm: str | None = None):
         self._secret = secret or JWT_SECRET
         self._algorithm = algorithm or JWT_ALGORITHM
+        self._validate_production_secret()
 
-        if self._secret == "jarvis-dev-secret-change-in-production":
-            env = os.getenv("ENVIRONMENT", "development").lower()
-            if env == "production":
-                logger.critical(
-                    "JWT_SECRET is set to the default development value in production! "
-                    "Set JARVIS_JWT_SECRET to a strong random string."
+    def _validate_production_secret(self) -> None:
+        env = os.getenv("ENVIRONMENT", "development").lower()
+        if env == "production":
+            if not self._secret or self._secret == DEFAULT_DEV_SECRET or len(self._secret) < 16:
+                logger.critical("FATAL: JARVIS_JWT_SECRET is missing, insecure, or using dev default in production!")
+                raise RuntimeError(
+                    "Production boot failed: JARVIS_JWT_SECRET must be set to a secure secret of at least 16 characters in production."
                 )
 
     def create_access_token(
@@ -60,14 +66,15 @@ class JWTManager:
     ) -> str:
         ttl = ttl_minutes or ACCESS_TOKEN_TTL_MINUTES
         now = time.time()
+        sid = session_id or f"sess-{secrets.token_hex(8)}"
         payload: dict[str, Any] = {
             "sub": device_id,
             "iat": now,
             "exp": now + (ttl * 60),
             "token_type": "access",
+            "jti": secrets.token_hex(16),
+            "session_id": sid,
         }
-        if session_id:
-            payload["session_id"] = session_id
         if roles:
             payload["roles"] = roles
         return jwt.encode(payload, self._secret, algorithm=self._algorithm)
@@ -75,15 +82,19 @@ class JWTManager:
     def create_refresh_token(
         self,
         device_id: str,
+        session_id: str | None = None,
         ttl_days: int | None = None,
     ) -> str:
         ttl = ttl_days or REFRESH_TOKEN_TTL_DAYS
         now = time.time()
+        sid = session_id or f"sess-{secrets.token_hex(8)}"
         payload: dict[str, Any] = {
             "sub": device_id,
             "iat": now,
             "exp": now + (ttl * 86400),
             "token_type": "refresh",
+            "jti": secrets.token_hex(16),
+            "session_id": sid,
         }
         return jwt.encode(payload, self._secret, algorithm=self._algorithm)
 
@@ -93,12 +104,14 @@ class JWTManager:
         session_id: str | None = None,
         roles: list[str] | None = None,
     ) -> TokenPair:
-        access = self.create_access_token(device_id, session_id, roles)
-        refresh = self.create_refresh_token(device_id)
+        sid = session_id or f"sess-{secrets.token_hex(8)}"
+        access = self.create_access_token(device_id, sid, roles)
+        refresh = self.create_refresh_token(device_id, sid)
         return TokenPair(
             access_token=access,
             refresh_token=refresh,
             expires_in=ACCESS_TOKEN_TTL_MINUTES * 60,
+            session_id=sid,
         )
 
     def validate_token(self, token: str) -> TokenPayload | None:
@@ -109,6 +122,7 @@ class JWTManager:
                 iat=decoded["iat"],
                 exp=decoded["exp"],
                 token_type=decoded.get("token_type", "access"),
+                jti=decoded.get("jti"),
                 session_id=decoded.get("session_id"),
                 roles=decoded.get("roles"),
             )
@@ -124,7 +138,8 @@ class JWTManager:
         if payload is None or payload.token_type != "refresh":
             logger.warning("Invalid or non-refresh token used for refresh")
             return None
-        return self.create_access_token(device_id=payload.sub)
+        return self.create_access_token(device_id=payload.sub, session_id=payload.session_id)
 
 
 jwt_manager = JWTManager()
+
