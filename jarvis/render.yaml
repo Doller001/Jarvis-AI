@@ -26,6 +26,10 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # The backend defaults to NVIDIA when this credential is present.
+      # Set the value in Render's Environment dashboard; never commit it.
+      - key: NVIDIA_API_KEY
+        sync: false
       - key: OLLAMA_BASE_URL
         value: http://localhost:11434
 

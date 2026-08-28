@@ -21,6 +21,7 @@ ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,*
 GROQ_API_KEY=gsk_your_groq_api_key_here
 OPENROUTER_API_KEY=sk-or-v1-your_openrouter_key_here
 GEMINI_API_KEY=AIzaSy_your_gemini_key_here
+NVIDIA_API_KEY=nvapi-your_nvidia_key_here
 OLLAMA_BASE_URL=http://localhost:11434
 
 # Optional Authentication Token for WebSockets
@@ -50,6 +51,7 @@ Render provides free Docker web service hosting with automatic HTTPS and WebSock
    - `GROQ_API_KEY`: Your Groq API key
    - `OPENROUTER_API_KEY`: Your OpenRouter API key
    - `GEMINI_API_KEY`: Your Gemini API key
+   - `NVIDIA_API_KEY`: Your NVIDIA NIM API key (the backend's preferred provider when configured)
    - `ALLOWED_ORIGINS`: `*`
 
 4. **Verify Render Deployment**:
@@ -76,6 +78,7 @@ docker run -d \
   -e GROQ_API_KEY="gsk_..." \
   -e OPENROUTER_API_KEY="sk-or-v1-..." \
   -e GEMINI_API_KEY="AIzaSy..." \
+  -e NVIDIA_API_KEY="nvapi-..." \
   --restart unless-stopped \
   jarvis-backend:latest
 ```
