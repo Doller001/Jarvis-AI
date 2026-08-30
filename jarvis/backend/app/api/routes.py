@@ -6,6 +6,7 @@ import asyncio
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.agent.execution_models import MultimodalInputPayload
 from app.agent.orchestrator import jarvis_brain
 from app.db.supabase_client import supabase_client
 from app.llm.gateway import llm_gateway
@@ -17,11 +18,7 @@ from app.tools.registry import tool_registry
 
 api_router = APIRouter(prefix="/api/v1", tags=["System API"])
 
-
-class ChatRequest(BaseModel):
-    text: str
-    session_id: str = "default-session"
-    request_id: str = "req-http"
+ChatRequest = MultimodalInputPayload
 
 
 class MusicSearchRequest(BaseModel):
@@ -95,13 +92,16 @@ async def supabase_db_status():
 
 @api_router.post("/chat")
 async def chat(
-    req: ChatRequest,
+    req: MultimodalInputPayload,
     token: TokenPayload = Depends(require_auth),
 ):
     sid = req.session_id if req.session_id != "default-session" else token.sub
     return await jarvis_brain.process_utterance(
         text=req.text,
         session_id=sid,
-        request_id=req.request_id
+        request_id=req.request_id,
+        sensory_data=req.sensory_data,
+        image_base64=req.image_base64,
+        image_uri=req.image_uri,
     )
 

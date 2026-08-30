@@ -6,15 +6,17 @@ User command -> Intent -> Action Plan -> Device Dispatch -> Device ACK -> Verifi
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Optional
 
 from app.agent.execution_models import (
     ActionExecutionResult,
     ActionStatus,
     ExecutionPlan,
     PlannedAction,
+    SensoryTelemetry,
     TaskExecutionReport,
 )
+from app.memory.mag_store import mag_store
 from app.realtime.command_registry import command_registry
 from app.realtime.connection_manager import connection_manager
 from app.realtime.protocol import DeviceCommandPayload, WireEventType
@@ -27,7 +29,11 @@ logger = logging.getLogger(__name__)
 class ExecutionOrchestrator:
     """Coordinates plan validation, dependency resolution, device dispatch, and verification."""
 
-    async def execute_plan(self, plan: ExecutionPlan) -> TaskExecutionReport:
+    async def execute_plan(
+        self,
+        plan: ExecutionPlan,
+        sensory_data: Optional[SensoryTelemetry] = None
+    ) -> TaskExecutionReport:
         start_time = time.time()
         completed_step_ids: set[str] = set()
         executed_action_results: list[dict[str, Any]] = []
@@ -120,6 +126,9 @@ class ExecutionOrchestrator:
                     "error": action.error
                 })
                 logger.warning(f"[EXEC] request={plan.request_id} command={action.id} tool={action.tool} failed: {action.error}")
+                # Dynamic recovery diagnostic logging
+                hw_profile = mag_store.get_hardware_profile(plan.session_id)
+                logger.warning(f"[RECOVERY] Dynamic recovery triggered for action '{action.tool}' (session {plan.session_id}): {action.error}")
                 # Dependent sequence stops on failure
                 break
 
@@ -127,7 +136,7 @@ class ExecutionOrchestrator:
         total_actions = len(plan.actions)
         all_passed = total_actions > 0 and verified_count == total_actions
 
-        # 4. Formulate Truthful Spoken Summary
+        # 4. Formulate Truthful Spoken Summary with Recovery Diagnostics
         if all_passed:
             status_str = "success"
             if total_actions == 1:
@@ -143,12 +152,18 @@ class ExecutionOrchestrator:
             status_str = "partial_failure"
             failed_action = next((a for a in plan.actions if a.status != ActionStatus.VERIFIED), None)
             failed_tool = failed_action.tool if failed_action else "subsequent action"
-            msg = f"Completed initial actions, but {failed_tool.replace('_', ' ')} could not be completed."
+            err_detail = f": {failed_action.error}" if failed_action and failed_action.error else ""
+            msg = f"Completed initial actions, but {failed_tool.replace('_', ' ')} could not be completed{err_detail}."
         else:
             status_str = "failed"
             failed_action = plan.actions[0] if plan.actions else None
             failed_reason = failed_action.error if failed_action else "Unknown error"
             msg = f"Could not complete action: {failed_reason}"
+            if sensory_data:
+                if sensory_data.network_type == "offline" and "offline" not in msg.lower() and "not connected" not in msg.lower():
+                    msg += " (Device reports network is offline)."
+                elif sensory_data.battery_level is not None and sensory_data.battery_level <= 10 and not sensory_data.is_charging:
+                    msg += f" (Warning: Device battery is low at {sensory_data.battery_level}%)."
 
         return TaskExecutionReport(
             request_id=plan.request_id,
@@ -190,6 +205,52 @@ class ExecutionOrchestrator:
                     executed=False,
                     verified=False,
                     error_message=str(e)
+                )
+
+        # Check MAG Hardware Profile Constraints
+        hw_profile = mag_store.get_hardware_profile(session_id)
+        if action.tool == "toggle_torch" and not hw_profile.get("torch_available", True):
+            return ActionExecutionResult(
+                command_id=action.id,
+                request_id=request_id,
+                status=ActionStatus.EXECUTION_FAILED,
+                executed=False,
+                verified=False,
+                error_code="HARDWARE_UNAVAILABLE",
+                error_message="Torch/Flashlight hardware is unavailable on this device."
+            )
+        if action.tool == "toggle_bluetooth" and not hw_profile.get("bluetooth_available", True):
+            return ActionExecutionResult(
+                command_id=action.id,
+                request_id=request_id,
+                status=ActionStatus.EXECUTION_FAILED,
+                executed=False,
+                verified=False,
+                error_code="HARDWARE_UNAVAILABLE",
+                error_message="Bluetooth hardware is unavailable on this device."
+            )
+        if action.tool == "toggle_wifi" and not hw_profile.get("wifi_available", True):
+            return ActionExecutionResult(
+                command_id=action.id,
+                request_id=request_id,
+                status=ActionStatus.EXECUTION_FAILED,
+                executed=False,
+                verified=False,
+                error_code="HARDWARE_UNAVAILABLE",
+                error_message="Wi-Fi hardware is unavailable on this device."
+            )
+        if action.tool == "set_volume":
+            max_v = hw_profile.get("max_volume")
+            level = action.parameters.get("level") or action.parameters.get("volume")
+            if max_v is not None and isinstance(level, (int, float)) and level > max_v:
+                return ActionExecutionResult(
+                    command_id=action.id,
+                    request_id=request_id,
+                    status=ActionStatus.EXECUTION_FAILED,
+                    executed=False,
+                    verified=False,
+                    error_code="PARAMETER_EXCEEDS_HARDWARE_LIMIT",
+                    error_message=f"Requested volume level {level} exceeds device maximum limit of {max_v}."
                 )
 
         # Device Action Dispatch over WebSocket

@@ -1,32 +1,30 @@
 """
-JarvisBrain Canonical Orchestrator with Multi-Action Planning and Device Verification.
+JarvisBrain Canonical Orchestrator with Multi-Action Planning, Device Verification,
+Context-Aware Generation (CAG) Fast Cache, and Multimodal Context Augmentation.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
-from app.agent.execution_models import ExecutionPlan, PlannedAction, TaskExecutionReport
+from app.agent.execution_models import (
+    ExecutionPlan,
+    PlannedAction,
+    SensoryTelemetry,
+    TaskExecutionReport,
+)
 from app.agent.execution_orchestrator import execution_orchestrator
 from app.agent.intent_resolver import intent_resolver
 from app.agent.normalizer import intent_normalizer
 from app.agent.planner import risk_policy, task_planner
 from app.llm.gateway import llm_gateway
+from app.memory.cag_cache import cag_cache
+from app.memory.mag_store import mag_store
 from app.memory.memory_manager import memory_manager
+from app.memory.multimodal_memory import multimodal_memory
 from app.security.token_manager import token_manager
 from app.tools.registry import tool_registry
 
 logger = logging.getLogger(__name__)
-
-
-def build_system_prompt(session_id: str, current_text: str) -> str:
-    history = memory_manager.get_conversation_history(session_id, limit=8)
-    entries = [
-        f"{m['role']}: {m['content']}" for m in history
-        if m["content"].strip() and not (m["role"] == "user" and m["content"] == current_text)
-    ]
-    if entries:
-        return JARVIS_SYSTEM_PROMPT + "\n\nRecent conversation:\n" + "\n".join(entries)
-    return JARVIS_SYSTEM_PROMPT
 
 
 JARVIS_SYSTEM_PROMPT = """You are JARVIS — an AGI-class personal cognitive assistant created by Minaty.
@@ -47,26 +45,118 @@ Device Action Rules:
 """
 
 
+def build_system_prompt(
+    session_id: str,
+    current_text: str,
+    context: Optional[dict[str, Any]] = None,
+) -> str:
+    sections: list[str] = []
+
+    if context:
+        facts = context.get("facts")
+        if facts and isinstance(facts, dict):
+            facts_lines = [f"- {k}: {v}" for k, v in facts.items()]
+            if facts_lines:
+                sections.append("Known Facts & User Profile:\n" + "\n".join(facts_lines))
+
+        rag = context.get("relevant_rag")
+        if rag and isinstance(rag, list):
+            rag_lines = [f"- {s}" for s in rag if s]
+            if rag_lines:
+                sections.append("Relevant Context & Past Interactions:\n" + "\n".join(rag_lines))
+
+        sensory = context.get("sensory")
+        if sensory and isinstance(sensory, dict):
+            sensory_items = [
+                f"- {k}: {v}"
+                for k, v in sensory.items()
+                if v is not None and v != {}
+            ]
+            if sensory_items:
+                sections.append("Live Sensory Telemetry:\n" + "\n".join(sensory_items))
+
+    history = memory_manager.get_conversation_history(session_id, limit=8)
+    entries = [
+        f"{m['role']}: {m['content']}"
+        for m in history
+        if m["content"].strip() and not (m["role"] == "user" and m["content"] == current_text)
+    ]
+    if entries:
+        sections.append("Recent conversation:\n" + "\n".join(entries))
+
+    if sections:
+        return JARVIS_SYSTEM_PROMPT + "\n\n" + "\n\n".join(sections)
+    return JARVIS_SYSTEM_PROMPT
+
+
 class JarvisBrain:
     """Jarvis Brain orchestrating multi-action planning, device execution & LLM reasoning."""
+
+    def _extract_sensory_fingerprint(
+        self, sensory_data: Optional[SensoryTelemetry | dict[str, Any]]
+    ) -> Optional[str]:
+        if sensory_data is None:
+            return None
+        if isinstance(sensory_data, SensoryTelemetry):
+            dump = sensory_data.model_dump(exclude_none=True)
+            if not dump:
+                return None
+            return "|".join(f"{k}:{dump[k]}" for k in sorted(dump.keys()))
+        elif isinstance(sensory_data, dict):
+            items = {k: v for k, v in sensory_data.items() if v is not None}
+            if not items:
+                return None
+            return "|".join(f"{k}:{items[k]}" for k in sorted(items.keys()))
+        return None
 
     async def process_utterance(
         self,
         text: str,
         session_id: str = "default-session",
-        request_id: str = "req-1"
+        request_id: str = "req-1",
+        sensory_data: Optional[SensoryTelemetry | dict[str, Any]] = None,
+        image_base64: Optional[str] = None,
+        image_uri: Optional[str] = None,
     ) -> dict[str, Any]:
         normalized = intent_normalizer.normalize(text)
-        logger.info(f"JarvisBrain processing utterance: '{text}' (session: {session_id}, req: {request_id})")
+        logger.info(
+            f"JarvisBrain processing utterance: '{text}' (session: {session_id}, req: {request_id})"
+        )
 
+        # Convert dict to SensoryTelemetry if needed
+        if isinstance(sensory_data, dict):
+            try:
+                sensory_data = SensoryTelemetry(**sensory_data)
+            except Exception:
+                pass
+
+        # 1. Check Context-Aware Generation (CAG) Fast Cache
+        sensory_fp = self._extract_sensory_fingerprint(sensory_data)
+        intent_hash = cag_cache.compute_hash(text, sensory_fingerprint=sensory_fp)
+        cached_response = cag_cache.get(intent_hash)
+        if cached_response is not None:
+            logger.info(f"[CAG] Cache hit for utterance '{text}' (hash: {intent_hash[:12]})")
+            hit_res = dict(cached_response)
+            hit_res["cached"] = True
+            hit_res["request_id"] = request_id
+            hit_res["session_id"] = session_id
+            return hit_res
+
+        # 2. Record User Message & Retrieve Multimodal Context
         memory_manager.record_user_message(session_id, text)
+        context = multimodal_memory.retrieve_context(
+            text, session_id=session_id, sensory=sensory_data
+        )
 
-        # 1. Level-1 / Level-2 Multi-Action Task Plan
+        # 3. Task Planning
         plan = task_planner.plan_utterance(text, session_id=session_id, request_id=request_id)
 
         if plan.actions:
             # Check confirmation requirements for risky actions
-            risky_action = next((a for a in plan.actions if a.requires_confirmation or not risk_policy.is_auto_executable(a.tool)), None)
+            risky_action = next(
+                (a for a in plan.actions if a.requires_confirmation or not risk_policy.is_auto_executable(a.tool)),
+                None,
+            )
             if risky_action:
                 token_payload = token_manager.create_token(
                     session_id, request_id, risky_action.tool, risky_action.parameters
@@ -79,18 +169,20 @@ class JarvisBrain:
                     "parameters": risky_action.parameters,
                     "prompt": f"Jarvis requires confirmation to execute '{risky_action.tool}'",
                     "confirmation_token": token_payload.token,
-                    "expires_at": token_payload.expires_at
+                    "expires_at": token_payload.expires_at,
                 }
 
             # Authoritative Multi-Action Execution with Device ACK & Verification
-            report: TaskExecutionReport = await execution_orchestrator.execute_plan(plan)
+            report: TaskExecutionReport = await execution_orchestrator.execute_plan(
+                plan, sensory_data=sensory_data
+            )
             memory_manager.record_assistant_message(session_id, report.message)
 
             primary_action = plan.actions[0].tool if plan.actions else "unknown"
             primary_params = plan.actions[0].parameters if plan.actions else {}
 
             # Build verification-aware response
-            response = {
+            response: dict[str, Any] = {
                 "type": "command_result",
                 "request_id": request_id,
                 "session_id": session_id,
@@ -102,18 +194,26 @@ class JarvisBrain:
                 "actions": report.actions,
                 "total_actions": report.total_actions,
                 "verified_actions": report.verified_actions,
-                "duration_ms": report.total_duration_ms
+                "duration_ms": report.total_duration_ms,
             }
 
             # Add verification details for user feedback
             if report.status == "success":
                 response["verification_status"] = "verified"
-                response["verification_message"] = f"{primary_action.replace('_', ' ').title()} completed and verified."
+                response["verification_message"] = (
+                    f"{primary_action.replace('_', ' ').title()} completed and verified."
+                )
+                # Cache verified response in CAG cache
+                cag_cache.set(intent_hash, response, ttl_seconds=300)
             elif report.status == "partial_failure":
                 response["verification_status"] = "partial"
-                failed_action = next((a for a in report.actions if a.get("status") != "verified"), None)
+                failed_action = next(
+                    (a for a in report.actions if a.get("status") != "verified"), None
+                )
                 if failed_action:
-                    response["verification_message"] = f"Action '{failed_action.get('tool')}' could not be verified."
+                    response["verification_message"] = (
+                        f"Action '{failed_action.get('tool')}' could not be verified."
+                    )
             elif report.status == "failed":
                 response["verification_status"] = "failed"
                 response["verification_message"] = report.message
@@ -123,11 +223,12 @@ class JarvisBrain:
 
             return response
 
-        # 2. Conversational / LLM Reasoning Path
+        # 4. Conversational / LLM Reasoning Path
         try:
             llm_res = await llm_gateway.generate_reasoning(
                 prompt=text,
-                system_prompt=build_system_prompt(session_id, text)
+                system_prompt=build_system_prompt(session_id, text, context=context),
+                context=context,
             )
             action = llm_res.action or "unknown"
             params = llm_res.parameters
@@ -145,7 +246,9 @@ class JarvisBrain:
                     }
 
                 if not risk_policy.is_auto_executable(action):
-                    token_payload = token_manager.create_token(session_id, request_id, action, params)
+                    token_payload = token_manager.create_token(
+                        session_id, request_id, action, params
+                    )
                     return {
                         "type": "confirmation_request",
                         "request_id": request_id,
@@ -154,7 +257,7 @@ class JarvisBrain:
                         "parameters": params,
                         "prompt": f"Jarvis requires confirmation to execute '{action}'",
                         "confirmation_token": token_payload.token,
-                        "expires_at": token_payload.expires_at
+                        "expires_at": token_payload.expires_at,
                     }
 
                 # Wrap into execution plan
@@ -162,33 +265,48 @@ class JarvisBrain:
                     request_id=request_id,
                     session_id=session_id,
                     utterance=text,
-                    actions=[PlannedAction(id=f"cmd-llm-{request_id}", tool=action, parameters=params)]
+                    actions=[
+                        PlannedAction(
+                            id=f"cmd-llm-{request_id}",
+                            tool=action,
+                            parameters=params,
+                        )
+                    ],
                 )
-                report = await execution_orchestrator.execute_plan(single_plan)
+                report = await execution_orchestrator.execute_plan(
+                    single_plan, sensory_data=sensory_data
+                )
                 memory_manager.record_assistant_message(session_id, report.message)
-                return {
+                response = {
                     "type": "command_result",
                     "request_id": request_id,
                     "session_id": session_id,
+                    "status": report.status,
                     "action": action,
                     "parameters": params,
                     "response_text": report.message,
-                    "result": report.message
+                    "result": report.message,
                 }
+                if report.status == "success":
+                    cag_cache.set(intent_hash, response, ttl_seconds=300)
+                return response
 
         except Exception as e:
             logger.error(f"LLM reasoning failed: {e}")
             ans_text = "I encountered an issue connecting to the reasoning network, Minaty."
 
         memory_manager.record_assistant_message(session_id, ans_text)
-        return {
+        response = {
             "type": "command_result",
             "request_id": request_id,
             "session_id": session_id,
+            "status": "success",
             "action": "answer",
             "response_text": ans_text,
-            "result": ans_text
+            "result": ans_text,
         }
+        cag_cache.set(intent_hash, response, ttl_seconds=300)
+        return response
 
 
 jarvis_brain = JarvisBrain()
