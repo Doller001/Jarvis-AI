@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "rag-blueprint": {
+      "source": "NVIDIA/skills",
+      "sourceType": "github",
+      "skillPath": "skills/rag-blueprint/SKILL.md",
+      "computedHash": "5c057a857193fdd137a8f040cfb95cf033c74fbc27eb5346c5255a5b34e1459b"
+    }
+  }
+}

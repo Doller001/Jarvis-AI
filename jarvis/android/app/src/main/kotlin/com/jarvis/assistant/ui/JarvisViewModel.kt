@@ -32,7 +32,6 @@ data class JarvisUiState(
     val voiceState: VoiceState = VoiceState.DISABLED,
     val connectionState: ConnectionState = ConnectionState.CONNECTED,
     val runtimeState: RuntimeState = RuntimeState.IDLE,
-    val isOfflineMode: Boolean = false,
     val permissionState: PermissionState = PermissionState(),
     val activeProvider: String = "Groq",
     val activeModel: String = "llama-3.3-70b-versatile",
@@ -73,8 +72,7 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             backendUrl = settingsManager.backendUrl,
             isTtsEnabled = settingsManager.isTtsEnabled,
             speechRate = settingsManager.speechRate,
-            isOfflineMode = settingsManager.isOfflineMode,
-            connectionState = if (settingsManager.isOfflineMode) ConnectionState.DISCONNECTED else ConnectionState.CONNECTED
+            connectionState = ConnectionState.CONNECTED
         )
     )
     val uiState: StateFlow<JarvisUiState> = _uiState.asStateFlow()
@@ -90,24 +88,17 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         // Single Source of Truth for Backend Health & Connectivity
-        backendHealthManager.start(isOfflineMode = settingsManager.isOfflineMode)
+        backendHealthManager.start()
         viewModelScope.launch {
             backendHealthManager.health.collect { health ->
-                val connState = if (health.isOfflineMode) {
-                    ConnectionState.DISCONNECTED
-                } else {
-                    when (health.status) {
-                        HealthStatus.CONNECTED -> ConnectionState.CONNECTED
-                        HealthStatus.CONNECTING -> ConnectionState.CONNECTING
-                        HealthStatus.DEGRADED -> ConnectionState.CONNECTED
-                        HealthStatus.OFFLINE -> ConnectionState.CONNECTING
-                    }
+                val connState = when (health.status) {
+                    HealthStatus.CONNECTED -> ConnectionState.CONNECTED
+                    HealthStatus.CONNECTING -> ConnectionState.CONNECTING
+                    HealthStatus.DEGRADED -> ConnectionState.CONNECTED
+                    HealthStatus.OFFLINE -> ConnectionState.DISCONNECTED
                 }
                 _uiState.update {
-                    it.copy(
-                        connectionState = connState,
-                        isOfflineMode = health.isOfflineMode
-                    )
+                    it.copy(connectionState = connState)
                 }
             }
         }
@@ -240,17 +231,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(wakeSensitivity = sensitivity) }
     }
 
-    fun toggleOfflineMode(isOffline: Boolean) {
-        settingsManager.isOfflineMode = isOffline
-        backendHealthManager.setOfflineMode(isOffline)
-        _uiState.update {
-            it.copy(
-                isOfflineMode = isOffline,
-                connectionState = if (isOffline) ConnectionState.DISCONNECTED else ConnectionState.CONNECTED
-            )
-        }
-    }
-
     fun toggleOverlay() {
         val context = getApplication<Application>()
         if (com.jarvis.assistant.overlay.OverlayController.hasOverlayPermission(context)) {
@@ -367,14 +347,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        // Offline mode is only used when explicitly turned ON by the user
-        if (settingsManager.isOfflineMode) {
-            val response = "JARVIS is operating in offline mode. All on-device systems, hardware controls, and local memories are active."
-            engine.recordEpisode("assistant", response)
-            updateCompletedResponse(text, response, RuntimeState.IDLE, engine)
-            return
-        }
-
         if (!ensureBackendAuthentication()) {
             val response = "Jarvis Cloud authentication is unavailable. Local device controls remain active."
             engine.recordEpisode("assistant", response)
@@ -389,7 +361,6 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         val response = chatResult.responseText ?: when {
-            // Only true transport failures should activate the offline fallback message.
             chatResult.isNetworkFailure ->
                 "JARVIS is unable to reach the cloud server. Local device controls remain active."
             chatResult.statusCode == 401 ->

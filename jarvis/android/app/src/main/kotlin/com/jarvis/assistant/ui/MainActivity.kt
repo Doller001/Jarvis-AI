@@ -61,8 +61,7 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onQuickAction = { viewModel.executeQuickAction(it) },
                 onStartListening = viewModel::startListening,
                 onToggleWakeListening = viewModel::toggleWakeListening,
-                onToggleOverlay = viewModel::toggleOverlay,
-                onToggleOfflineMode = viewModel::toggleOfflineMode
+                onToggleOverlay = viewModel::toggleOverlay
             )
         }
         composable("conversation") {
@@ -101,8 +100,7 @@ fun JarvisAppRoot(viewModel: JarvisViewModel = viewModel()) {
                 onToggleTts = viewModel::setTtsEnabled,
                 onSelectSpeechRate = viewModel::setSpeechRate,
                 onSelectWakeSensitivity = viewModel::setWakeSensitivity,
-                onClearHistory = viewModel::clearHistory,
-                onToggleOfflineMode = viewModel::toggleOfflineMode
+                onClearHistory = viewModel::clearHistory
             )
         }
         composable("routines") {

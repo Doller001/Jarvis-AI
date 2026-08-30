@@ -11,33 +11,26 @@ class BackendHealthManagerTest {
         assertEquals(HealthStatus.CONNECTED, health.status)
         assertTrue(health.httpHealthy)
         assertTrue(health.isNetworkAvailable)
-        assertFalse(health.isOfflineMode)
+        assertEquals("https://jarvis-ai-59qd.onrender.com", health.endpoint)
     }
 
     @Test
-    fun `manager defaults to online and only transitions to offline when setOfflineMode is called`() {
+    fun `updateEndpoint updates endpoint and maintains online health tracking`() {
         val manager = BackendHealthManager(context = null)
-        assertEquals(HealthStatus.CONNECTED, manager.health.value.status)
-        assertFalse(manager.health.value.isOfflineMode)
+        assertEquals("https://jarvis-ai-59qd.onrender.com", manager.health.value.endpoint)
 
-        manager.setOfflineMode(true)
-        assertEquals(HealthStatus.OFFLINE, manager.health.value.status)
-        assertTrue(manager.health.value.isOfflineMode)
-
-        manager.setOfflineMode(false)
-        assertEquals(HealthStatus.CONNECTED, manager.health.value.status)
-        assertFalse(manager.health.value.isOfflineMode)
+        val updated = manager.updateEndpoint("https://custom-backend.com")
+        assertTrue(updated)
+        assertEquals("https://custom-backend.com", manager.health.value.endpoint)
 
         manager.release()
     }
 
     @Test
-    fun `start with isOfflineMode true initializes in offline state`() {
+    fun `manager starts in online connected state`() {
         val manager = BackendHealthManager(context = null)
-        manager.start(isOfflineMode = true)
-
-        assertEquals(HealthStatus.OFFLINE, manager.health.value.status)
-        assertTrue(manager.health.value.isOfflineMode)
+        assertEquals(HealthStatus.CONNECTED, manager.health.value.status)
+        assertTrue(manager.health.value.isNetworkAvailable)
 
         manager.release()
     }

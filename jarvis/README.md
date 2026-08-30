@@ -45,8 +45,7 @@
 
 - **Always-Ready Wake Word**: Local wake-word engine recognizing phrase variants: `Jarvis`, `Hey Jarvis`, `Hay Jarvis`, `Jarvis suno`, `Jarvis listen`, `Jarvis hello`.
 - **Level-1 Sub-Second Execution**: Local device control commands (flashlight, Wi-Fi, Bluetooth, volume, app launcher, screen reader, time, battery) execute instantly on-device without remote LLM latency.
-- **Online Default Connectivity**: Automatically connects to the cloud backend for rich LLM responses with proactive health checks.
-- **Explicit Offline Mode**: Users can toggle to 100% on-device local execution anytime via the Home Screen or Settings.
+- **Online Always-Connected Architecture**: Automatically connects to the cloud backend for rich LLM responses with proactive health checks, WebSocket streaming, and auto-reconnect.
 - **Resource-Aware Voice Pipeline**: Keeps heavy STT/TTS unmapped during idle states to minimize battery and memory consumption.
 - **Accessibility Automation**: `JarvisAccessibilityService` providing safe high-level UI interaction APIs (`tap`, `scroll`, `back`, `home`, `openRecents`, `typeText`, `readScreen`) with automatic password field masking.
 - **Multi-Provider LLM Gateway**: Dynamic model discovery for **NVIDIA NIM**, **Groq**, **OpenRouter**, **Google Gemini**, and **Ollama**. Exposes *only authenticated and operational providers* in the UI, supporting live runtime model switching.

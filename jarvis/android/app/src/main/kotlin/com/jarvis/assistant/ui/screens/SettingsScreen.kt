@@ -1,6 +1,9 @@
 package com.jarvis.assistant.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -8,11 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.NetworkCheck
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,11 +20,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jarvis.assistant.BuildConfig
-import com.jarvis.assistant.settings.SettingsManager
 import com.jarvis.assistant.ui.JarvisUiState
 import com.jarvis.assistant.ui.components.ConnectionPill
-import com.jarvis.assistant.ui.components.PrimaryButton
 import com.jarvis.assistant.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,8 +34,7 @@ fun SettingsScreen(
     onToggleTts: (Boolean) -> Unit,
     onSelectSpeechRate: (Float) -> Unit,
     onSelectWakeSensitivity: (String) -> Unit,
-    onClearHistory: () -> Unit,
-    onToggleOfflineMode: (Boolean) -> Unit = {}
+    onClearHistory: () -> Unit
 ) {
     var urlInput by remember(uiState.backendUrl) { mutableStateOf(uiState.backendUrl) }
     var showClearDialog by remember { mutableStateOf(false) }
@@ -107,11 +102,11 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 0. Connectivity & Operation Mode Card
+            // 1. Backend Gateway Configuration Card (Online Always-Connected)
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = JarvisCard,
-                border = BorderStroke(1.dp, if (uiState.isOfflineMode) JarvisAmber else JarvisCyan),
+                border = BorderStroke(1.dp, JarvisGlow),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -121,16 +116,11 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Filled.NetworkCheck,
-                                contentDescription = null,
-                                tint = if (uiState.isOfflineMode) JarvisAmber else JarvisGreen,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Filled.Cloud, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Connectivity Mode",
-                                color = Color.White,
+                                "Backend API Gateway",
+                                color = JarvisCyan,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -141,10 +131,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(10.dp))
 
                     Text(
-                        if (uiState.isOfflineMode)
-                            "Offline Mode Active: JARVIS runs entirely on-device using local actions, offline wake-word, and memory without cloud LLMs."
-                        else
-                            "Online Mode Active (Default): Full cloud intelligence with multi-provider LLM reasoning, deep contextual queries, and hardware controls.",
+                        "JARVIS connects to the backend server for multi-provider cloud reasoning, real-time WebSocket events, and knowledge sync.",
                         color = JarvisTextSecondary,
                         fontSize = 12.sp,
                         lineHeight = 18.sp
@@ -152,72 +139,10 @@ fun SettingsScreen(
 
                     Spacer(Modifier.height(12.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (!uiState.isOfflineMode) JarvisBlue.copy(alpha = 0.25f) else JarvisDark,
-                            border = BorderStroke(1.dp, if (!uiState.isOfflineMode) JarvisCyan else JarvisGlow),
-                            onClick = { onToggleOfflineMode(false) },
-                            modifier = Modifier.weight(1f).height(44.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    "Online (Default)",
-                                    color = if (!uiState.isOfflineMode) JarvisCyan else JarvisTextSecondary,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (!uiState.isOfflineMode) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (uiState.isOfflineMode) JarvisAmber.copy(alpha = 0.25f) else JarvisDark,
-                            border = BorderStroke(1.dp, if (uiState.isOfflineMode) JarvisAmber else JarvisGlow),
-                            onClick = { onToggleOfflineMode(true) },
-                            modifier = Modifier.weight(1f).height(44.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    "Offline Mode",
-                                    color = if (uiState.isOfflineMode) JarvisAmber else JarvisTextSecondary,
-                                    fontSize = 13.sp,
-                                    fontWeight = if (uiState.isOfflineMode) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 1. Backend Gateway Configuration Card
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = JarvisCard,
-                border = BorderStroke(1.dp, JarvisGlow),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Cloud, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Backend API Gateway",
-                            color = JarvisCyan,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-
                     OutlinedTextField(
                         value = urlInput,
                         onValueChange = { urlInput = it },
-                        label = { Text("Base URL", color = JarvisTextSecondary, fontSize = 12.sp) },
+                        label = { Text("Backend URL", color = JarvisTextSecondary, fontSize = 12.sp) },
                         singleLine = true,
                         colors = TextFieldDefaults.outlinedTextFieldColors(
                             focusedBorderColor = JarvisCyan,
@@ -281,13 +206,13 @@ fun SettingsScreen(
                                     Icon(
                                         Icons.Filled.NetworkCheck,
                                         contentDescription = null,
-                                        tint = if (uiState.pingResult?.contains("Online") == true) JarvisGreen else JarvisAmber,
+                                        tint = if (uiState.pingResult?.contains("Online") == true || uiState.pingResult?.contains("healthy") == true || uiState.pingResult?.contains("connected", ignoreCase = true) == true) JarvisGreen else JarvisAmber,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
                                         uiState.pingResult ?: "",
-                                        color = if (uiState.pingResult?.contains("Online") == true) JarvisGreen else JarvisAmber,
+                                        color = if (uiState.pingResult?.contains("Online") == true || uiState.pingResult?.contains("healthy") == true || uiState.pingResult?.contains("connected", ignoreCase = true) == true) JarvisGreen else JarvisAmber,
                                         fontSize = 13.sp
                                     )
                                 }
@@ -318,11 +243,6 @@ fun SettingsScreen(
                         }
                     }
                 }
-            }
-
-            // 1b. Manual Connectivity (jarvis-1.0 offline only): user can add API / WebSocket / LLM / DB at runtime
-            if (BuildConfig.IS_OFFLINE) {
-                ManualConnectivityCard()
             }
 
             // 2. Voice & Speech Synthesis Card
@@ -425,7 +345,6 @@ fun SettingsScreen(
                             }
                         }
                     }
-
                 }
             }
 
@@ -478,207 +397,9 @@ fun SettingsScreen(
                     Text("JARVIS Android Runtime", color = JarvisCyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(4.dp))
                     Text("Version: 1.0.0 • Target SDK: 34 (Android 14)", color = JarvisTextSecondary, fontSize = 12.sp)
-                    Text("Pipeline: On-Device Voice → Level-1 Deterministic Engine → Cloud Brain", color = JarvisTextSecondary, fontSize = 12.sp)
+                    Text("Architecture: Always-Connected Cloud Brain + On-Device Action Execution", color = JarvisTextSecondary, fontSize = 12.sp)
                 }
             }
         }
-    }
-}
-
-/**
- * Manual Connectivity panel — only shown in the offline (jarvis-1.0) build.
- * Lets the user manually add an API backend, WebSocket, cloud LLM provider, or external
- * database connection at runtime. When nothing is added the app stays 100% offline.
- */
-@Composable
-private fun ManualConnectivityCard() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val settings = remember { SettingsManager(context) }
-
-    val apiEnabled = remember { mutableStateOf(settings.isManualApiEnabled) }
-    val apiUrl = remember { mutableStateOf(settings.manualBackendUrl) }
-    val wsEnabled = remember { mutableStateOf(settings.isManualWsEnabled) }
-    val wsUrl = remember { mutableStateOf(settings.manualWsUrl) }
-    val llmEnabled = remember { mutableStateOf(settings.isManualLlmEnabled) }
-    val llmProvider = remember { mutableStateOf(settings.manualLlmProvider) }
-    val llmKey = remember { mutableStateOf(settings.manualLlmApiKey) }
-    val dbEnabled = remember { mutableStateOf(settings.isManualDbEnabled) }
-    val dbConn = remember { mutableStateOf(settings.manualDbConnectionString) }
-
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = JarvisCard,
-        border = BorderStroke(1.dp, JarvisGlow),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Cloud, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "Connectivity (Manual Add)",
-                    color = JarvisCyan,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "By default JARVIS runs 100% offline. You can manually add a backend API, WebSocket, cloud LLM, or database connection below.",
-                color = JarvisTextSecondary,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            // API backend
-            ConnectivityRow(
-                label = "Backend API URL",
-                switchChecked = apiEnabled.value,
-                onSwitch = {
-                    apiEnabled.value = it
-                    settings.isManualApiEnabled = it
-                },
-                value = apiUrl.value,
-                onValue = {
-                    apiUrl.value = it
-                    settings.manualBackendUrl = it
-                },
-                placeholder = "https://your-backend.com"
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // WebSocket
-            ConnectivityRow(
-                label = "WebSocket URL",
-                switchChecked = wsEnabled.value,
-                onSwitch = {
-                    wsEnabled.value = it
-                    settings.isManualWsEnabled = it
-                },
-                value = wsUrl.value,
-                onValue = {
-                    wsUrl.value = it
-                    settings.manualWsUrl = it
-                },
-                placeholder = "wss://your-backend.com/ws"
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // Cloud LLM provider
-            ConnectivityRow(
-                label = "Cloud LLM Provider + API Key",
-                switchChecked = llmEnabled.value,
-                onSwitch = {
-                    llmEnabled.value = it
-                    settings.isManualLlmEnabled = it
-                },
-                value = llmProvider.value,
-                onValue = {
-                    llmProvider.value = it
-                    settings.manualLlmProvider = it
-                },
-                placeholder = "groq / nvidia / openrouter / gemini / ollama"
-            )
-
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = llmKey.value,
-                onValueChange = {
-                    llmKey.value = it
-                    settings.manualLlmApiKey = it
-                },
-                label = { Text("API Key", color = JarvisTextSecondary, fontSize = 12.sp) },
-                singleLine = true,
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = JarvisCyan,
-                    unfocusedBorderColor = JarvisGlow,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = JarvisCyan
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // External database
-            ConnectivityRow(
-                label = "Database Connection String",
-                switchChecked = dbEnabled.value,
-                onSwitch = {
-                    dbEnabled.value = it
-                    settings.isManualDbEnabled = it
-                },
-                value = dbConn.value,
-                onValue = {
-                    dbConn.value = it
-                    settings.manualDbConnectionString = it
-                },
-                placeholder = "postgresql://user:pass@host:5432/db"
-            )
-
-            Spacer(Modifier.height(12.dp))
-            val active = listOf(apiEnabled.value to apiUrl.value, wsEnabled.value to wsUrl.value,
-                llmEnabled.value to llmProvider.value, dbEnabled.value to dbConn.value)
-                .count { it.first && it.second.isNotBlank() }
-            Text(
-                if (active == 0) "Status: Fully offline — no external connections."
-                else "Status: $active manual connection(s) configured.",
-                color = if (active == 0) JarvisAmber else JarvisGreen,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-private fun ConnectivityRow(
-    label: String,
-    switchChecked: Boolean,
-    onSwitch: (Boolean) -> Unit,
-    value: String,
-    onValue: (String) -> Unit,
-    placeholder: String
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(4.dp))
-            OutlinedTextField(
-                value = value,
-                onValueChange = onValue,
-                placeholder = { Text(placeholder, color = JarvisTextSecondary, fontSize = 11.sp) },
-                singleLine = true,
-                colors = TextFieldDefaults.outlinedTextFieldColors(
-                    focusedBorderColor = JarvisCyan,
-                    unfocusedBorderColor = JarvisGlow,
-                    focusedTextColor = Color.White,
-                    unfocusedTextColor = Color.White,
-                    cursorColor = JarvisCyan
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Switch(
-            checked = switchChecked,
-            onCheckedChange = onSwitch,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = JarvisCyan,
-                checkedTrackColor = JarvisBlue.copy(alpha = 0.4f),
-                uncheckedThumbColor = JarvisTextSecondary,
-                uncheckedTrackColor = JarvisDark
-            )
-        )
     }
 }

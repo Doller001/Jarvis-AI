@@ -49,8 +49,7 @@ fun HomeScreen(
     onQuickAction: (String) -> Unit,
     onStartListening: () -> Unit = {},
     onToggleWakeListening: () -> Unit = {},
-    onToggleOverlay: () -> Unit = {},
-    onToggleOfflineMode: (Boolean) -> Unit = {}
+    onToggleOverlay: () -> Unit = {}
 ) {
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -160,7 +159,7 @@ fun HomeScreen(
 
             // 2. CENTRAL ORB / LISTENING SECTION
             val statusText = when (uiState.voiceState) {
-                VoiceState.DISABLED       -> if (uiState.isOfflineMode) "OFFLINE MODE" else "WAKE WORD OFF"
+                VoiceState.DISABLED       -> "WAKE WORD OFF"
                 VoiceState.WAKE_LISTENING -> "SAY 'HEY JARVIS'"
                 VoiceState.ACKNOWLEDGING  -> "YES BOSS..."
                 VoiceState.COMMAND_LISTENING -> "LISTENING..."
@@ -186,38 +185,11 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Controls Row: Online/Offline Mode toggle + Wake word toggle + Floating Overlay toggle
+            // Controls Row: Wake word toggle + Floating Overlay toggle
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Online / Offline Mode Toggle
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (uiState.isOfflineMode) Color(0xFF332005) else CyanGlow.copy(alpha = 0.2f),
-                    border = BorderStroke(1.dp, if (uiState.isOfflineMode) Color(0xFFFFB020) else CyanGlow),
-                    onClick = { onToggleOfflineMode(!uiState.isOfflineMode) },
-                    modifier = Modifier.height(36.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    ) {
-                        Icon(
-                            if (uiState.isOfflineMode) Icons.Filled.CloudOff else Icons.Filled.Cloud,
-                            contentDescription = null,
-                            tint = if (uiState.isOfflineMode) Color(0xFFFFB020) else CyanGlow,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            if (uiState.isOfflineMode) "Offline Mode" else "Online (Default)",
-                            color = if (uiState.isOfflineMode) Color(0xFFFFB020) else CyanGlow,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
 
                 // Wake-word toggle (offline "Hey Jarvis" detection)
                 Surface(

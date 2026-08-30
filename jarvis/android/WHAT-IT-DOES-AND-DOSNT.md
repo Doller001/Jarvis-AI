@@ -88,9 +88,9 @@
 - Floating overlay widget with holographic UI
 
 ### Settings & Connectivity
-- Online Connectivity Mode (Default) with auto-reconnecting backend health engine
-- Explicit Offline Mode toggle (switches JARVIS to 100% on-device local execution)
-- Configurable backend URL with live ping tests and presets
+- Online Always-Connected Architecture with auto-reconnecting backend health engine
+- Configurable Backend URL with live ping tests, quick presets (Render, Localhost, Emulator), and instant reconnection
+- Multi-provider Cloud LLM selection and device registration
 - TTS on/off + speech rate controls
 - Wake word on/off + 3 sensitivity levels
 - Auto-generated device ID with JWT device authentication

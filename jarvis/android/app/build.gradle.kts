@@ -7,8 +7,6 @@ android {
     namespace = "com.jarvis.assistant"
     compileSdk = 34
 
-    flavorDimensions += "mode"
-
     defaultConfig {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
@@ -28,31 +26,6 @@ android {
         ndk {
             // Ship only phone ABIs — drop emulator-only x86 for a smaller APK.
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-        }
-    }
-
-    productFlavors {
-        create("offline") {
-            dimension = "mode"
-            applicationIdSuffix = ".offline"
-            versionNameSuffix = "-offline"
-            // applicationId becomes: com.jarvis.assistant.offline
-            buildConfigField("boolean", "IS_OFFLINE", "true")
-
-            manifestPlaceholders += mapOf(
-                "OFFLINE_APP_NAME" to "Jarvis Offline"
-            )
-        }
-        create("online") {
-            dimension = "mode"
-            applicationIdSuffix = ".online"
-            versionNameSuffix = "-online"
-            // applicationId becomes: com.jarvis.assistant.online
-            buildConfigField("boolean", "IS_OFFLINE", "false")
-
-            manifestPlaceholders += mapOf(
-                "ONLINE_APP_NAME" to "Jarvis Online"
-            )
         }
     }
 
