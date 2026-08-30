@@ -119,6 +119,14 @@ class WebSocketClient(
         }
     }
 
+    fun sendMultimodal(payload: MultimodalPayload): Boolean {
+        val json = payload.toJsonObject().apply {
+            put("type", "command")
+        }.toString()
+        Log.i("WebSocketClient", "Sending multimodal command over WebSocket (req: ${payload.requestId})")
+        return webSocket?.send(json) ?: false
+    }
+
     fun disconnect() {
         disconnectRequested = true
         reconnectJob?.cancel()

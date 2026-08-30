@@ -274,15 +274,10 @@ class ApiClient(
         }
     }
 
-    fun sendChat(text: String, sessionId: String, onResult: (ChatResult) -> Unit) {
+    fun sendMultimodalChat(payload: MultimodalPayload, onResult: (ChatResult) -> Unit) {
         scope.launch {
             val cleanUrl = baseUrl.trim().trimEnd('/')
-            val reqId = "req-chat-${UUID.randomUUID()}"
-            val bodyJson = JSONObject().apply {
-                put("text", text)
-                put("session_id", sessionId)
-                put("request_id", reqId)
-            }.toString()
+            val bodyJson = payload.toJsonObject().toString()
 
             val requestBuilder: (String) -> Request = { accessToken ->
                 Request.Builder()
@@ -291,7 +286,7 @@ class ApiClient(
                     .header("Authorization", "Bearer $accessToken")
                     .header("Connection", "keep-alive")
                     .header("Accept", "application/json")
-                    .header("X-Request-ID", reqId)
+                    .header("X-Request-ID", payload.requestId)
                     .build()
             }
 
@@ -357,6 +352,26 @@ class ApiClient(
                 }
             }
         }
+    }
+
+    fun sendChat(
+        text: String,
+        sessionId: String,
+        sensoryData: SensoryTelemetryPayload? = null,
+        imageBase64: String? = null,
+        onResult: (ChatResult) -> Unit
+    ) {
+        val payload = MultimodalPayload(
+            text = text,
+            sessionId = sessionId,
+            sensoryData = sensoryData,
+            imageBase64 = imageBase64
+        )
+        sendMultimodalChat(payload, onResult)
+    }
+
+    fun sendChat(text: String, sessionId: String, onResult: (ChatResult) -> Unit) {
+        sendChat(text = text, sessionId = sessionId, sensoryData = null, imageBase64 = null, onResult = onResult)
     }
 
     private fun defaultProviders(): List<String> = listOf("nvidia", "groq", "openrouter", "gemini", "ollama")
