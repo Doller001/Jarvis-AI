@@ -4,7 +4,28 @@ Execution Models for Jarvis Multi-Action Planning and Device Verification.
 
 from dataclasses import dataclass, field
 import time
-from typing import Any
+from typing import Any, Optional
+import uuid
+from pydantic import BaseModel, Field
+
+
+class SensoryTelemetry(BaseModel):
+    battery_level: Optional[int] = None
+    is_charging: Optional[bool] = None
+    network_type: Optional[str] = None  # wifi, cellular, offline
+    volume_level: Optional[int] = None
+    current_audio_output: Optional[str] = None
+    extra_sensors: dict[str, Any] = Field(default_factory=dict)
+
+
+class MultimodalInputPayload(BaseModel):
+    text: str
+    session_id: str = "default-session"
+    request_id: str = Field(default_factory=lambda: f"req-{uuid.uuid4().hex[:8]}")
+    sensory_data: Optional[SensoryTelemetry] = None
+    image_base64: Optional[str] = None
+    image_uri: Optional[str] = None
+
 
 
 class ActionStatus:
