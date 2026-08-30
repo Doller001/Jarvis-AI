@@ -104,6 +104,12 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Incoming WebSocket event:', msg);
 
         switch (msg.type) {
+            case 'session_ready':
+                console.log('WebSocket session ready:', msg.session_id);
+                currentSessionId = msg.session_id || currentSessionId;
+                addMessage('SYSTEM', `Connected to Jarvis Cloud Brain (session: ${msg.session_id})`, 'assistant');
+                break;
+
             case 'command_result':
                 setRuntimeState('IDLE');
                 hideStreamingIndicator();
@@ -127,6 +133,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 setRuntimeState('ACTING');
                 hideStreamingIndicator();
                 handleConfirmationRequest(msg);
+                break;
+
+            case 'device_command':
+                // Device commands are dispatched to the WebSocket client (Android app).
+                // For web-only mode, show the command was forwarded to the device.
+                setRuntimeState('ACTING');
+                hideStreamingIndicator();
+                const actionName = (msg.action || 'unknown').replace(/_/g, ' ');
+                const paramsStr = msg.parameters && Object.keys(msg.parameters).length > 0
+                    ? ' with parameters: ' + JSON.stringify(msg.parameters)
+                    : '';
+                addMessage('JARVIS', `Device action dispatched: \u201c${actionName}\u201d${paramsStr}. Awaiting device confirmation...`, 'assistant');
+                speak(`Dispatched ${actionName} to your device.`);
+                break;
+
+            case 'action_result':
+                setRuntimeState('IDLE');
+                hideStreamingIndicator();
+                const actionResText = msg.response_text || `Action ${msg.action} completed.`;
+                addMessage('JARVIS', actionResText, 'assistant');
+                speak(actionResText);
+                break;
+
+            case 'cancel_result':
+                setRuntimeState('IDLE');
+                hideStreamingIndicator();
+                addMessage('SYSTEM', `Task cancelled: ${msg.message || 'No details'}`, 'assistant');
+                break;
+
+            case 'pong':
+                console.log('Received pong from server');
                 break;
 
             case 'error':
